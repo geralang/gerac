@@ -1,3 +1,4 @@
+
 package typesafeschwalbe.gerac.compiler;
 
 class Color {
