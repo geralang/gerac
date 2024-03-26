@@ -2,8 +2,10 @@
 package typesafeschwalbe.gerac.cli;
 
 import java.util.HashMap;
+import typesafeschwalbe.gerac.compiler.Compiler;
 import typesafeschwalbe.gerac.compiler.Error;
-import typesafeschwalbe.gerac.compiler.Source;
+import typesafeschwalbe.gerac.compiler.Result;
+import typesafeschwalbe.gerac.compiler.Target;
 
 public class Main {
     
@@ -13,15 +15,20 @@ public class Main {
             "mod example\n" +
             "\n" +
             "proc add(x, y) {\n" +
-            "    return x + y\n" +
+            "    return x + y // this is funny lol\n" +
             "}"
         );
-        Error e = new Error(
-            "you fucked up big time",
-            new Error.Marking(new Source("test.gera", 13, 17), "right here"),
-            new Error.Marking(new Source("test.gera", 41, 46), "but also here")
+        Result<String> r = Compiler.compile(
+            files, Target.C, "example::main", 1024
         );
-        System.out.println(e.render(files, true));
+        if(r.isError()) {
+            for(Error e: r.getError()) {
+                System.out.print(e.render(files, true));
+            }
+        }
+        if(r.isValue()) {
+            System.out.println(r.getValue());
+        }
     }
 
 }

@@ -4,10 +4,10 @@ package typesafeschwalbe.gerac.compiler;
 public class Source {
 
     public final String file;
-    public final long startOffset;
-    public final long endOffset;
+    public final int startOffset;
+    public final int endOffset;
 
-    public Source(String file, long startOffset, long endOffset) {
+    public Source(String file, int startOffset, int endOffset) {
         this.file = file;
         this.startOffset = startOffset;
         this.endOffset = endOffset;
