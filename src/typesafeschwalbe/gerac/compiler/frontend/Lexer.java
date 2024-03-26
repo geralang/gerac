@@ -92,7 +92,25 @@ public class Lexer {
             this.currentPos = endIdx;
             return this.makeToken(content, Token.Type.WHITESPACE);
         }
-        // todo: tokenize integer and number
+        if(Lexer.isDigit(this.current())) {
+            int startPos = this.currentPos;
+            boolean isFloat = false;
+            while(!this.atEnd() && (
+                Lexer.isDigit(this.current()) || (
+                    this.current() == '.' && !isFloat
+                )
+            )) {
+                if(this.current() == '.') { isFloat = true; }
+                this.next();
+            }
+            String content = this.fileContent.substring(
+                startPos, this.currentPos
+            );
+            return this.makeToken(
+                content,
+                isFloat? Token.Type.FRACTION : Token.Type.INTEGER
+            );
+        }
         // todo: tokenize string literal
         if(Lexer.isAlphanumeral(this.current())) {
             int endIdx = this.find(c -> !Lexer.isAlphanumeral(c));

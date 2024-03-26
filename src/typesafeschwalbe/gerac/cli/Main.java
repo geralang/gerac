@@ -16,7 +16,9 @@ public class Main {
             "\n" +
             "proc add(x, y) {\n" +
             "    return x + y // this is funny lol\n" +
-            "}"
+            "}\n" + 
+            "\n" +
+            "525.524"
         );
         Result<String> r = Compiler.compile(
             files, Target.C, "example::main", 1024
