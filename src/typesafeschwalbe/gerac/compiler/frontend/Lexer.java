@@ -75,6 +75,32 @@ public class Lexer {
         );
     }
 
+    private byte parseHexDigit() throws ParsingException {
+        if(this.atEnd()) {
+            throw new ParsingException(new Error(
+                "Hexadecimal character escape incomplete",
+                new Error.Marking(
+                    new Source(
+                        this.fileName,
+                        this.fileContent.length() - 1, this.fileContent.length()
+                    ),
+                    "expected [0-9], [a-f] or [A-F] here, but file ends instead"
+                )
+            ));
+        }
+        char c = this.current();
+        if('0' <= c && c <= '9') { return (byte) (c - '0'); }
+        if('a' <= c && c <= 'f') { return (byte) (c - 'a' + 10); }
+        if('A' <= c && c <= 'F') { return (byte) (c - 'A' + 10); }
+        throw new ParsingException(new Error(
+            "Invalid hexadecimal digit in hexadecimal character escape",
+            new Error.Marking(
+                new Source(this.fileName, this.currentPos, this.currentPos + 1),
+                "should be [0-9], [a-f] or [A-F]"
+            )
+        ));
+    }
+
     public Token nextToken() throws ParsingException {
         if(this.currentPos >= this.fileContent.length()) {
             return new Token(
@@ -111,7 +137,56 @@ public class Lexer {
                 isFloat? Token.Type.FRACTION : Token.Type.INTEGER
             );
         }
-        // todo: tokenize string literal
+        if(this.current() == '"') {
+            int startPos = this.currentPos;
+            this.next();
+            StringBuilder content = new StringBuilder();
+            boolean escaped = false;
+            while(escaped || this.current() != '"') {
+                if(this.atEnd()) {
+                    throw new ParsingException(new Error(
+                        "Unclosed string literal",
+                        new Error.Marking(
+                            new Source(
+                                this.fileName, startPos, startPos + 1
+                            ),
+                            "starts here"
+                        )
+                    ));
+                }
+                if(escaped) {
+                    boolean append = true;
+                    char a = this.current();
+                    switch(a) {
+                        case '\n': append = false; break;
+                        case '0': a = 0; break;  // null
+                        case 't': a = 9; break;  // horizontal tab
+                        case 'n': a = 10; break; // line feed
+                        case 'r': a = 13; break; // carriage feed
+                        case 'x':
+                            byte v = 0;
+                            this.next();
+                            v += this.parseHexDigit() * 16;
+                            this.next();
+                            v += this.parseHexDigit();
+                            a = (char) v;
+                            break;
+                    }
+                    if(append) { content.append(a); }
+                    escaped = false;
+                } else {
+                    escaped = this.current() == '\\';
+                    if(!escaped) { content.append(this.current()); }
+                }
+                this.next();
+            }
+            this.next();
+            return new Token(
+                Token.Type.STRING,
+                content.toString(),
+                new Source(this.fileContent, startPos, this.currentPos)
+            );
+        }
         if(Lexer.isAlphanumeral(this.current())) {
             int endIdx = this.find(c -> !Lexer.isAlphanumeral(c));
             String content = this.fileContent.substring(

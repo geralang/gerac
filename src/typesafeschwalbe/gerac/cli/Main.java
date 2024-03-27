@@ -18,7 +18,7 @@ public class Main {
             "    return x + y // this is funny lol\n" +
             "}\n" + 
             "\n" +
-            "525.524"
+            "\"balls\\0\""
         );
         Result<String> r = Compiler.compile(
             files, Target.C, "example::main", 1024
