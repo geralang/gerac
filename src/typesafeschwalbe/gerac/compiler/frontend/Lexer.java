@@ -50,7 +50,7 @@ public class Lexer {
         this.currentPos += 1;
     }
 
-    private boolean atEnd() {
+    public boolean atEnd() {
         return this.currentPos >= this.fileContent.length();
     }
 

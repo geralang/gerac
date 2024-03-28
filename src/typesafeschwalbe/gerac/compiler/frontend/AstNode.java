@@ -174,4 +174,9 @@ public class AstNode {
         return (T) this.value;
     }
 
+    public boolean isAssignable() {
+        // TODO: return if this node can be assigned to
+        throw new RuntimeException("Not yet implemented");
+    }
+
 }
