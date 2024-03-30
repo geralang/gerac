@@ -12,13 +12,13 @@ public class Main {
     public static void main(String[] args) {
         HashMap<String, String> files = new HashMap<>();
         files.put("test.gera",
-            "mod example\n" +
-            "\n" +
-            "proc add(x, y) {\n" +
-            "    return x + y // this is funny lol\n" +
-            "}\n" + 
-            "\n" +
-            "\"balls\\0\""
+            //"pub var test\n" +
+            "proc test() { case x { 5 -> {} 10 -> balls 25 -> {} } }\n" //+
+            // "proc add(x, y) {\n" +
+            // "    return x + y // this is funny lol\n" +
+            // "}\n" + 
+            // "\n" +
+            // "\"balls\\0\""
         );
         Result<String> r = Compiler.compile(
             files, Target.C, "example::main", 1024

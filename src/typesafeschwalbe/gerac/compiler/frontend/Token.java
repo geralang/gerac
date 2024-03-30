@@ -6,59 +6,75 @@ import typesafeschwalbe.gerac.compiler.Source;
 public class Token {
     
     public enum Type {
-        WHITESPACE,
-        COMMENT,
-        FILE_END,
+        WHITESPACE("a whitespace"),
+        COMMENT("a line comment"),
+        FILE_END("the end of the file"),
 
-        IDENTIFIER,
-        INTEGER,
-        FRACTION,
-        STRING,
-        PIPE,
-        EQUALS,
-        DOT,
-        DOUBLE_DOT,
-        DOUBLE_DOT_EQUALS,
-        PLUS,
-        MINUS,
-        ASTERISK,
-        SLASH,
-        PERCENT,
-        LESS_THAN,
-        GREATER_THAN,
-        LESS_THAN_EQUAL,
-        GREATER_THAN_EQUAL,
-        DOUBLE_EQUALS,
-        NOT_EQUALS,
-        DOUBLE_PIPE,
-        FUNCTION_PIPE,
-        MEMBER_PIPE,
-        DOUBLE_AMPERSAND,
-        EXCLAMATION_MARK,
-        HASHTAG,
-        COMMA,
-        ARROW,
-        DOUBLE_COLON,
-        PAREN_OPEN,
-        PAREN_CLOSE,
-        BRACKET_OPEN,
-        BRACKET_CLOSE,
-        BRACE_OPEN,
-        BRACE_CLOSE,
-        KEYWORD_PROCEDURE,
-        KEYWORD_CASE,
-        KEYWORD_VARIABLE,
-        KEYWORD_MUTABLE,
-        KEYWORD_RETURN,
-        KEYWORD_MODULE,
-        KEYWORD_PUBLIC,
-        KEYWORD_USE,
-        KEYWORD_TRUE,
-        KEYWORD_FALSE,
-        KEYWORD_ELSE,
-        KEYWORD_UNIT,
-        KEYWORD_STATIC,
-        KEYWORD_TARGET
+        IDENTIFIER("an identifier"),
+        INTEGER("an integer"),
+        FRACTION("a fractional number"),
+        STRING("a string"),
+        PIPE("'|'"),
+        EQUALS("'='"),
+        DOT("'.'"),
+        HASHTAG("'#'"),
+        COMMA("','"),
+        ARROW("'->'"),
+        DOUBLE_COLON("'::'"),
+        EXCLAMATION_MARK("'!'"),
+        ASTERISK("'*'", 3),
+        SLASH("'/'", 3),
+        PERCENT("'%'", 3),
+        PLUS("'+'", 4),
+        MINUS("'-'", 4),
+        LESS_THAN("'<'", 5),
+        GREATER_THAN("'>'", 5),
+        LESS_THAN_EQUAL("'<='", 5),
+        GREATER_THAN_EQUAL("'>='", 5),
+        DOUBLE_EQUALS("'=='", 6),
+        NOT_EQUALS("'!='", 6),
+        DOUBLE_AMPERSAND("'&&'", 7),
+        DOUBLE_PIPE("'||'", 8),
+        DOUBLE_DOT("'..'", 9),
+        DOUBLE_DOT_EQUALS("'..='", 9),
+        FUNCTION_PIPE("'|>'", 11),
+        MEMBER_PIPE("'.>'", 11),
+        PAREN_OPEN("'('", 1),
+        PAREN_CLOSE("')'"),
+        BRACKET_OPEN("'['"),
+        BRACKET_CLOSE("']'"),
+        BRACE_OPEN("'{'"),
+        BRACE_CLOSE("'}'"),
+        KEYWORD_PROCEDURE("'proc'"),
+        KEYWORD_CASE("'case'"),
+        KEYWORD_VARIABLE("'var'"),
+        KEYWORD_MUTABLE("'mut'"),
+        KEYWORD_RETURN("'return'"),
+        KEYWORD_MODULE("'mod'"),
+        KEYWORD_PUBLIC("'pub'"),
+        KEYWORD_USE("'use'"),
+        KEYWORD_TRUE("'true'"),
+        KEYWORD_FALSE("'false'"),
+        KEYWORD_ELSE("'else'"),
+        KEYWORD_UNIT("'unit'"),
+        KEYWORD_STATIC("'static'"),
+        KEYWORD_TARGET("'target'");
+
+        public static final int PREFIX_MINUS_PRECEDENCE = 2;
+        public static final int PREFIX_EXCLAMATION_MARK_PRECEDENCE = 2;
+        public static final int PREFIX_HASHTAG_PRECEDENCE = 10;
+
+        public final String description;
+        public final int infixPrecedence;
+
+        private Type(String description, int infixPrecedence) {
+            this.description = description;
+            this.infixPrecedence = infixPrecedence;
+        }
+        private Type(String description) {
+            this.description = description;
+            this.infixPrecedence = 0;
+        }
     }
 
     public final Type type;

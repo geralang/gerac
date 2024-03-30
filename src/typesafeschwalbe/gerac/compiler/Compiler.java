@@ -2,10 +2,12 @@
 package typesafeschwalbe.gerac.compiler;
 
 import java.util.HashMap;
+import java.util.List;
 
 import typesafeschwalbe.gerac.compiler.frontend.Lexer;
-import typesafeschwalbe.gerac.compiler.frontend.Token;
+import typesafeschwalbe.gerac.compiler.frontend.Parser;
 import typesafeschwalbe.gerac.compiler.frontend.ParsingException;
+import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 
 public class Compiler {
 
@@ -17,16 +19,13 @@ public class Compiler {
             String fileContent = files.get(fileName);
             Lexer fileLexer = new Lexer(fileName, fileContent);
             try {
-                while(true) {
-                    Token currentToken = fileLexer.nextFilteredToken();
-                    System.out.println(currentToken);
-                    if(currentToken.type == Token.Type.FILE_END) { break; }
-                }
+                Parser fileParser = new Parser(fileLexer, target);
+                List<AstNode> nodes = fileParser.parseGlobalStatements();
             } catch(ParsingException e) {
                 return Result.ofError(e.error);
             }
         }
-        return Result.ofValue("<no codegen, no ouput>");
+        return Result.ofValue("<no codegen, no output>");
     }
 
 }

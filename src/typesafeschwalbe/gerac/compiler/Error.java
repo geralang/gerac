@@ -74,20 +74,9 @@ public class Error {
             int markedStartLineOffset = -1;
             int markedEndLineIdx = -1;
             while(true) {
-                char c = charIdx < fileContent.length()?
-                    fileContent.charAt(charIdx) : '\n';
-                if((c == '\n' && lastChar != '\r') || c == '\r') {
-                    lines.add(fileContent.substring(lineStart, charIdx));
-                    linesMarked.add(lineMarked.toString());
-                    lineMarked.delete(0, lineMarked.length());
-                    lineStart = charIdx + 1;
-                    if(c == '\r'
-                        && lineStart < fileContent.length()
-                        && fileContent.charAt(lineStart) == '\n') {
-                        lineStart += 1;
-                    }
-                    lineIdx += 1;
-                } else if(charIdx < marked.location.endOffset) {
+                boolean atEnd = charIdx >= fileContent.length();
+                char c = atEnd? '\0' : fileContent.charAt(charIdx);
+                if(charIdx < marked.location.endOffset) {
                     boolean isMarked = charIdx >= marked.location.startOffset;
                     lineMarked.append(
                         isMarked
@@ -105,6 +94,18 @@ public class Error {
                         lineMarked.append(marked.note);
                         markedEndLineIdx = lineIdx;
                     }
+                }
+                if((c == '\n' && lastChar != '\r') || c == '\r' || atEnd) {
+                    lines.add(fileContent.substring(lineStart, charIdx));
+                    linesMarked.add(lineMarked.toString());
+                    lineMarked.delete(0, lineMarked.length());
+                    lineStart = charIdx + 1;
+                    if(c == '\r'
+                        && lineStart < fileContent.length()
+                        && fileContent.charAt(lineStart) == '\n') {
+                        lineStart += 1;
+                    }
+                    lineIdx += 1;
                 }
                 if(charIdx >= fileContent.length()) { break; }
                 charIdx += 1;

@@ -123,7 +123,7 @@ public class Lexer {
             boolean isFloat = false;
             while(!this.atEnd() && (
                 Lexer.isDigit(this.current()) || (
-                    this.current() == '.' && !isFloat
+                    this.current() == '.' && this.peek() != '.' && !isFloat
                 )
             )) {
                 if(this.current() == '.') { isFloat = true; }

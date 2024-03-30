@@ -99,6 +99,17 @@ public class AstNode {
         AstNode value
     ) {}
 
+    public static record MacroInsertion(
+        Namespace path,
+        List<AstNode> arguments
+    ) {}
+
+    public static record MacroApplication(
+        Namespace path,
+        List<AstNode> arguments,
+        AstNode applied
+    ) {}
+
     public static record Target(
         String targetName,
         List<AstNode> body
@@ -175,8 +186,15 @@ public class AstNode {
     }
 
     public boolean isAssignable() {
-        // TODO: return if this node can be assigned to
-        throw new RuntimeException("Not yet implemented");
+        switch(this.type) {
+            case VARIABLE_ACCESS:
+            case MODULE_ACCESS:
+            case OBJECT_ACCESS:
+            case ARRAY_ACCESS:
+                return true;
+            default:
+                return false;
+        }
     }
 
 }
