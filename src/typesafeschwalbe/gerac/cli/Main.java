@@ -1,36 +1,179 @@
 
 package typesafeschwalbe.gerac.cli;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Map;
+import java.util.Optional;
 import java.util.HashMap;
+import java.util.List;
+
 import typesafeschwalbe.gerac.compiler.Compiler;
 import typesafeschwalbe.gerac.compiler.Error;
 import typesafeschwalbe.gerac.compiler.Result;
 import typesafeschwalbe.gerac.compiler.Target;
+import typesafeschwalbe.gerac.compiler.frontend.Lexer;
 
 public class Main {
-    
+
+    private static final Cli.RequiredArgument MAIN = new Cli.RequiredArgument(
+        'm', "main",
+        "specifies the path of the main procedure",
+        "full procedure path"
+    );
+    private static final Cli.RequiredArgument TARGET = new Cli.RequiredArgument(
+        't', "target", "specifies the target language",
+        String.join(
+            " / ",
+            Arrays.stream(Target.values())
+                .map(t -> "'" + t.targetName + "'")
+                .toArray(String[]::new)
+        )
+    );
+    private static final Cli.RequiredArgument OUTPUT = new Cli.RequiredArgument(
+        'o', "output", "specifies the output file path",
+        "output file path"
+    );
+    private static final Cli.OptionalArgument MAX_CD = new Cli.OptionalArgument(
+        's', "maxcalldepth", "overwrites the maximum call depth",
+        "maximum call depth (default = 1024)"
+    );
+    private static final Cli.Flag NO_COLOR = new Cli.Flag(
+        'c', "nocolor", "disables colored output"
+    );
+
     public static void main(String[] args) {
-        HashMap<String, String> files = new HashMap<>();
-        files.put("test.gera",
-            //"pub var test\n" +
-            "proc test() { case x { 5 -> {} 10 -> balls 25 -> {} } }\n" //+
-            // "proc add(x, y) {\n" +
-            // "    return x + y // this is funny lol\n" +
-            // "}\n" + 
-            // "\n" +
-            // "\"balls\\0\""
-        );
-        Result<String> r = Compiler.compile(
-            files, Target.C, "example::main", 1024
-        );
-        if(r.isError()) {
-            for(Error e: r.getError()) {
-                System.out.print(e.render(files, true));
+        // color is always disabled if we think we are on Windows
+        boolean onWindows = System.getProperty("os.name")
+            .toLowerCase().contains("win");
+        // parse CLI arguments
+        Cli cli = new Cli()
+            .add(MAIN).add(TARGET).add(OUTPUT)
+            .add(MAX_CD)
+            .add(NO_COLOR);
+        Result<Cli.Values> cliParseResult = cli.parse(args);
+        if(cliParseResult.isError()) {
+            Main.exitWithErrors(
+                cliParseResult.getError(), new HashMap<>(), !onWindows
+            );
+        }
+        Cli.Values cliValues = cliParseResult.getValue();
+        boolean colored = !cliValues.get(NO_COLOR) && !onWindows;
+        // read all files
+        Map<String, String> files = new HashMap<>();
+        for(String fileName: cliValues.free()) {
+            byte[] fileBytes;
+            try {
+                fileBytes = Files.readAllBytes(Paths.get(fileName));
+            } catch(IOException e) {
+                Main.exitWithErrors(
+                    List.of(new Error(
+                        "Unable to read file '" + fileName + "': "
+                            + "'" + e.getMessage() + "'"
+                    )),
+                    files,
+                    colored
+                );
+                return;
+            }
+            String fileContent = new String(fileBytes, StandardCharsets.UTF_8);
+            files.put(fileName, fileContent);
+        }
+        // make sure main path is remotely valid
+        String main = cliValues.get(MAIN);
+        for(String segment: main.split("::")) {
+            for(int charIdx = 0; charIdx < segment.length(); charIdx += 1) {
+                if(Lexer.isAlphanumeral(segment.charAt(charIdx))) {
+                    continue;
+                }
+                Main.exitWithErrors(
+                    List.of(new Error(
+                        "'" + main + "' is not a valid main path"
+                    )),
+                    files,
+                    colored
+                );
             }
         }
-        if(r.isValue()) {
-            System.out.println(r.getValue());
+        // get the given target as an enum instance and ensure it's valid
+        String strTarget = cliValues.get(TARGET);
+        Target target = Target.C;
+        boolean foundTarget = false;
+        for(Target possibleTarget: Target.values()) {
+            if(!possibleTarget.targetName.equals(strTarget)) {
+                continue;
+            }
+            target = possibleTarget;
+            foundTarget = true;
+            break;
         }
+        if(!foundTarget) {
+            Main.exitWithErrors(
+                List.of(new Error(
+                    "'" + strTarget + "' is not a valid target language"
+                )),
+                files,
+                colored
+            );
+        }
+        // parse the given max call depth
+        long maxCallDepth = 1024;
+        Optional<String> optStrMaxCallDepth = cliValues.get(MAX_CD);
+        if(optStrMaxCallDepth.isPresent()) {
+            String strMaxCallDepth = optStrMaxCallDepth.get();
+            try {
+                maxCallDepth = Long.parseLong(strMaxCallDepth);
+                if(maxCallDepth < 0) {
+                    throw new RuntimeException("must not be negative");
+                }
+            } catch(Exception e) {
+                Main.exitWithErrors(
+                    List.of(new Error(
+                        "'" + strMaxCallDepth + "'"
+                            + " is not a valid maximum call depth"
+                    )),
+                    files,
+                    colored
+                );
+            }
+        }
+        // compile
+        Result<String> compilationResult = Compiler.compile(
+            files, target, main, maxCallDepth
+        );
+        if(compilationResult.isError()) {
+            Main.exitWithErrors(
+                compilationResult.getError(), files, colored
+            );
+        }
+        // write output to file
+        String outputName = cliValues.get(OUTPUT);
+        String outputContent = compilationResult.getValue();
+        byte[] outputBytes = outputContent.getBytes(StandardCharsets.UTF_8);
+        try {
+            Files.write(Paths.get(outputName), outputBytes);
+        } catch(IOException e) {
+            Main.exitWithErrors(
+                List.of(new Error(
+                    "Unable to write to file '" + outputName + "': "
+                        + "'" + e.getMessage() + "'"
+                )),
+                files,
+                colored
+            );
+        }
+    }
+
+    private static void exitWithErrors(
+        List<Error> errors, Map<String, String> files, boolean colored
+    ) {
+        for(Error error: errors) {
+            System.err.print(error.render(files, colored));
+        }
+        System.exit(1);
     }
 
 }

@@ -18,18 +18,18 @@ public class Lexer {
         this.fileContent = fileContent;
     }
 
-    private static boolean isDigit(char c) {
+    public static boolean isDigit(char c) {
         return '0' <= c && c <= '9';
     }
 
-    private static boolean isAlphanumeral(char c) {
+    public static boolean isAlphanumeral(char c) {
         return ('0' <= c && c <= '9')
             || ('A' <= c && c <= 'Z')
             || ('a' <= c && c <= 'z')
             || c == '_';
     }
 
-    private static boolean isWhitespace(char c) {
+    public static boolean isWhitespace(char c) {
         return c == 9   // horizontal tab
             || c == 10  // line feed
             || c == 13  // carriage feed

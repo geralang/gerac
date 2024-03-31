@@ -1,3 +1,4 @@
+
 package typesafeschwalbe.gerac.compiler.frontend;
 
 import typesafeschwalbe.gerac.compiler.Error;

@@ -1,8 +1,9 @@
 
 package typesafeschwalbe.gerac.compiler;
 
+import java.util.List;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Map;
 
 public class Error {
     
@@ -28,7 +29,7 @@ public class Error {
         this.markings = markings;
     }
 
-    public String render(HashMap<String, String> files, boolean colored) {
+    public String render(Map<String, String> files, boolean colored) {
         String errorWordColor = colored
             ? Color.from(Color.BOLD, Color.RED) : "";
         String errorMessageColor = colored
@@ -67,8 +68,8 @@ public class Error {
             int charIdx = 0;
             int lineIdx = 0;
             int lineStart = 0;
-            ArrayList<String> lines = new ArrayList<>();
-            ArrayList<String> linesMarked = new ArrayList<>();
+            List<String> lines = new ArrayList<>();
+            List<String> linesMarked = new ArrayList<>();
             StringBuilder lineMarked = new StringBuilder();
             int markedStartLineIdx = -1;
             int markedStartLineOffset = -1;

@@ -1,7 +1,7 @@
 
 package typesafeschwalbe.gerac.compiler;
 
-import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 
 import typesafeschwalbe.gerac.compiler.frontend.Lexer;
@@ -12,7 +12,7 @@ import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 public class Compiler {
 
     public static Result<String> compile(
-        HashMap<String, String> files, Target target, String main,
+        Map<String, String> files, Target target, String main,
         long maxCallDepth
     ) {
         for(String fileName: files.keySet()) {
