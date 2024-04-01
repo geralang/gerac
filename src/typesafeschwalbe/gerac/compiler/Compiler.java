@@ -2,6 +2,7 @@
 package typesafeschwalbe.gerac.compiler;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.List;
 
 import typesafeschwalbe.gerac.compiler.frontend.Lexer;
@@ -15,17 +16,27 @@ public class Compiler {
         Map<String, String> files, Target target, String main,
         long maxCallDepth
     ) {
+        Symbols symbols = new Symbols();
         for(String fileName: files.keySet()) {
             String fileContent = files.get(fileName);
             Lexer fileLexer = new Lexer(fileName, fileContent);
+            List<AstNode> nodes;
             try {
                 Parser fileParser = new Parser(fileLexer, target);
-                List<AstNode> nodes = fileParser.parseGlobalStatements();
+                nodes = fileParser.parseGlobalStatements();
             } catch(ParsingException e) {
                 return Result.ofError(e.error);
             }
+            Optional<Error> symbolAddError = symbols.add(nodes);
+            if(symbolAddError.isPresent()) {
+                return Result.ofError(symbolAddError.get());
+            }
         }
-        return Result.ofValue("<no codegen, no output>");
+        List<Error> canonicalizationErrors = symbols.canonicalize();
+        if(canonicalizationErrors.size() > 0) {
+            return Result.ofError(canonicalizationErrors);
+        }
+        return Result.ofValue("");
     }
 
 }

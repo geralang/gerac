@@ -326,7 +326,7 @@ public class Lexer {
                 if(this.peek() == ':') {
                     this.next();
                     this.next();
-                    return this.makeToken("::", Token.Type.DOUBLE_DOT);
+                    return this.makeToken("::", Token.Type.DOUBLE_COLON);
                 }
                 break;
             case '#':

@@ -187,7 +187,6 @@ public class AstNode {
 
     public boolean isAssignable() {
         switch(this.type) {
-            case VARIABLE_ACCESS:
             case MODULE_ACCESS:
             case OBJECT_ACCESS:
             case ARRAY_ACCESS:
