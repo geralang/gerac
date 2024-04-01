@@ -86,9 +86,10 @@ public class Symbols {
                         )
                     );
                 } break;
-                case USE:
+                case USE: {
                     AstNode.Usages data = node.getValue();
                     usages.addAll(data.paths());
+                } break;
                 default:
                     throw new RuntimeException("invalid top-level statement!");
             }
