@@ -2,6 +2,7 @@
 package typesafeschwalbe.gerac.compiler.frontend;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -65,8 +66,7 @@ public class AstNode {
     ) {}
 
     public static record ObjectLiteral(
-        List<String> memberNames,
-        List<AstNode> memberValues
+        Map<String, AstNode> values
     ) {}
 
     public static record ArrayLiteral(

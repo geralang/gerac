@@ -358,16 +358,15 @@ public class Symbols {
             }
             case OBJECT_LITERAL: {
                 AstNode.ObjectLiteral data = node.getValue();
-                List<AstNode> memberValues = data.memberValues()
-                    .stream().map(value -> this.canonicalizeNode(
-                        value, symbol, variables, errors
-                    )).toList();
+                Map<String, AstNode> values = new HashMap<>();
+                for(String memberName: data.values().keySet()) {
+                    AstNode memberValue = this.canonicalizeNode(
+                        data.values().get(memberName), symbol, variables, errors
+                    );
+                    values.put(memberName, memberValue);
+                }
                 return new AstNode(
-                    node.type, 
-                    new AstNode.ObjectLiteral(
-                        data.memberNames(), memberValues
-                    ), 
-                    node.source
+                    node.type, new AstNode.ObjectLiteral(values), node.source
                 );
             }
             case VARIANT_LITERAL: {

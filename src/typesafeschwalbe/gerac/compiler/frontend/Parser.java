@@ -2,7 +2,9 @@
 package typesafeschwalbe.gerac.compiler.frontend;
 
 import java.util.List;
+import java.util.Map;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.Error;
@@ -756,12 +758,10 @@ public class Parser {
                 }
                 case BRACE_OPEN: {
                     this.next();
-                    List<String> memberNames = new ArrayList<>();
-                    List<AstNode> memberValues = new ArrayList<>();
+                    Map<String, AstNode> memberValues = new HashMap<>();
                     while(this.current.type != Token.Type.BRACE_CLOSE) {
                         this.expect(Token.Type.IDENTIFIER);
                         String memberName = this.current.content;
-                        memberNames.add(memberName);
                         Source memberSource = this.current.source;
                         this.next();
                         this.expect(
@@ -769,21 +769,33 @@ public class Parser {
                             Token.Type.COMMA,
                             Token.Type.BRACE_CLOSE
                         );
+                        AstNode memberValue;
                         if(this.current.type == Token.Type.EQUALS) {
                             this.next();
-                            memberValues.add(this.parseExpression());
+                            memberValue = this.parseExpression();
                             this.expect(
                                 Token.Type.COMMA, Token.Type.BRACE_CLOSE
                             );
                         } else {
-                            memberValues.add(new AstNode(
+                            memberValue = new AstNode(
                                 AstNode.Type.MODULE_ACCESS,
                                 new AstNode.NamespacePath(
                                     new Namespace(List.of(memberName))
                                 ),
                                 memberSource
+                            );
+                        }
+                        if(memberValues.containsKey(memberName)) {
+                            throw new ParsingException(new Error(
+                                "Duplicate object property",
+                                new Error.Marking(
+                                    memberSource,
+                                    "property '" + memberName + "'"
+                                        + " appears more than once"
+                                )
                             ));
                         }
+                        memberValues.put(memberName, memberValue);
                         if(this.current.type == Token.Type.COMMA) {
                             this.next();
                         }
@@ -792,9 +804,7 @@ public class Parser {
                     this.next();
                     previous = Optional.of(new AstNode(
                         AstNode.Type.OBJECT_LITERAL,
-                        new AstNode.ObjectLiteral(
-                            memberNames, memberValues
-                        ),
+                        new AstNode.ObjectLiteral(memberValues),
                         new Source(start.source, end.source)
                     ));
                     continue;
