@@ -142,7 +142,11 @@ public class Error {
                     isMarked? markedLineNumberColor : paddingLineNumberColor
                 );
                 output.append(" ");
-                output.append(displayedLineIdx + 1);
+                String lineStr = String.valueOf(displayedLineIdx + 1);
+                output.append(" ".repeat(
+                    maxLineNumberLength - lineStr.length()
+                ));
+                output.append(lineStr);
                 output.append(separationLineColor);
                 output.append(" │ ");
                 output.append(isMarked? markedLineColor : paddingLineColor);
