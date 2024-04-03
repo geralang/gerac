@@ -1,17 +1,19 @@
 
 package typesafeschwalbe.gerac.compiler.frontend;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.Optional;
 
-import typesafeschwalbe.gerac.compiler.Error;
 import typesafeschwalbe.gerac.compiler.Source;
 
 public final class DataType {
+
+    public static record UntypedClosureContext(
+        AstNode node,
+        List<TypeChecker.CheckedBlock> context
+    ) {}
 
     public static record Array(
         DataType elementType
@@ -22,8 +24,9 @@ public final class DataType {
     ) {}
 
     public static record Closure(
-        List<DataType> argumentTypes,
-        DataType returnType
+        Optional<List<DataType>> argumentTypes,
+        Optional<DataType> returnType,
+        List<UntypedClosureContext> untypedBodies
     ) {}
 
     public static record Union(
@@ -52,7 +55,7 @@ public final class DataType {
     // 'age' describes the number of unififations that has been done
     // to reach this type. When unifiying the origin source and age from
     // the type with the largest origin age will be chosen. 
-    private final long age;
+    public final long age;
 
     public DataType(Type type, Source source) {
         this.type = type;
@@ -68,7 +71,7 @@ public final class DataType {
         this.age = 0;
     }
 
-    private DataType(Type type, Object value, Source source, long age) {
+    public DataType(Type type, Object value, Source source, long age) {
         this.type = type;
         this.value = value;
         this.source = source;
@@ -104,12 +107,23 @@ public final class DataType {
             }
             case CLOSURE: {
                 Closure data = this.getValue();
-                for(DataType argumentType: data.argumentTypes) {
-                    if(argumentType.isExpandable()) {
+                if(data.argumentTypes.isPresent()) {
+                    for(DataType argumentType: data.argumentTypes.get()) {
+                        if(argumentType.isExpandable()) {
+                            return true;
+                        }
+                    }
+                } else { 
+                    return true; 
+                }
+                if(data.returnType.isPresent()) {
+                    if(data.returnType.get().isExpandable()) {
                         return true;
                     }
+                } else {
+                    return true;
                 }
-                return data.returnType.isExpandable();
+                return false;
             }
             case UNION: {
                 Union data = this.getValue();
@@ -142,157 +156,6 @@ public final class DataType {
             default: {
                 throw new RuntimeException("type not handled!");
             }
-        }
-    }
-
-    private static Error makeIncompatibleError(
-        Source opSource, Error.Marking aMarking, Error.Marking bMarking 
-    ) {
-        return new Error(
-            "Incompatible types",
-            new Error.Marking(
-                opSource, "types are expected to be compatible here"
-            ),
-            aMarking,
-            bMarking
-        );
-    }
-
-    public static DataType unify(
-        DataType a, DataType b, Source source
-    ) throws TypingException {
-        if(a.type != b.type) {
-            throw new TypingException(DataType.makeIncompatibleError(
-                source, 
-                new Error.Marking(
-                    a.source, "this is " + a.toString()
-                ),
-                new Error.Marking(
-                    b.source, "but this is " + a.toString()
-                )
-            ));
-        }
-        Object value;
-        switch(a.type) {
-            case UNKNOWN:
-            case UNIT:
-            case BOOLEAN:
-            case INTEGER:
-            case FLOAT:
-            case STRING: {
-                value = null;
-            } break;
-            case ARRAY: {
-                Array dataA = a.getValue();
-                Array dataB = b.getValue();
-                DataType elementType = DataType.unify(
-                    dataA.elementType(), dataB.elementType(), source
-                );
-                value = new Array(elementType);
-            } break;
-            case UNORDERED_OBJECT: {
-                UnorderedObject dataA = a.getValue();
-                UnorderedObject dataB = b.getValue();
-                Set<String> memberNames = new HashSet<>(
-                    dataA.memberTypes().keySet()
-                );
-                memberNames.addAll(dataB.memberTypes().keySet());
-                Map<String, DataType> memberTypes = new HashMap<>();
-                for(String memberName: memberNames) {
-                    boolean inA = dataA.memberTypes().containsKey(memberName);
-                    boolean inB = dataB.memberTypes().containsKey(memberName);
-                    if(!inA || !inB) {
-                        String inMsg = "this is an object with a property "
-                            + "'" + memberName + "'";
-                        String withoutMsg = "but this is an object without it";
-                        Error e = DataType.makeIncompatibleError(
-                            source, 
-                            new Error.Marking(
-                                a.source, inA? inMsg : withoutMsg
-                            ),
-                            new Error.Marking(
-                                b.source, inB? inMsg : withoutMsg
-                            )
-                        );
-                        throw new TypingException(e);
-                    }
-                    DataType memberType = DataType.unify(
-                        dataA.memberTypes().get(memberName),
-                        dataB.memberTypes().get(memberName), 
-                        source
-                    );
-                    memberTypes.put(memberName, memberType);
-                }
-                value = new UnorderedObject(memberTypes);
-            } break;
-            case CLOSURE: {
-                Closure dataA = a.getValue();
-                Closure dataB = b.getValue();
-                int aArgC = dataA.argumentTypes().size();
-                int bArgC = dataB.argumentTypes().size();
-                if(aArgC != bArgC) {
-                    String aMsg = "this is a closure with "
-                    + aArgC + " argument" + (aArgC == 1? "" : "s");
-                    String bMsg = "this is a closure with "
-                    + bArgC + " argument" + (bArgC == 1? "" : "s");
-                    throw new TypingException(DataType.makeIncompatibleError(
-                        source,
-                        new Error.Marking(a.source, aMsg),
-                        new Error.Marking(b.source, bMsg)
-                    ));
-                }
-                List<DataType> argumentTypes = new ArrayList<>();
-                for(int argI = 0; argI < aArgC; argI += 1) {
-                    DataType argumentType = DataType.unify(
-                        dataA.argumentTypes().get(argI), 
-                        dataB.argumentTypes().get(argI), 
-                        source
-                    );
-                    argumentTypes.add(argumentType);
-                }
-                DataType returnType = DataType.unify(
-                    dataA.returnType(), dataB.returnType(), source
-                );
-                value = new Closure(argumentTypes, returnType);
-            } break;
-            case UNION: {
-                Union dataA = a.getValue();
-                Union dataB = b.getValue();
-                Set<String> variantNames = new HashSet<>(
-                    dataA.variants().keySet()
-                );
-                variantNames.addAll(dataB.variants().keySet());
-                Map<String, DataType> variantTypes = new HashMap<>();
-                for(String variantName: variantNames) {
-                    boolean inA = dataA.variants().containsKey(variantName);
-                    boolean inB = dataB.variants().containsKey(variantName);
-                    if(!inA) {
-                        variantTypes.put(
-                            variantName, dataB.variants().get(variantName)
-                        );
-                    }
-                    if(!inB) {
-                        variantTypes.put(
-                            variantName, dataA.variants().get(variantName)
-                        );
-                    }
-                    DataType variantType = DataType.unify(
-                        dataA.variants().get(variantName),
-                        dataB.variants().get(variantName), 
-                        source
-                    );
-                    variantTypes.put(variantName, variantType);
-                }
-                value = new Union(variantTypes);
-            }
-            default: {
-                throw new RuntimeException("type not handled!");
-            }
-        }
-        if(a.age > b.age) {
-            return new DataType(a.type, value, a.source, a.age + 1);
-        } else {
-            return new DataType(a.type, value, b.source, b.age + 1);
         }
     }
 
@@ -334,15 +197,23 @@ public final class DataType {
             }
             case CLOSURE: {
                 Closure data = this.getValue();
-                List<DataType> argumentTypes = data.argumentTypes()
-                    .stream().map(argumentType -> argumentType.replace(
-                        replaced, replacement
-                    )).toList();
-                DataType returnType = data.returnType()
-                    .replace(replaced, replacement);
+                Optional<List<DataType>> argumentTypes = Optional.empty();
+                if(data.argumentTypes().isPresent()) {
+                    argumentTypes = Optional.of(data.argumentTypes().get()
+                        .stream().map(argumentType -> argumentType.replace(
+                            replaced, replacement
+                        )).toList()
+                    );
+                }
+                Optional<DataType> returnType = Optional.empty();
+                if(data.returnType().isPresent()) {
+                    returnType = Optional.of(data.returnType().get()
+                        .replace(replaced, replacement)
+                    );
+                }
                 return new DataType(
                     this.type,
-                    new Closure(argumentTypes, returnType),
+                    new Closure(argumentTypes, returnType, data.untypedBodies()),
                     this.source,
                     this.age
                 );

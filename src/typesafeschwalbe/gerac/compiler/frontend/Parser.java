@@ -749,7 +749,8 @@ public class Parser {
                     previous = Optional.of(new AstNode(
                         AstNode.Type.CLOSURE,
                         new AstNode.Closure(
-                            argumentNames, argumentSources, null, body
+                            argumentNames, Optional.empty(), Optional.empty(),
+                            Optional.empty(), body
                         ),
                         new Source(start.source, endSource)
                     ));

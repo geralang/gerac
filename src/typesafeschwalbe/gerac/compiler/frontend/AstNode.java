@@ -21,8 +21,9 @@ public class AstNode {
 
     public static record Closure(
         List<String> argumentNames,
-        List<Source> argumentSources,
-        Set<String> captured,
+        Optional<List<DataType>> argumentTypes,
+        Optional<DataType> returnType,
+        Optional<Set<String>> captures,
         List<AstNode> body
     ) {}
 
@@ -170,9 +171,9 @@ public class AstNode {
     }
 
     public final Type type;
-    private final Object value;
+    private Object value;
     public final Source source;
-    public final Optional<DataType> resultType;
+    public Optional<DataType> resultType;
 
     public AstNode(
         Type type, Object value, Source source
@@ -192,9 +193,26 @@ public class AstNode {
         this.resultType = Optional.of(resultType);
     }
 
+    public AstNode(
+        Type type, Object value, Source source, Optional<DataType> resultType
+    ) {
+        this.type = type;
+        this.value = value;
+        this.source = source;
+        this.resultType = resultType;
+    }
+
+    public AstNode shallowClone() {
+        return new AstNode(this.type, this.value, this.source, this.resultType);
+    }
+
     @SuppressWarnings("unchecked")
     public <T> T getValue() {
         return (T) this.value;
+    }
+
+    public void setValue(Object value) {
+        this.value = value;
     }
 
     public boolean isAssignable() {

@@ -67,29 +67,52 @@ public class TypeChecker {
         );
     }
 
-    private static class CheckedBlock {
+    private static Error makeIncompatibleError(
+        Source opSource, Error.Marking aMarking, Error.Marking bMarking 
+    ) {
+        return new Error(
+            "Incompatible types",
+            new Error.Marking(
+                opSource, "types are expected to be compatible here"
+            ),
+            aMarking,
+            bMarking
+        );
+    }
+
+    static class CheckedBlock {
         private final Map<String, Optional<DataType>> variableTypes;
         private final Map<String, Boolean> variablesMutable;
-        private final Set<String> captured;
         private final Map<String, DataType> initializes;
+        private final Set<String> captures;
         private boolean returns;
 
         private CheckedBlock() {
             this.variableTypes = new HashMap<>();
             this.variablesMutable = new HashMap<>();
-            this.captured = new HashSet<>();
             this.initializes = new HashMap<>();
+            this.captures = new HashSet<>();
             this.returns = false;
+        }
+
+        private CheckedBlock(CheckedBlock src) {
+            this.variableTypes = new HashMap<>(src.variableTypes);
+            this.variablesMutable = new HashMap<>(src.variablesMutable);
+            this.initializes = new HashMap<>(src.initializes);
+            this.captures = new HashSet<>(src.captures);
+            this.returns = src.returns;
         }
     }
 
-    private static class CheckedSymbol {
+    static class CheckedSymbol {
         private final Namespace path;
+        private final List<DataType> argumentTypes;
         private final Optional<DataType> returnType;
         private final List<CheckedBlock> blocks;
 
-        private CheckedSymbol(Namespace path) {
+        private CheckedSymbol(Namespace path, List<DataType> argumentTypes) {
             this.path = path;
+            this.argumentTypes = argumentTypes;
             this.returnType = Optional.empty();
             this.blocks = new LinkedList<>();
         }
@@ -104,8 +127,38 @@ public class TypeChecker {
         this.checked = new LinkedList<>();
     }
 
-    private void enterSymbol(Namespace path) {
-        this.checked.add(new CheckedSymbol(path));
+    private int checkProcedureCall(
+        Symbols.Symbol symbol, List<DataType> argumentTypes
+    ) {
+        if(symbol.node().type != AstNode.Type.PROCEDURE) {
+            throw new IllegalArgumentException("must be a procedure symbol!");
+        }
+        // TODO: - IF THE SAME PATH AND ARGUMENT TYPES ARE ALREADY IN THE
+        //         'checked' STACK
+        //           - IF THE RETURN TYPE IS EMPTY OR NOT EXPANDABLE RETURN
+        //             AN UNKNOWN TYPE
+        //           - ELSE RETURN THE RETURN TYPE
+        //       - IF THE SYMBOL ALREADY HAS A VARIANT WITH THE SAME ARGUMENT
+        //         TYPES AND IF THE ARGUMENT TYPES DON'T CONTAIN ANY UNTYPED
+        //         CLOSURES SIMPLY RETURN THE INDEX OF THAT VARIANT 
+        //       - CHECK THE SYMBOL AND RETURN THE INDEX OF THE NEW VARIANT
+        throw new RuntimeException("not yet implemented!");
+    }
+
+    private DataType checkGlobalVariable(
+        Symbols.Symbol symbol
+    ) {
+        if(symbol.node().type != AstNode.Type.VARIABLE) {
+            throw new IllegalArgumentException("must be a variable symbol!");
+        }
+        // TODO: - IF THE VARIANT COUNT IS 0 TYPE THE VALUE NODE AND
+        //         ADD THE VARIANT
+        //       - RETURN THE VALUE TYPE
+        throw new RuntimeException("not yet implemented!");
+    }
+
+    private void enterSymbol(Namespace path, List<DataType> argumentTypes) {
+        this.checked.add(new CheckedSymbol(path, argumentTypes));
     }
 
     private CheckedSymbol currentSymbol() {
@@ -138,7 +191,7 @@ public class TypeChecker {
         boolean returns = false;
         for(int branchI = 0; branchI < branches.size(); branchI += 1) {
             CheckedBlock branch = branches.get(branchI);
-            currentBlock.captured.addAll(branch.captured);
+            currentBlock.captures.addAll(branch.captures);
             if(branchI == 0) {
                 initializes = new HashMap<>(branch.initializes);
                 returns = branch.returns;
@@ -149,9 +202,11 @@ public class TypeChecker {
         }
         currentBlock.initializes.putAll(initializes);
         currentBlock.returns |= returns;
+        // TODO: ACTUALLY INITIALIZE VARIABLES
+        throw new RuntimeException("not yet implemented");
     }
 
-    public List<AstNode> typeNodes(
+    private List<AstNode> typeNodes(
         List<AstNode> nodes
     ) throws TypingException {
         List<AstNode> typedNodes = new ArrayList<>(nodes.size());
@@ -164,12 +219,15 @@ public class TypeChecker {
     private static final boolean READ = false;
     private static final boolean WRITE = true;
 
-    public AstNode typeNode(
+    private AstNode typeNode(
         AstNode node, boolean assignment
     ) throws TypingException {
         switch(node.type) {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
+                // TODO: - MAKE A NEW LIST, AND PUSH DEEP COPIES OF THE CURRENT
+                //         BLOCKS ON THERE
+                //       - CONSTRUCT AN UNTYPED CLOSURE TYPE AS THE RESULT TYPE
                 throw new RuntimeException("not yet implemented!");
             }
             case VARIABLE: {
@@ -220,7 +278,7 @@ public class TypeChecker {
                 ) {
                     AstNode branchValue = data.branchValues().get(branchI);
                     AstNode branchValueTyped = this.typeNode(branchValue, READ);
-                    DataType.unify(
+                    this.unify(
                         valueTyped.resultType.get(), 
                         branchValueTyped.resultType.get(),
                         node.source
@@ -271,10 +329,17 @@ public class TypeChecker {
             }
             case CASE_VARIANT: {
                 AstNode.CaseVariant data = node.getValue();
+                // TODO: <COPY THE ABOVE FOR CASE VARIANT>
+                //       - IF THERE IS NO ELSE BRANCH ENFORCE THAT THE MATCHED
+                //         VALUE TYPE DOES NOT HAVE MORE VARIANTS THAN THE
+                //         BRANCHES HANDLE
                 throw new RuntimeException("not yet implemented!");
             }
             case ASSIGNMENT: {
                 AstNode.BiOp data = node.getValue();
+                // TODO: - CHECK THE ASSIGNED NODE WITH 'WRITE'
+                //       - CHECK THE VALUE NODE WITH 'READ'
+                //       - UNIFY TYPES, RESULT IS RESULT TYPE
                 throw new RuntimeException("not yet implemented!");
             }
             case RETURN: {
@@ -288,30 +353,58 @@ public class TypeChecker {
             }
             case CALL: {
                 AstNode.Call data = node.getValue();
+                // TODO: - IF CALLED NODE IS A MODULE ACCESS
+                //         LOOK UP THE SYMBOL AND IF THE SYMBOL
+                //         IS ALSO A PROCEDURE 
+                //           - TYPE CHECK THE ARGUMENTS
+                //           - USE THE ARGUMENTS TO CHECK THE CALLED SYMBOL
+                //           - USE THE RETURN TYPE
+                //       - ELSE
+                //           - TYPE CHECK THE CALLED NODE AND THE ARGUMENTS
+                //           - IF THE CALLED TYPE IS NOT A CLOSURE, ERROR
+                //           - IF THE CALLED TYPE IS AN UNTYPED CLOSURE, TYPE IT
+                //             TO GET THE RETURN TYPE
+                //           - ELSE GET THE RETURN TYPE FROM THE ALREADY TYPED
+                //             CLOSURE
                 throw new RuntimeException("not yet implemented!");
             }
             case METHOD_CALL: {
                 AstNode.MethodCall data = node.getValue();
+                // TODO: SIMILAR TO ABOVE, BUT ALSO A BIT FROM OBJECT ACCESS
                 throw new RuntimeException("not yet implemented!");
             }
             case OBJECT_LITERAL: {
                 AstNode.ObjectLiteral data = node.getValue();
+                // TODO: okay come on man you can probably do this
+                //       while half asleep
                 throw new RuntimeException("not yet implemented!");
             }
             case ARRAY_LITERAL: {
                 AstNode.ArrayLiteral data = node.getValue();
+                // TODO: okay come on man you can probably do this
+                //       while half asleep, just unify all the values
                 throw new RuntimeException("not yet implemented!");
             }
             case OBJECT_ACCESS: {
                 AstNode.ObjectAccess data = node.getValue();
+                // TODO: okay come on man you can probably do this
+                //       while half asleep
                 throw new RuntimeException("not yet implemented!");
             }
             case ARRAY_ACCESS: {
                 AstNode.BiOp data = node.getValue();
+                // TODO: okay come on man you can probably do this
+                //       while half asleep
                 throw new RuntimeException("not yet implemented!");
             }
             case VARIABLE_ACCESS: {
                 AstNode.VariableAccess data = node.getValue();
+                // TODO: - FROM TOP (n - 1) TO BOTTOM (0), LOOK FOR A VARIABLE
+                //         WITH THE SAME NAME AS THE DATA NAME
+                //       - IF IT'S NOT MUTABLE BUT 'assignment' IS TRUE -> ERROR
+                //       - IF IT'S NOT AT THE n-1 BLOCK AND 'assignment' IS TRUE
+                //         MARK AS INITIALIZED
+                //       - IF IT'S NOT AT THE n-1 BLOCK MARK AS CAPTURED
                 throw new RuntimeException("not yet implemented!");
             }
             case BOOLEAN_LITERAL: {
@@ -352,7 +445,7 @@ public class TypeChecker {
                 AstNode.BiOp data = node.getValue();
                 AstNode leftTyped = this.typeNode(data.left(), READ);
                 AstNode rightTyped = this.typeNode(data.right(), READ);
-                DataType resultType = DataType.unify(
+                DataType resultType = this.unify(
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
                 );
@@ -395,7 +488,7 @@ public class TypeChecker {
                 AstNode.BiOp data = node.getValue();
                 AstNode leftTyped = this.typeNode(data.left(), READ);
                 AstNode rightTyped = this.typeNode(data.right(), READ);
-                DataType valuesType = DataType.unify(
+                DataType valuesType = this.unify(
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
                 );
@@ -418,7 +511,7 @@ public class TypeChecker {
                 AstNode.BiOp data = node.getValue();
                 AstNode leftTyped = this.typeNode(data.left(), READ);
                 AstNode rightTyped = this.typeNode(data.right(), READ);
-                DataType.unify(
+                this.unify(
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
                 );
@@ -450,7 +543,7 @@ public class TypeChecker {
                 AstNode.BiOp data = node.getValue();
                 AstNode leftTyped = this.typeNode(data.left(), READ);
                 AstNode rightTyped = this.typeNode(data.right(), READ);
-                DataType resultType = DataType.unify(
+                DataType resultType = this.unify(
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
                 );
@@ -468,14 +561,21 @@ public class TypeChecker {
             }
             case MODULE_ACCESS: {
                 AstNode.NamespacePath data = node.getValue();
+                // TODO: - LOOK UP THE CALLED SYMBOL
+                //       - CHECK THE SYMBOL
+                //       - IF IT'S A PROCEDURE, REPLACE WITH A CLOSURE LITERAL
+                //         THAT CALLS THE PROCEDURE (TYPE MANUALLY)
+                //       - IF IT'S A VARIABLE, USE THE VALUE TYPE
                 throw new RuntimeException("not yet implemented!");
             }
             case VARIANT_LITERAL: {
                 AstNode.VariantLiteral data = node.getValue();
+                // TODO: pretty ez
                 throw new RuntimeException("not yet implemented!");
             }
             case STATIC: {
                 AstNode.MonoOp data = node.getValue();
+                // TODO: pretty ez
                 throw new RuntimeException("not yet implemented!");
             }
             case PROCEDURE:
@@ -492,6 +592,238 @@ public class TypeChecker {
 
     }
 
+    private DataType typeClosureBody(
+        AstNode node,
+        List<CheckedBlock> context,
+        List<DataType> argumentTypes,
+        Error.Marking butInitMarking
+    ) throws TypingException {
+        AstNode.Closure data = node.getValue();
+        int argC = data.argumentNames().size();
+        if(argC != argumentTypes.size()) {
+            throw new TypingException(new Error(
+                "Invalid argument count",
+                new Error.Marking(
+                    node.source,
+                    "this closure literal accepts " + argC
+                        + " argument" + (argC == 1? "" : "s")
+                ),
+                butInitMarking
+            ));
+        }
+        this.enterSymbol(new Namespace(List.of("<closure>")), argumentTypes);
+        this.currentSymbol().blocks.addAll(context);
+        this.enterBlock();
+        for(int argI = 0; argI < argC; argI += 1) {
+            String argName = data.argumentNames().get(argI);
+            DataType argType = argumentTypes.get(argI);
+            this.currentBlock().variableTypes.put(
+                argName, Optional.of(argType)
+            );
+            this.currentBlock().variablesMutable.put(argName, false);
+        }
+        List<AstNode> typedBody = this.typeNodes(data.body());
+        CheckedBlock block = this.exitBlock();
+        CheckedSymbol symbol = this.exitSymbol();
+        boolean hasReturnType = symbol.returnType.isPresent()
+            && symbol.returnType.get().type != DataType.Type.UNIT;
+        if(!block.returns && hasReturnType) {
+            throw new TypingException(
+                TypeChecker.makeNotAlwaysReturnError(
+                    symbol.returnType.get(), node.source
+                )
+            );
+        }
+        node.setValue(new AstNode.Closure(
+            data.argumentNames(), Optional.of(argumentTypes),
+            Optional.of(symbol.returnType.get()),
+            Optional.of(block.captures),
+            typedBody
+        ));
+        return symbol.returnType.get();
+    }
 
+    private DataType unify(
+        DataType a, DataType b, Source source
+    ) throws TypingException {
+        if(a.type != b.type) {
+            throw new TypingException(TypeChecker.makeIncompatibleError(
+                source, 
+                new Error.Marking(
+                    a.source, "this is " + a.toString()
+                ),
+                new Error.Marking(
+                    b.source, "but this is " + a.toString()
+                )
+            ));
+        }
+        Object value;
+        switch(a.type) {
+            case UNKNOWN:
+            case UNIT:
+            case BOOLEAN:
+            case INTEGER:
+            case FLOAT:
+            case STRING: {
+                value = null;
+            } break;
+            case ARRAY: {
+                DataType.Array dataA = a.getValue();
+                DataType.Array dataB = b.getValue();
+                DataType elementType = this.unify(
+                    dataA.elementType(), dataB.elementType(), source
+                );
+                value = new DataType.Array(elementType);
+            } break;
+            case UNORDERED_OBJECT: {
+                DataType.UnorderedObject dataA = a.getValue();
+                DataType.UnorderedObject dataB = b.getValue();
+                Set<String> memberNames = new HashSet<>(
+                    dataA.memberTypes().keySet()
+                );
+                memberNames.addAll(dataB.memberTypes().keySet());
+                Map<String, DataType> memberTypes = new HashMap<>();
+                for(String memberName: memberNames) {
+                    boolean inA = dataA.memberTypes().containsKey(memberName);
+                    boolean inB = dataB.memberTypes().containsKey(memberName);
+                    if(!inA || !inB) {
+                        String inMsg = "this is an object with a property "
+                            + "'" + memberName + "'";
+                        String withoutMsg = "but this is an object without it";
+                        Error e = TypeChecker.makeIncompatibleError(
+                            source, 
+                            new Error.Marking(
+                                a.source, inA? inMsg : withoutMsg
+                            ),
+                            new Error.Marking(
+                                b.source, inB? inMsg : withoutMsg
+                            )
+                        );
+                        throw new TypingException(e);
+                    }
+                    DataType memberType = this.unify(
+                        dataA.memberTypes().get(memberName),
+                        dataB.memberTypes().get(memberName), 
+                        source
+                    );
+                    memberTypes.put(memberName, memberType);
+                }
+                value = new DataType.UnorderedObject(memberTypes);
+            } break;
+            case CLOSURE: {
+                DataType.Closure dataA = a.getValue();
+                DataType.Closure dataB = b.getValue();
+                boolean aIsTyped = dataA.argumentTypes().isPresent();
+                boolean bIsTyped = dataB.argumentTypes().isPresent();
+                if(!aIsTyped && !bIsTyped) {
+                    List<DataType.UntypedClosureContext> untypedBodies
+                        = new ArrayList<>(dataA.untypedBodies());
+                    untypedBodies.addAll(dataB.untypedBodies());
+                    value = new DataType.Closure(
+                        Optional.empty(), Optional.empty(), untypedBodies
+                    );
+                    break;
+                }
+                if(!aIsTyped || !bIsTyped) {
+                    DataType.Closure dataT = (aIsTyped? dataA : dataB);
+                    DataType.Closure dataU = (aIsTyped? dataB : dataA);
+                    int argC = dataT.argumentTypes().get().size();
+                    DataType returnType = dataT.returnType().get();
+                    for(
+                        int bodyI = 0; 
+                        bodyI < dataU.untypedBodies().size(); 
+                        bodyI += 1
+                    ) {
+                        DataType.UntypedClosureContext closure
+                            = dataU.untypedBodies().get(bodyI);
+                        DataType cReturnType = this.typeClosureBody(
+                            closure.node(), closure.context(),
+                            dataT.argumentTypes().get(), 
+                            new Error.Marking(
+                                source,
+                                "but here it is assumed to have " + argC
+                                    + " argument" + (argC == 1? "" : "s")
+                            )
+                        );
+                        returnType = this.unify(
+                            returnType, cReturnType, source
+                        );
+                    }
+                    value = new DataType.Closure(
+                        dataT.argumentTypes(), Optional.of(returnType), 
+                        List.of()
+                    );
+                    break;
+                }
+                int aArgC = dataA.argumentTypes().get().size();
+                int bArgC = dataB.argumentTypes().get().size();
+                if(aArgC != bArgC) {
+                    String aMsg = "this is a closure with "
+                    + aArgC + " argument" + (aArgC == 1? "" : "s");
+                    String bMsg = "this is a closure with "
+                    + bArgC + " argument" + (bArgC == 1? "" : "s");
+                    throw new TypingException(TypeChecker.makeIncompatibleError(
+                        source,
+                        new Error.Marking(a.source, aMsg),
+                        new Error.Marking(b.source, bMsg)
+                    ));
+                }
+                List<DataType> argumentTypes = new ArrayList<>();
+                for(int argI = 0; argI < aArgC; argI += 1) {
+                    DataType argumentType = this.unify(
+                        dataA.argumentTypes().get().get(argI), 
+                        dataB.argumentTypes().get().get(argI), 
+                        source
+                    );
+                    argumentTypes.add(argumentType);
+                }
+                DataType returnType = this.unify(
+                    dataA.returnType().get(), dataB.returnType().get(), source
+                );
+                value = new DataType.Closure(
+                    Optional.of(argumentTypes), Optional.of(returnType), 
+                    List.of()
+                );
+            } break;
+            case UNION: {
+                DataType.Union dataA = a.getValue();
+                DataType.Union dataB = b.getValue();
+                Set<String> variantNames = new HashSet<>(
+                    dataA.variants().keySet()
+                );
+                variantNames.addAll(dataB.variants().keySet());
+                Map<String, DataType> variantTypes = new HashMap<>();
+                for(String variantName: variantNames) {
+                    boolean inA = dataA.variants().containsKey(variantName);
+                    boolean inB = dataB.variants().containsKey(variantName);
+                    if(!inA) {
+                        variantTypes.put(
+                            variantName, dataB.variants().get(variantName)
+                        );
+                    }
+                    if(!inB) {
+                        variantTypes.put(
+                            variantName, dataA.variants().get(variantName)
+                        );
+                    }
+                    DataType variantType = this.unify(
+                        dataA.variants().get(variantName),
+                        dataB.variants().get(variantName), 
+                        source
+                    );
+                    variantTypes.put(variantName, variantType);
+                }
+                value = new DataType.Union(variantTypes);
+            }
+            default: {
+                throw new RuntimeException("type not handled!");
+            }
+        }
+        if(a.age > b.age) {
+            return new DataType(a.type, value, a.source, a.age + 1);
+        } else {
+            return new DataType(a.type, value, b.source, b.age + 1);
+        }
+    }
 
 }

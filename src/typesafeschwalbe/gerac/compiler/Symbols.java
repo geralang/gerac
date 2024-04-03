@@ -321,8 +321,8 @@ public class Symbols {
                 return new AstNode(
                     node.type,
                     new AstNode.Closure(
-                        data.argumentNames(), data.argumentSources(),
-                        data.captured(),
+                        data.argumentNames(), Optional.empty(),
+                        Optional.empty(), Optional.empty(),
                         body
                     ),
                     node.source
