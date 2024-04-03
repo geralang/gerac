@@ -231,11 +231,9 @@ public class Parser {
                     this.expect(Token.Type.PAREN_OPEN);
                     this.next();
                     List<String> argumentNames = new ArrayList<>();
-                    List<Source> argumentSources = new ArrayList<>();
                     while(this.current.type != Token.Type.PAREN_CLOSE) {
                         this.expect(Token.Type.IDENTIFIER);
                         argumentNames.add(this.current.content);
-                        argumentSources.add(this.current.source);
                         this.next();
                         this.expect(Token.Type.COMMA, Token.Type.PAREN_CLOSE);
                         if(this.current.type == Token.Type.COMMA) {
@@ -252,7 +250,8 @@ public class Parser {
                     return List.of(new AstNode(
                         AstNode.Type.PROCEDURE,
                         new AstNode.Procedure(
-                            isPublic, name, argumentNames, argumentSources,
+                            isPublic, name, argumentNames,
+                            Optional.empty(), Optional.empty(),
                             body
                         ),
                         new Source(start.source, end.source)

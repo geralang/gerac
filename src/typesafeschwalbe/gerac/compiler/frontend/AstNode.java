@@ -14,7 +14,8 @@ public class AstNode {
         boolean isPublic,
         String name,
         List<String> argumentNames,
-        List<Source> argumentSources,
+        Optional<List<DataType>> argumentTypes,
+        Optional<DataType> returnType,
         List<AstNode> body
     ) {}
 
@@ -171,6 +172,7 @@ public class AstNode {
     public final Type type;
     private final Object value;
     public final Source source;
+    public final Optional<DataType> resultType;
 
     public AstNode(
         Type type, Object value, Source source
@@ -178,6 +180,16 @@ public class AstNode {
         this.type = type;
         this.value = value;
         this.source = source;
+        this.resultType = Optional.empty();
+    }
+
+    public AstNode(
+        Type type, Object value, Source source, DataType resultType
+    ) {
+        this.type = type;
+        this.value = value;
+        this.source = source;
+        this.resultType = Optional.of(resultType);
     }
 
     @SuppressWarnings("unchecked")

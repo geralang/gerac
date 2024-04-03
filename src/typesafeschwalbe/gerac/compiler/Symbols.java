@@ -394,8 +394,8 @@ public class Symbols {
                     node.type,
                     new AstNode.Procedure(
                         data.isPublic(), data.name(),
-                        data.argumentNames(), data.argumentSources(),
-                        body
+                        data.argumentNames(), data.argumentTypes(),
+                        data.returnType(), body
                     ),
                     node.source
                 );
