@@ -534,7 +534,7 @@ public class TypeChecker {
                         String branchVariableName = data.branchVariableNames()
                             .get(branchI).get();
                         DataType branchVariableType = variantTypes
-                            .get(branchVariableName);
+                            .get(branchVariantName);
                         this.currentBlock().variableTypes.put(
                             branchVariableName, Optional.of(branchVariableType)
                         );

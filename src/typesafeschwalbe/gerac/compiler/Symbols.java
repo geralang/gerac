@@ -272,8 +272,19 @@ public class Symbols {
                     data.value(), symbol, variables, errors
                 );
                 List<List<AstNode>> branchBodies = new ArrayList<>();
-                for(List<AstNode> oldBranchBody: data.branchBodies()) {
+                for(
+                    int branchI = 0; 
+                    branchI < data.branchBodies().size(); 
+                    branchI += 1
+                ) {
+                    List<AstNode> oldBranchBody = data.branchBodies()
+                        .get(branchI);
                     Set<String> branchVariables = new HashSet<>(variables);
+                    Optional<String> branchVariableName = data.branchVariableNames()
+                        .get(branchI);
+                    if(branchVariableName.isPresent()) {
+                        branchVariables.add(branchVariableName.get());
+                    }
                     List<AstNode> branchBody = oldBranchBody
                         .stream().map(statement -> this.canonicalizeNode(
                             statement, symbol, branchVariables, errors
