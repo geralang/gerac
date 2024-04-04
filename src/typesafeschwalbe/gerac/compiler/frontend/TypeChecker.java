@@ -51,6 +51,33 @@ public class TypeChecker {
         );
     }
 
+    private static Error makeNonbjectError(DataType type, Source opSource) {
+        return new Error(
+            "Member access done on non-object type",
+            new Error.Marking(
+                type.source, "this is " + type.toString()
+            ),
+            new Error.Marking(
+                opSource, "but this access requires an object"
+            )
+        );
+    }
+
+    private static Error makeMissingMemberError(
+        String memberName, Source opSource, DataType type
+    ) {
+        return new Error(
+            "Object member does not exist",
+            new Error.Marking(
+                opSource, 
+                "but this access requires a member '" + memberName + "'"
+            ),
+            new Error.Marking(
+                type.source, "this is object does not have it"
+            )
+        );
+    }
+
     private static Error makeNonBooleanAsCondError(
         DataType type, Source condSource
     ) {
@@ -107,7 +134,7 @@ public class TypeChecker {
     static class CheckedSymbol {
         private final Namespace path;
         private final List<DataType> argumentTypes;
-        private final Optional<DataType> returnType;
+        private Optional<DataType> returnType;
         private final List<CheckedBlock> blocks;
 
         private CheckedSymbol(Namespace path, List<DataType> argumentTypes) {
@@ -127,9 +154,9 @@ public class TypeChecker {
         this.checked = new LinkedList<>();
     }
 
-    private int checkProcedureCall(
+    public int checkProcedureCall(
         Symbols.Symbol symbol, List<DataType> argumentTypes
-    ) {
+    ) throws TypingException {
         if(symbol.node().type != AstNode.Type.PROCEDURE) {
             throw new IllegalArgumentException("must be a procedure symbol!");
         }
@@ -147,7 +174,7 @@ public class TypeChecker {
 
     private DataType checkGlobalVariable(
         Symbols.Symbol symbol
-    ) {
+    ) throws TypingException {
         if(symbol.node().type != AstNode.Type.VARIABLE) {
             throw new IllegalArgumentException("must be a variable symbol!");
         }
@@ -187,23 +214,36 @@ public class TypeChecker {
 
     private void handleBranches(List<CheckedBlock> branches) {
         CheckedBlock currentBlock = this.currentBlock();
-        Map<String, DataType> initializes = null;
+        Map<String, DataType> initialized = null;
+        Set<String> captures = new HashSet<>();
         boolean returns = false;
         for(int branchI = 0; branchI < branches.size(); branchI += 1) {
             CheckedBlock branch = branches.get(branchI);
-            currentBlock.captures.addAll(branch.captures);
+            captures.addAll(branch.captures);
             if(branchI == 0) {
-                initializes = new HashMap<>(branch.initializes);
+                initialized = new HashMap<>(branch.initializes);
                 returns = branch.returns;
             } else {
-                initializes.keySet().retainAll(branch.initializes.keySet());
+                initialized.keySet().retainAll(branch.initializes.keySet());
                 returns &= branch.returns;
             }
         }
-        currentBlock.initializes.putAll(initializes);
+        for(String initializedName: initialized.keySet()) {
+            DataType initializedType = initialized.get(initializedName);
+            if(currentBlock.variableTypes.containsKey(initializedName)) {
+                currentBlock.variableTypes.put(
+                    initializedName, Optional.of(initializedType)
+                );
+            } else {
+                currentBlock.initializes.put(initializedName, initializedType);
+            }
+        }
+        for(String captureName: captures) {
+            if(!currentBlock.variableTypes.containsKey(captureName)) {
+                currentBlock.captures.add(captureName);
+            }
+        }
         currentBlock.returns |= returns;
-        // TODO: ACTUALLY INITIALIZE VARIABLES
-        throw new RuntimeException("not yet implemented");
     }
 
     private List<AstNode> typeNodes(
@@ -211,31 +251,49 @@ public class TypeChecker {
     ) throws TypingException {
         List<AstNode> typedNodes = new ArrayList<>(nodes.size());
         for(AstNode node: nodes) {
-            typedNodes.add(this.typeNode(node, READ));
+            typedNodes.add(this.typeNode(node));
         }
         return typedNodes;
     }
 
-    private static final boolean READ = false;
-    private static final boolean WRITE = true;
+    private AstNode typeNode(AstNode node) throws TypingException {
+        return this.typeNode(node, Optional.empty());
+    }
 
     private AstNode typeNode(
-        AstNode node, boolean assignment
+        AstNode node, Optional<DataType> assignedType
     ) throws TypingException {
         switch(node.type) {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
-                // TODO: - MAKE A NEW LIST, AND PUSH DEEP COPIES OF THE CURRENT
-                //         BLOCKS ON THERE
-                //       - CONSTRUCT AN UNTYPED CLOSURE TYPE AS THE RESULT TYPE
-                throw new RuntimeException("not yet implemented!");
+                List<CheckedBlock> context = this.currentSymbol().blocks
+                    .stream().map(CheckedBlock::new).toList();
+                AstNode newNode = new AstNode(
+                    node.type, 
+                    new AstNode.Closure(
+                        data.argumentNames(), 
+                        Optional.empty(), Optional.empty(),
+                        Optional.empty(),
+                        data.body()
+                    ),
+                    node.source
+                );
+                newNode.resultType = Optional.of(new DataType(
+                    DataType.Type.CLOSURE, 
+                    new DataType.Closure(
+                        Optional.empty(), Optional.empty(), List.of(
+                        new DataType.UntypedClosureContext(newNode, context)
+                    )), 
+                    node.source
+                ));
+                return newNode;
             }
             case VARIABLE: {
                 AstNode.Variable data = node.getValue();
                 Optional<AstNode> valueTyped;
                 if(data.value().isPresent()) {
                     AstNode valueTypedD = this.typeNode(
-                        data.value().get(), READ
+                        data.value().get()
                     );
                     this.currentBlock().variableTypes.put(
                         data.name(), Optional.of(valueTypedD.resultType.get())
@@ -264,7 +322,7 @@ public class TypeChecker {
             }
             case CASE_BRANCHING: {
                 AstNode.CaseBranching data = node.getValue();
-                AstNode valueTyped = this.typeNode(data.value(), READ);
+                AstNode valueTyped = this.typeNode(data.value());
                 List<CheckedBlock> blocks = new ArrayList<>();
                 this.enterBlock();
                 List<AstNode> elseBodyTyped = this.typeNodes(data.elseBody());
@@ -277,7 +335,7 @@ public class TypeChecker {
                     branchI += 1
                 ) {
                     AstNode branchValue = data.branchValues().get(branchI);
-                    AstNode branchValueTyped = this.typeNode(branchValue, READ);
+                    AstNode branchValueTyped = this.typeNode(branchValue);
                     this.unify(
                         valueTyped.resultType.get(), 
                         branchValueTyped.resultType.get(),
@@ -302,7 +360,7 @@ public class TypeChecker {
             }
             case CASE_CONDITIONAL: {
                 AstNode.CaseConditional data = node.getValue();
-                AstNode conditionTyped = this.typeNode(data.condition(), READ);
+                AstNode conditionTyped = this.typeNode(data.condition());
                 DataType condType = conditionTyped.resultType.get();
                 if(condType.type != DataType.Type.BOOLEAN) {
                     throw new TypingException(
@@ -329,27 +387,123 @@ public class TypeChecker {
             }
             case CASE_VARIANT: {
                 AstNode.CaseVariant data = node.getValue();
-                // TODO: <COPY THE ABOVE FOR CASE VARIANT>
-                //       - IF THERE IS NO ELSE BRANCH ENFORCE THAT THE MATCHED
-                //         VALUE TYPE DOES NOT HAVE MORE VARIANTS THAN THE
-                //         BRANCHES HANDLE
-                throw new RuntimeException("not yet implemented!");
+                AstNode valueTyped = this.typeNode(data.value());
+                DataType valueType = valueTyped.resultType.get();
+                if(valueType.type != DataType.Type.UNION) {
+                    throw new TypingException(new Error(
+                        "Variant matching done on non-union type",
+                        new Error.Marking(
+                            valueType.source, 
+                            "this is " + valueType.toString()
+                        ),
+                        new Error.Marking(
+                            node.source, "but this access requires a union"
+                        )
+                    ));
+                }
+                Map<String, DataType> variantTypes = valueType
+                    .<DataType.Union>getValue().variants();
+                List<CheckedBlock> blocks = new ArrayList<>();
+                Optional<List<AstNode>> elseBodyTyped = Optional.empty();
+                if(data.elseBody().isPresent()) {
+                    this.enterBlock();
+                    elseBodyTyped = Optional.of(
+                        this.typeNodes(data.elseBody().get())
+                    );
+                    blocks.add(this.exitBlock());
+                }
+                List<List<AstNode>> branchBodiesTyped = new ArrayList<>();
+                for(
+                    int branchI = 0; 
+                    branchI < data.branchVariants().size(); 
+                    branchI += 1
+                ) {
+                    String branchVariantName = data.branchVariants()
+                        .get(branchI);
+                    if(!variantTypes.containsKey(branchVariantName)) {
+                        continue;
+                    }
+                    List<AstNode> branchBody = data.branchBodies().get(branchI);
+                    this.enterBlock();
+                    if(data.branchVariableNames().get(branchI).isPresent()) {
+                        String branchVariableName = data.branchVariableNames()
+                            .get(branchI).get();
+                        DataType branchVariableType = variantTypes
+                            .get(branchVariableName);
+                        this.currentBlock().variableTypes.put(
+                            branchVariableName, Optional.of(branchVariableType)
+                        );
+                        this.currentBlock().variablesMutable.put(
+                            branchVariableName, false
+                        );
+                    }
+                    List<AstNode> branchBodyTyped = this.typeNodes(branchBody);
+                    blocks.add(this.exitBlock());
+                    branchBodiesTyped.add(branchBodyTyped);
+                }
+                if(data.elseBody().isEmpty()) {
+                    for(String variantName: variantTypes.keySet()) {
+                        if(!data.branchVariants().contains(variantName)) {
+                            throw new TypingException(new Error(
+                                "Unhandled union variant",
+                                new Error.Marking(
+                                    valueType.source, 
+                                    "this union has a variant '"
+                                        + variantName + "'"
+                                ),
+                                new Error.Marking(
+                                    node.source, "which is not handled here"
+                                )
+                            ));
+                        }
+                    }
+                }
+                this.handleBranches(blocks);
+                return new AstNode(
+                    node.type,
+                    new AstNode.CaseVariant(
+                        valueTyped, data.branchVariants(), 
+                        data.branchVariableNames(), branchBodiesTyped,
+                        elseBodyTyped
+                    ),
+                    node.source
+                );
             }
             case ASSIGNMENT: {
                 AstNode.BiOp data = node.getValue();
-                // TODO: - CHECK THE ASSIGNED NODE WITH 'WRITE'
-                //       - CHECK THE VALUE NODE WITH 'READ'
-                //       - UNIFY TYPES, RESULT IS RESULT TYPE
-                throw new RuntimeException("not yet implemented!");
+                AstNode valueTyped = this.typeNode(data.right());
+                AstNode assignedTyped = this.typeNode(
+                    data.left(), valueTyped.resultType
+                );
+                this.unify(
+                    assignedTyped.resultType.get(), 
+                    valueTyped.resultType.get(), 
+                    node.source
+                );
+                return new AstNode(
+                    node.type,
+                    new AstNode.BiOp(assignedTyped, valueTyped),
+                    node.source
+                );
             }
             case RETURN: {
                 AstNode.MonoOp data = node.getValue();
-                // TODO: - IF CURRENT SYMBOL RETURN TYPE IS EMPTY,
-                //         MAKE RETURNED VALUE TYPE
-                //       - ELSE MAKE THE SYMBOL RETURN TYPE THE CURRENT RETURN
-                //         TYPE UNIFIED WITH RETURNED VALUE TYPE
-                //       - SET THE CURRENT BLOCK TO ALWAYS RETURN
-                throw new RuntimeException("not yet implemented!");
+                AstNode valueTyped = this.typeNode(data.value());
+                DataType valueType = valueTyped.resultType.get();
+                CheckedSymbol currentSymbol = this.currentSymbol();
+                if(currentSymbol.returnType.isEmpty()) {
+                    currentSymbol.returnType = Optional.of(valueType);
+                } else {
+                    currentSymbol.returnType = Optional.of(this.unify(
+                        currentSymbol.returnType.get(),
+                        valueType,
+                        node.source
+                    ));
+                }
+                this.currentBlock().returns = true;
+                return new AstNode(
+                    node.type, new AstNode.MonoOp(valueTyped), node.source
+                );
             }
             case CALL: {
                 AstNode.Call data = node.getValue();
@@ -375,37 +529,212 @@ public class TypeChecker {
             }
             case OBJECT_LITERAL: {
                 AstNode.ObjectLiteral data = node.getValue();
-                // TODO: okay come on man you can probably do this
-                //       while half asleep
-                throw new RuntimeException("not yet implemented!");
+                Map<String, AstNode> valuesTyped = new HashMap<>();
+                Map<String, DataType> memberTypes = new HashMap<>();
+                for(String memberName: data.values().keySet()) {
+                    AstNode valueTyped = this.typeNode(
+                        data.values().get(memberName)
+                    );
+                    valuesTyped.put(memberName, valueTyped);
+                    memberTypes.put(memberName, valueTyped.resultType.get());
+                }
+                return new AstNode(
+                    node.type,
+                    new AstNode.ObjectLiteral(valuesTyped),
+                    node.source,
+                    new DataType(
+                        DataType.Type.UNORDERED_OBJECT, 
+                        new DataType.UnorderedObject(memberTypes), 
+                        node.source
+                    )
+                );
             }
             case ARRAY_LITERAL: {
                 AstNode.ArrayLiteral data = node.getValue();
-                // TODO: okay come on man you can probably do this
-                //       while half asleep, just unify all the values
-                throw new RuntimeException("not yet implemented!");
+                List<AstNode> valuesTyped = new ArrayList<>();
+                DataType elementType = data.values().size() == 0
+                    ? new DataType(DataType.Type.UNKNOWN, node.source)
+                    : null;
+                for(
+                    int valueI = 0; 
+                    valueI < data.values().size(); 
+                    valueI += 1
+                ) {
+                    AstNode valueTyped = this.typeNode(
+                        data.values().get(valueI)
+                    );
+                    valuesTyped.add(valueTyped);
+                    DataType valueType = valueTyped.resultType.get();
+                    elementType = valueI == 0
+                        ? valueType
+                        : this.unify(elementType, valueType, node.source);
+                }
+                return new AstNode(
+                    node.type,
+                    new AstNode.ArrayLiteral(valuesTyped),
+                    node.source,
+                    new DataType(
+                        DataType.Type.ARRAY, 
+                        new DataType.Array(elementType), 
+                        node.source
+                    )
+                );
             }
             case OBJECT_ACCESS: {
                 AstNode.ObjectAccess data = node.getValue();
-                // TODO: okay come on man you can probably do this
-                //       while half asleep
-                throw new RuntimeException("not yet implemented!");
+                AstNode accessedTyped = this.typeNode(data.accessed());
+                DataType accessedType = accessedTyped.resultType.get();
+                if(accessedType.type != DataType.Type.UNORDERED_OBJECT) {
+                    throw new TypingException(TypeChecker.makeNonbjectError(
+                        accessedType, node.source
+                    ));
+                }
+                DataType resultType = accessedType
+                    .<DataType.UnorderedObject>getValue()
+                    .memberTypes().get(data.memberName());
+                if(resultType == null) {
+                    throw new TypingException(
+                        TypeChecker.makeMissingMemberError(
+                            data.memberName(), node.source, accessedType
+                        )
+                    );
+                }
+                return new AstNode(
+                    node.type,
+                    new AstNode.ObjectAccess(accessedTyped, data.memberName()),
+                    node.source,
+                    resultType
+                );
             }
             case ARRAY_ACCESS: {
                 AstNode.BiOp data = node.getValue();
-                // TODO: okay come on man you can probably do this
-                //       while half asleep
-                throw new RuntimeException("not yet implemented!");
+                AstNode accessedTyped = this.typeNode(data.left());
+                DataType accessedType = accessedTyped.resultType.get();
+                if(accessedType.type == DataType.Type.ARRAY) {
+                    throw new TypingException(new Error(
+                        "Array access done on non-array type",
+                        new Error.Marking(
+                            accessedType.source, 
+                            "this is " + accessedType.toString()
+                        ),
+                        new Error.Marking(
+                            node.source, "but this access requires an array"
+                        )
+                    ));
+                }
+                AstNode indexTyped = this.typeNode(data.right());
+                DataType indexType = indexTyped.resultType.get();
+                if(indexType.type == DataType.Type.INTEGER) {
+                    throw new TypingException(new Error(
+                        "Array access done with a non-integer type",
+                        new Error.Marking(
+                            accessedType.source, 
+                            "this is " + accessedType.toString()
+                        ),
+                        new Error.Marking(
+                            node.source, "but this index requires an integer"
+                        )
+                    ));
+                }
+                DataType resultType = accessedType
+                    .<DataType.Array>getValue().elementType();
+                return new AstNode(
+                    node.type,
+                    new AstNode.BiOp(accessedTyped, indexTyped),
+                    node.source,
+                    resultType
+                );
             }
             case VARIABLE_ACCESS: {
                 AstNode.VariableAccess data = node.getValue();
-                // TODO: - FROM TOP (n - 1) TO BOTTOM (0), LOOK FOR A VARIABLE
-                //         WITH THE SAME NAME AS THE DATA NAME
-                //       - IF IT'S NOT MUTABLE BUT 'assignment' IS TRUE -> ERROR
-                //       - IF IT'S NOT AT THE n-1 BLOCK AND 'assignment' IS TRUE
-                //         MARK AS INITIALIZED
-                //       - IF IT'S NOT AT THE n-1 BLOCK MARK AS CAPTURED
-                throw new RuntimeException("not yet implemented!");
+                String variableName = data.variableName();
+                boolean found = false;
+                Optional<DataType> variableType = assignedType;
+                for(
+                    int blockI = this.currentSymbol().blocks.size() - 1;
+                    blockI >= 0;
+                    blockI -= 1
+                ) {
+                    CheckedBlock cBlock = this.currentSymbol()
+                        .blocks.get(blockI);
+                    if(!cBlock.variableTypes.containsKey(variableName)) {
+                        if(cBlock.initializes.containsKey(variableName)) {
+                            DataType initType = cBlock.initializes
+                                .get(variableName);
+                            if(variableType.isPresent()) {
+                                variableType = Optional.of(this.unify(
+                                    variableType.get(), initType, node.source
+                                ));
+                            } else {
+                                variableType = Optional.of(initType);
+                            } 
+                        }
+                        continue;
+                    }
+                    boolean mutable = cBlock.variablesMutable.get(
+                        data.variableName()
+                    );
+                    Optional<DataType> initialized = cBlock.variableTypes.get(
+                        data.variableName()
+                    );
+                    if(variableType.isPresent() && initialized.isPresent()) {
+                        variableType = Optional.of(this.unify(
+                            variableType.get(), initialized.get(), node.source
+                        ));
+                    } else {
+                        variableType = variableType.isPresent()
+                            ? variableType : initialized;
+                    }
+                    boolean wasInitialized = initialized.isPresent();
+                    if(assignedType.isEmpty() && !wasInitialized) {
+                        throw new TypingException(new Error(
+                            "Variable is possibly uninitialized",
+                            new Error.Marking(
+                                node.source,
+                                "it is possible for this variable to not be"
+                                    + " initialized, but it is accessed here"
+                            )
+                        ));
+                    }
+                    boolean isInitializing = assignedType.isPresent() 
+                        && !wasInitialized;
+                    if(isInitializing && !mutable) {
+                        throw new TypingException(new Error(
+                            "Mutation of immutable variable",
+                            new Error.Marking(
+                                node.source,
+                                "it is not possible to assign to this variable"
+                                    + " as it has been not been marked"
+                                    + " as mutable"
+                            )
+                        ));
+                    }
+                    if(assignedType.isPresent() && !wasInitialized) {
+                        if(cBlock == this.currentBlock()) {
+                            this.currentBlock().variableTypes.put(
+                                variableName, variableType
+                            );
+                        } else {
+                            this.currentBlock().initializes.put(
+                                variableName, variableType.get()
+                            );
+                        }
+                    }
+                    if(cBlock != this.currentBlock()) {
+                        this.currentBlock().captures.add(variableName);
+                    }
+                    found = true;
+                    break;
+                }
+                if(!found) {
+                    throw new TypingException(new Error(
+                        "Variable does not exist",
+                        new Error.Marking(
+                            node.source,
+                            "there is no variable called '" + variableName + "'"
+                        )
+                    ));
+                }
             }
             case BOOLEAN_LITERAL: {
                 return new AstNode(
@@ -443,8 +772,8 @@ public class TypeChecker {
             case DIVIDE:
             case MODULO: {
                 AstNode.BiOp data = node.getValue();
-                AstNode leftTyped = this.typeNode(data.left(), READ);
-                AstNode rightTyped = this.typeNode(data.right(), READ);
+                AstNode leftTyped = this.typeNode(data.left());
+                AstNode rightTyped = this.typeNode(data.right());
                 DataType resultType = this.unify(
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
@@ -465,7 +794,7 @@ public class TypeChecker {
             }
             case NEGATE: {
                 AstNode.MonoOp data = node.getValue();
-                AstNode valueTyped = this.typeNode(data.value(), READ);
+                AstNode valueTyped = this.typeNode(data.value());
                 DataType resultType = valueTyped.resultType.get();
                 boolean isNumberType = resultType.type == DataType.Type.INTEGER
                     || resultType.type == DataType.Type.FLOAT;
@@ -486,8 +815,8 @@ public class TypeChecker {
             case LESS_THAN_EQUAL:
             case GREATER_THAN_EQUAL: {
                 AstNode.BiOp data = node.getValue();
-                AstNode leftTyped = this.typeNode(data.left(), READ);
-                AstNode rightTyped = this.typeNode(data.right(), READ);
+                AstNode leftTyped = this.typeNode(data.left());
+                AstNode rightTyped = this.typeNode(data.right());
                 DataType valuesType = this.unify(
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
@@ -509,8 +838,8 @@ public class TypeChecker {
             case EQUALS:
             case NOT_EQUALS: {
                 AstNode.BiOp data = node.getValue();
-                AstNode leftTyped = this.typeNode(data.left(), READ);
-                AstNode rightTyped = this.typeNode(data.right(), READ);
+                AstNode leftTyped = this.typeNode(data.left());
+                AstNode rightTyped = this.typeNode(data.right());
                 this.unify(
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
@@ -524,7 +853,7 @@ public class TypeChecker {
             }
             case NOT: {
                 AstNode.MonoOp data = node.getValue();
-                AstNode valueTyped = this.typeNode(data.value(), READ);
+                AstNode valueTyped = this.typeNode(data.value());
                 DataType resultType = valueTyped.resultType.get();
                 if(resultType.type != DataType.Type.BOOLEAN) {
                     throw new TypingException(
@@ -541,8 +870,8 @@ public class TypeChecker {
             case OR:
             case AND: {
                 AstNode.BiOp data = node.getValue();
-                AstNode leftTyped = this.typeNode(data.left(), READ);
-                AstNode rightTyped = this.typeNode(data.right(), READ);
+                AstNode leftTyped = this.typeNode(data.left());
+                AstNode rightTyped = this.typeNode(data.right());
                 DataType resultType = this.unify(
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
@@ -570,13 +899,29 @@ public class TypeChecker {
             }
             case VARIANT_LITERAL: {
                 AstNode.VariantLiteral data = node.getValue();
-                // TODO: pretty ez
-                throw new RuntimeException("not yet implemented!");
+                AstNode valueTyped = this.typeNode(data.value());
+                Map<String, DataType> variants = new HashMap<>();
+                variants.put(data.variantName(), valueTyped.resultType.get());
+                return new AstNode(
+                    node.type,
+                    new AstNode.VariantLiteral(data.variantName(), valueTyped),
+                    node.source,
+                    new DataType(
+                        DataType.Type.UNION, 
+                        new DataType.Union(variants), 
+                        node.source
+                    )
+                );
             }
             case STATIC: {
                 AstNode.MonoOp data = node.getValue();
-                // TODO: pretty ez
-                throw new RuntimeException("not yet implemented!");
+                AstNode valueTyped = this.typeNode(data.value());
+                return new AstNode(
+                    node.type,
+                    new AstNode.MonoOp(valueTyped),
+                    node.source,
+                    valueTyped.resultType.get()
+                );
             }
             case PROCEDURE:
             case TARGET:

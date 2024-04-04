@@ -51,9 +51,8 @@ public class AstNode {
         AstNode value,
         List<String> branchVariants,
         List<Optional<String>> branchVariableNames,
-        List<Optional<Source>> branchVariableSources,
         List<List<AstNode>> branchBodies,
-        List<AstNode> elseBody
+        Optional<List<AstNode>> elseBody
     ) {}
 
     public static record Call(

@@ -18,6 +18,7 @@ public class Symbols {
         private final boolean isPublic;
         private AstNode node;
         private final Namespace[] usages;
+        public final List<AstNode> variants;
 
         private Symbol(
             boolean isPublic, AstNode node, Namespace[] usages
@@ -25,6 +26,7 @@ public class Symbols {
             this.isPublic = isPublic;
             this.node = node;
             this.usages = usages;
+            this.variants = new ArrayList<>();
         }
 
         public boolean isPublic() { return this.isPublic; }
@@ -279,17 +281,20 @@ public class Symbols {
                     branchBodies.add(branchBody);
                 }
                 Set<String> elseVariables = new HashSet<>(variables);
-                List<AstNode> elseBody = data.elseBody()
-                    .stream().map(statement -> this.canonicalizeNode(
-                        statement, symbol, elseVariables, errors
-                    )).toList();
+                Optional<List<AstNode>> elseBody = Optional.empty();
+                if(data.elseBody().isPresent()) {
+                    elseBody = Optional.of(data.elseBody().get()
+                        .stream().map(statement -> this.canonicalizeNode(
+                            statement, symbol, elseVariables, errors
+                        )).toList()
+                    );
+                }
                 return new AstNode(
                     node.type,
                     new AstNode.CaseVariant(
                         value,
                         data.branchVariants(),
                         data.branchVariableNames(),
-                        data.branchVariableSources(),
                         branchBodies, elseBody
                     ),
                     node.source

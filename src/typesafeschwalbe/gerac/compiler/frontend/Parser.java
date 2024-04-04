@@ -306,8 +306,6 @@ public class Parser {
                         List<String> branchVariants = new ArrayList<>();
                         List<Optional<String>> branchVariableNames
                             = new ArrayList<>();
-                        List<Optional<Source>> branchVariableSources
-                            = new ArrayList<>();
                         List<List<AstNode>> branchBodies = new ArrayList<>();
                         while(this.current.type != Token.Type.BRACE_CLOSE) {
                             this.expect(Token.Type.HASHTAG);
@@ -345,30 +343,33 @@ public class Parser {
                         }
                         Source endSource = this.current.source;
                         this.next();
-                        List<AstNode> elseBody;
+                        Optional<List<AstNode>> elseBody;
                         if(this.current.type == Token.Type.KEYWORD_ELSE) {
                             this.next();
                             if(this.current.type == Token.Type.BRACE_OPEN) {
                                 this.next();
-                                elseBody = this.parseStatements(LOCALLY_SCOPED);
+                                elseBody = Optional.of(
+                                    this.parseStatements(LOCALLY_SCOPED)
+                                );
                                 this.expect(Token.Type.BRACE_CLOSE);
                                 endSource = this.current.source;
                                 this.next();
                             } else {
-                                elseBody = this.parseStatement(
-                                    LOCALLY_SCOPED
-                                );
-                                endSource = elseBody.get(elseBody.size() - 1)
-                                    .source;
+                                elseBody = Optional.of(this.parseStatement(
+                                        LOCALLY_SCOPED
+                                ));
+                                endSource = elseBody.get().get(
+                                    elseBody.get().size() - 1
+                                ).source;
                             }
                         } else {
-                            elseBody = List.of();
+                            elseBody = Optional.empty();
                         }
                         return List.of(new AstNode(
                             AstNode.Type.CASE_VARIANT,
                             new AstNode.CaseVariant(
                                 value, branchVariants, branchVariableNames,
-                                branchVariableSources, branchBodies, elseBody
+                                branchBodies, elseBody
                             ),
                             new Source(start.source, endSource)
                         ));
