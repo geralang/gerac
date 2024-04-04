@@ -943,6 +943,12 @@ public class TypeChecker {
                         )
                     ));
                 }
+                return new AstNode(
+                    node.type,
+                    new AstNode.VariableAccess(variableName),
+                    node.source,
+                    variableType.get()
+                );
             }
             case BOOLEAN_LITERAL: {
                 return new AstNode(
