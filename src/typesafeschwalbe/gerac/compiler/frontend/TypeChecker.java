@@ -202,8 +202,8 @@ public class TypeChecker {
         for(CheckedSymbol encountered: this.checked) {
             if(!encountered.path.equals(path)) { continue; }
             if(!argumentTypes.equals(encountered.argumentTypes)) { continue; }
-            boolean isDefinite = encountered.returnType.isEmpty()
-                || encountered.returnType.get().isExpandable();
+            boolean isDefinite = encountered.returnType.isPresent()
+                && !encountered.returnType.get().isExpandable();
             return new CallCheckResult(
                 isDefinite
                     ? encountered.returnType.get()
@@ -642,8 +642,7 @@ public class TypeChecker {
                     CallCheckResult call = this.checkProcedureCall(
                         calledPath, symbol, argumentTypes, node.source
                     );
-                    DataType returnType = symbol.variants.get(call.variant)
-                        .<AstNode.Procedure>getValue().returnType().get();
+                    DataType returnType = call.returnType;
                     return new AstNode(
                         node.type,
                         new AstNode.Call(

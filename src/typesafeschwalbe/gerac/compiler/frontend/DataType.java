@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import javax.smartcardio.Card;
+
 import typesafeschwalbe.gerac.compiler.Source;
 
 public final class DataType {
@@ -143,7 +145,7 @@ public final class DataType {
     @Override
     public String toString() {
         switch(this.type) {
-            case UNKNOWN: return "not known";
+            case UNKNOWN: return "not known at this point";
             case UNIT: return "the unit value";
             case BOOLEAN: return "a boolean";
             case INTEGER: return "an integer";
@@ -241,12 +243,20 @@ public final class DataType {
 
     @Override
     public boolean equals(Object otherRaw) {
-        if(!(otherRaw instanceof DataType)) {
+        if(otherRaw == this) {
+            return true;
+        }   
+        if (otherRaw == null || !(otherRaw instanceof DataType)) {
             return false;
         }
         DataType other = (DataType) otherRaw;
-        return this.type == other.type
-            && this.value.equals(other.value);
+        if(this.type != other.type) {
+            return false;
+        }
+        if(this.value == null && other.value == null) {
+            return true;
+        }
+        return this.value.equals(other.value);
     }
 
 }
