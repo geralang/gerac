@@ -55,7 +55,9 @@ public class Compiler {
         }
         TypeChecker typeChecker = new TypeChecker(symbols);
         try {
-            typeChecker.checkProcedureCall(main.get(), List.of());
+            typeChecker.checkProcedureCall(
+                mainPath, main.get(), List.of(), null
+            );
         } catch(TypingException e) {
             return Result.ofError(e.error);
         }

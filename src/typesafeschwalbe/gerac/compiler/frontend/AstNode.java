@@ -91,6 +91,11 @@ public class AstNode {
         Namespace path
     ) {}
 
+    public static record ModuleAccess(
+        Namespace path,
+        Optional<Integer> variant
+    ) {}
+
     public static record Usages(
         List<Namespace> paths
     ) {}
@@ -162,7 +167,7 @@ public class AstNode {
         OR,                 // BiOp
         AND,                // BiOp
         MODULE_DECLARATION, // NamespacePath
-        MODULE_ACCESS,      // NamespacePath
+        MODULE_ACCESS,      // ModuleAccess
         USE,                // Usages
         VARIANT_LITERAL,    // VariantLiteral
         STATIC,             // MonoOp

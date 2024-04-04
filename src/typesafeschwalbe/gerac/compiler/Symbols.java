@@ -145,7 +145,7 @@ public class Symbols {
                 );
             }
             case MODULE_ACCESS: {
-                AstNode.NamespacePath data = node.getValue();
+                AstNode.ModuleAccess data = node.getValue();
                 boolean isLocalVariable = data.path().elements().size() == 1
                     && variables.contains(data.path().elements().get(0));
                 if(isLocalVariable) {
@@ -198,7 +198,7 @@ public class Symbols {
                 }
                 return new AstNode(
                     node.type, 
-                    new AstNode.NamespacePath(expanded),
+                    new AstNode.ModuleAccess(expanded, Optional.empty()),
                     node.source
                 );
             }

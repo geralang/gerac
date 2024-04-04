@@ -686,14 +686,14 @@ public class Parser {
                             new AstNode.Call(
                                 new AstNode(
                                     AstNode.Type.MODULE_ACCESS,
-                                    new AstNode.NamespacePath(new Namespace(
+                                    new AstNode.ModuleAccess(new Namespace(
                                         List.of(
                                             "core",
                                             start.type == Token.Type.DOUBLE_DOT
                                                 ? "range"
                                                 : "range_incl"
                                         )
-                                    )),
+                                    ), Optional.empty()),
                                     start.source
                                 ),
                                 List.of(rangeStart, rangeEnd)
@@ -780,8 +780,9 @@ public class Parser {
                         } else {
                             memberValue = new AstNode(
                                 AstNode.Type.MODULE_ACCESS,
-                                new AstNode.NamespacePath(
-                                    new Namespace(List.of(memberName))
+                                new AstNode.ModuleAccess(
+                                    new Namespace(List.of(memberName)),
+                                    Optional.empty()
                                 ),
                                 memberSource
                             );
@@ -915,7 +916,9 @@ public class Parser {
                     }
                     previous = Optional.of(new AstNode(
                         AstNode.Type.MODULE_ACCESS, 
-                        new AstNode.NamespacePath(new Namespace(segments)),
+                        new AstNode.ModuleAccess(
+                            new Namespace(segments), Optional.empty()
+                        ),
                         new Source(start.source, end.source)
                     ));
                     continue;

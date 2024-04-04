@@ -51,6 +51,36 @@ public class TypeChecker {
         );
     }
 
+    private static Error makeNonClosureError(DataType type, Source opSource) {
+        return new Error(
+            "Call of dynamic value of non-closure type",
+            new Error.Marking(
+                type.source, "this is " + type.toString()
+            ),
+            new Error.Marking(
+                opSource, "but this call requires a closure"
+            )
+        );
+    }
+
+    private static Error makeInvalidArgCError(
+        Source acceptsSource, int acceptsArgC, Source usageSource, int usageArgC
+    ) {
+        return new Error(
+            "Invalid argument count",
+            new Error.Marking(
+                acceptsSource,
+                "this closure accepts " + acceptsArgC
+                    + " argument" + (acceptsArgC == 1? "" : "s")
+            ),
+            new Error.Marking(
+                usageSource,
+                "but here it is assumed to have " + usageArgC
+                    + " argument" + (usageArgC == 1? "" : "s")
+            )
+        );
+    }
+
     private static Error makeNonbjectError(DataType type, Source opSource) {
         return new Error(
             "Member access done on non-object type",
@@ -135,11 +165,15 @@ public class TypeChecker {
         private final Namespace path;
         private final List<DataType> argumentTypes;
         private Optional<DataType> returnType;
+        private int variant;
         private final List<CheckedBlock> blocks;
 
-        private CheckedSymbol(Namespace path, List<DataType> argumentTypes) {
+        private CheckedSymbol(
+            Namespace path, List<DataType> argumentTypes, int variant
+        ) {
             this.path = path;
             this.argumentTypes = argumentTypes;
+            this.variant = variant;
             this.returnType = Optional.empty();
             this.blocks = new LinkedList<>();
         }
@@ -154,38 +188,109 @@ public class TypeChecker {
         this.checked = new LinkedList<>();
     }
 
-    public int checkProcedureCall(
-        Symbols.Symbol symbol, List<DataType> argumentTypes
+    private static record CallCheckResult(
+        DataType returnType, int variant
+    ) {}
+
+    public CallCheckResult checkProcedureCall(
+        Namespace path, Symbols.Symbol symbol, List<DataType> argumentTypes,
+        Source callSource
     ) throws TypingException {
         if(symbol.node().type != AstNode.Type.PROCEDURE) {
             throw new IllegalArgumentException("must be a procedure symbol!");
         }
-        // TODO: - IF THE SAME PATH AND ARGUMENT TYPES ARE ALREADY IN THE
-        //         'checked' STACK
-        //           - IF THE RETURN TYPE IS EMPTY OR NOT EXPANDABLE RETURN
-        //             AN UNKNOWN TYPE
-        //           - ELSE RETURN THE RETURN TYPE
-        //       - IF THE SYMBOL ALREADY HAS A VARIANT WITH THE SAME ARGUMENT
-        //         TYPES AND IF THE ARGUMENT TYPES DON'T CONTAIN ANY UNTYPED
-        //         CLOSURES SIMPLY RETURN THE INDEX OF THAT VARIANT 
-        //       - CHECK THE SYMBOL AND RETURN THE INDEX OF THE NEW VARIANT
-        throw new RuntimeException("not yet implemented!");
+        for(CheckedSymbol encountered: this.checked) {
+            if(!encountered.path.equals(path)) { continue; }
+            if(!argumentTypes.equals(encountered.argumentTypes)) { continue; }
+            boolean isDefinite = encountered.returnType.isEmpty()
+                || encountered.returnType.get().isExpandable();
+            return new CallCheckResult(
+                isDefinite
+                    ? encountered.returnType.get()
+                    : new DataType(DataType.Type.UNKNOWN, callSource),
+                encountered.variant
+            );
+        }
+        for(
+            int variantI = 0; 
+            variantI < symbol.variants.size(); 
+            variantI += 1
+        ) {
+            List<DataType> variantArgTypes = symbol.variants.get(variantI)
+                .<AstNode.Procedure>getValue().argumentTypes().get();
+            if(!argumentTypes.equals(variantArgTypes)) { continue; }
+            return new CallCheckResult(
+                symbol.variants.get(variantI)
+                    .<AstNode.Procedure>getValue().returnType().get(),
+                variantI
+            );
+        }
+        int variant = symbol.variants.size();
+        this.enterSymbol(path, argumentTypes);
+        this.currentSymbol().variant = variant;
+        this.enterBlock();
+        AstNode.Procedure data = symbol.node().getValue();
+        if(data.argumentNames().size() != argumentTypes.size()) {
+            throw new TypingException(TypeChecker.makeInvalidArgCError(
+                symbol.node().source, data.argumentNames().size(),
+                callSource, argumentTypes.size()
+            ));
+        }
+        for(int argI = 0; argI < argumentTypes.size(); argI += 1) {
+            String argumentName = data.argumentNames().get(argI);
+            this.currentBlock().variableTypes.put(
+                argumentName, Optional.of(argumentTypes.get(argI))
+            );
+            this.currentBlock().variablesMutable.put(argumentName, false);
+        }
+        List<AstNode> bodyTyped = this.typeNodes(data.body());
+        CheckedBlock checkedBlock = this.exitBlock();
+        CheckedSymbol checkedSymbol = this.exitSymbol();
+        boolean hasReturnType = checkedSymbol.returnType.isPresent()
+            && checkedSymbol.returnType.get().type != DataType.Type.UNIT;
+        if(!checkedBlock.returns && hasReturnType) {
+            throw new TypingException(
+                TypeChecker.makeNotAlwaysReturnError(
+                    checkedSymbol.returnType.get(), symbol.node().source
+                )
+            );
+        }
+        AstNode nodeTyped = new AstNode(
+            AstNode.Type.PROCEDURE,
+            new AstNode.Procedure(
+                data.isPublic(), data.name(), data.argumentNames(),
+                Optional.of(argumentTypes), checkedSymbol.returnType,
+                bodyTyped
+            ),
+            symbol.node().source
+        );
+        symbol.variants.add(nodeTyped);
+        return new CallCheckResult(
+            checkedSymbol.returnType.isPresent()
+                ? checkedSymbol.returnType.get()
+                : new DataType(DataType.Type.UNIT, symbol.node().source),
+            variant
+        );
     }
 
     private DataType checkGlobalVariable(
-        Symbols.Symbol symbol
+        Namespace path, Symbols.Symbol symbol
     ) throws TypingException {
         if(symbol.node().type != AstNode.Type.VARIABLE) {
             throw new IllegalArgumentException("must be a variable symbol!");
         }
-        // TODO: - IF THE VARIANT COUNT IS 0 TYPE THE VALUE NODE AND
-        //         ADD THE VARIANT
-        //       - RETURN THE VALUE TYPE
-        throw new RuntimeException("not yet implemented!");
+        if(symbol.variants.size() == 0) {
+            this.enterSymbol(path, List.of());
+            AstNode typedNode = this.typeNode(symbol.node());
+            symbol.variants.add(typedNode);
+        }
+        AstNode typedNode = symbol.variants.get(0);
+        AstNode.Variable data = typedNode.getValue();
+        return data.value().get().resultType.get();
     }
 
     private void enterSymbol(Namespace path, List<DataType> argumentTypes) {
-        this.checked.add(new CheckedSymbol(path, argumentTypes));
+        this.checked.add(new CheckedSymbol(path, argumentTypes, 0));
     }
 
     private CheckedSymbol currentSymbol() {
@@ -507,20 +612,123 @@ public class TypeChecker {
             }
             case CALL: {
                 AstNode.Call data = node.getValue();
-                // TODO: - IF CALLED NODE IS A MODULE ACCESS
-                //         LOOK UP THE SYMBOL AND IF THE SYMBOL
-                //         IS ALSO A PROCEDURE 
-                //           - TYPE CHECK THE ARGUMENTS
-                //           - USE THE ARGUMENTS TO CHECK THE CALLED SYMBOL
-                //           - USE THE RETURN TYPE
-                //       - ELSE
-                //           - TYPE CHECK THE CALLED NODE AND THE ARGUMENTS
-                //           - IF THE CALLED TYPE IS NOT A CLOSURE, ERROR
-                //           - IF THE CALLED TYPE IS AN UNTYPED CLOSURE, TYPE IT
-                //             TO GET THE RETURN TYPE
-                //           - ELSE GET THE RETURN TYPE FROM THE ALREADY TYPED
-                //             CLOSURE
-                throw new RuntimeException("not yet implemented!");
+                List<AstNode> argumentsTyped = new ArrayList<>();
+                List<DataType> argumentTypes = new ArrayList<>();
+                int argC = data.arguments().size();
+                for(AstNode argument: data.arguments()) {
+                    AstNode argumentTyped = this.typeNode(argument);
+                    argumentsTyped.add(argumentTyped);
+                    argumentTypes.add(argumentTyped.resultType.get());
+                }
+                boolean isProcCall;
+                if(data.called().type == AstNode.Type.MODULE_ACCESS) {
+                    Optional<Symbols.Symbol> called = this.symbols.get(
+                        data.called().<AstNode.ModuleAccess>getValue().path()
+                    );
+                    if(!called.isPresent()) {
+                        throw new RuntimeException(
+                            "module management didn't catch this!"
+                        );
+                    }
+                    isProcCall = called.get().node().type
+                        == AstNode.Type.PROCEDURE;
+                } else {
+                    isProcCall = false;
+                }
+                if(isProcCall) {
+                    Namespace calledPath = data.called()
+                        .<AstNode.ModuleAccess>getValue().path();
+                    Symbols.Symbol symbol = this.symbols.get(calledPath).get();
+                    CallCheckResult call = this.checkProcedureCall(
+                        calledPath, symbol, argumentTypes, node.source
+                    );
+                    DataType returnType = symbol.variants.get(call.variant)
+                        .<AstNode.Procedure>getValue().returnType().get();
+                    return new AstNode(
+                        node.type,
+                        new AstNode.Call(
+                            new AstNode(
+                                AstNode.Type.MODULE_ACCESS,
+                                new AstNode.ModuleAccess(
+                                    calledPath, Optional.of(call.variant)
+                                ),
+                                data.called().source
+                            ), 
+                            argumentsTyped
+                        ),
+                        node.source,
+                        returnType
+                    );
+                } else {
+                    AstNode calledTyped = this.typeNode(data.called());
+                    DataType calledType = calledTyped.resultType.get();
+                    if(calledType.type != DataType.Type.CLOSURE) {
+                        throw new TypingException(
+                            TypeChecker.makeNonClosureError(
+                                calledType, node.source
+                            )
+                        );
+                    }
+                    DataType.Closure calledTypeData = calledType.getValue();
+                    DataType returnType;
+                    if(calledTypeData.argumentTypes().isEmpty()) {
+                        if(calledTypeData.untypedBodies().size() == 0) {
+                            throw new RuntimeException("must have a body!");
+                        }
+                        returnType = null;
+                        for(
+                            int untypedI = 0; 
+                            untypedI < calledTypeData.untypedBodies().size(); 
+                            untypedI += 1
+                        ) {
+                            DataType.UntypedClosureContext ccc = calledTypeData
+                                .untypedBodies().get(untypedI);
+                            DataType cReturnType = this.typeClosureBody(
+                                ccc.node(), ccc.context(), argumentTypes,
+                                node.source
+                            );
+                            if(untypedI == 0) {
+                                returnType = cReturnType;
+                            } else {
+                                returnType = this.unify(
+                                    returnType, cReturnType, node.source
+                                );
+                            }
+                        }
+                    } else {
+                        // NOTE: This could lead to a bug later down the road.
+                        //       At some point this should be rewritten to still
+                        //       check the closure body with the argument types
+                        //       and get the return type of that instead.
+                        int acceptsArgC = calledTypeData
+                            .argumentTypes().get().size();
+                        if(argC != acceptsArgC) {
+                            throw new TypingException(
+                                TypeChecker.makeInvalidArgCError(
+                                    calledType.source, acceptsArgC,
+                                    node.source, argC
+                                )
+                            );
+                        }
+                        for(int argI = 0; argI < argC; argI += 1) {
+                            this.unify(
+                                calledTypeData.argumentTypes().get().get(argI),
+                                argumentTypes.get(argI),
+                                node.source
+                            );
+                        }
+                        returnType = calledTypeData.returnType().get();
+                    }
+                    return new AstNode(
+                        node.type,
+                        new AstNode.Call(
+                            calledTyped,
+                            argumentsTyped
+                        ),
+                        node.source,
+                        returnType
+                    );
+                }
             }
             case METHOD_CALL: {
                 AstNode.MethodCall data = node.getValue();
@@ -889,13 +1097,85 @@ public class TypeChecker {
                 );
             }
             case MODULE_ACCESS: {
-                AstNode.NamespacePath data = node.getValue();
-                // TODO: - LOOK UP THE CALLED SYMBOL
-                //       - CHECK THE SYMBOL
-                //       - IF IT'S A PROCEDURE, REPLACE WITH A CLOSURE LITERAL
-                //         THAT CALLS THE PROCEDURE (TYPE MANUALLY)
-                //       - IF IT'S A VARIABLE, USE THE VALUE TYPE
-                throw new RuntimeException("not yet implemented!");
+                AstNode.ModuleAccess data = node.getValue();
+                Optional<Symbols.Symbol> symbol = this.symbols.get(data.path());
+                if(symbol.isEmpty()) {
+                    throw new RuntimeException(
+                        "module management didn't catch this!"
+                    );
+                }
+                switch(symbol.get().node().type) {
+                    case PROCEDURE: {
+                        // std::io::println
+                        // => |thing| { return std::io::println(thing) }
+                        AstNode.Procedure symbolData = symbol.get()
+                            .node().getValue();
+                        AstNode closureValue = new AstNode(
+                            AstNode.Type.CALL,
+                            new AstNode.Call(
+                                new AstNode(
+                                    AstNode.Type.MODULE_ACCESS,
+                                    new AstNode.ModuleAccess(
+                                        data.path(), Optional.empty()
+                                    ),
+                                    node.source
+                                ),
+                                symbolData.argumentNames().stream()
+                                    .map(argumentName -> new AstNode(
+                                        AstNode.Type.VARIABLE_ACCESS,
+                                        new AstNode.VariableAccess(
+                                            argumentName
+                                        ),
+                                        node.source
+                                    )).toList()
+                            ),
+                            node.source
+                        );
+                        AstNode newNode = new AstNode(
+                            AstNode.Type.CLOSURE,
+                            new AstNode.Closure(
+                                symbolData.argumentNames(),
+                                Optional.empty(), Optional.empty(),
+                                Optional.empty(),
+                                List.of(new AstNode(
+                                    AstNode.Type.RETURN,
+                                    new AstNode.MonoOp(closureValue),
+                                    node.source
+                                ))    
+                            ),
+                            node.source
+                        );
+                        newNode.resultType = Optional.of(new DataType(
+                            DataType.Type.CLOSURE,
+                            new DataType.Closure(
+                                Optional.empty(), Optional.empty(),
+                                List.of(
+                                    new DataType.UntypedClosureContext(
+                                        newNode, List.of()
+                                    )
+                                )
+                            ),
+                            node.source
+                        ));
+                        return newNode;
+                    }
+                    case VARIABLE: {
+                        DataType variableType = this.checkGlobalVariable(
+                            data.path(), symbol.get()
+                        );
+                        return new AstNode(
+                            node.type,
+                            new AstNode.ModuleAccess(
+                                data.path(), Optional.of(0)
+                            ), 
+                            node.source, 
+                            variableType
+                        );
+                    }
+                    default: {
+                        throw new RuntimeException("unhandled symbol type!");
+                    }
+                }
             }
             case VARIANT_LITERAL: {
                 AstNode.VariantLiteral data = node.getValue();
@@ -941,19 +1221,13 @@ public class TypeChecker {
         AstNode node,
         List<CheckedBlock> context,
         List<DataType> argumentTypes,
-        Error.Marking butInitMarking
+        Source usageSource
     ) throws TypingException {
         AstNode.Closure data = node.getValue();
         int argC = data.argumentNames().size();
         if(argC != argumentTypes.size()) {
-            throw new TypingException(new Error(
-                "Invalid argument count",
-                new Error.Marking(
-                    node.source,
-                    "this closure literal accepts " + argC
-                        + " argument" + (argC == 1? "" : "s")
-                ),
-                butInitMarking
+            throw new TypingException(TypeChecker.makeInvalidArgCError(
+                node.source, argC, usageSource, argumentTypes.size()
             ));
         }
         this.enterSymbol(new Namespace(List.of("<closure>")), argumentTypes);
@@ -998,7 +1272,7 @@ public class TypeChecker {
                     a.source, "this is " + a.toString()
                 ),
                 new Error.Marking(
-                    b.source, "but this is " + a.toString()
+                    b.source, "but this is " + b.toString()
                 )
             ));
         }
@@ -1072,7 +1346,6 @@ public class TypeChecker {
                 if(!aIsTyped || !bIsTyped) {
                     DataType.Closure dataT = (aIsTyped? dataA : dataB);
                     DataType.Closure dataU = (aIsTyped? dataB : dataA);
-                    int argC = dataT.argumentTypes().get().size();
                     DataType returnType = dataT.returnType().get();
                     for(
                         int bodyI = 0; 
@@ -1084,11 +1357,7 @@ public class TypeChecker {
                         DataType cReturnType = this.typeClosureBody(
                             closure.node(), closure.context(),
                             dataT.argumentTypes().get(), 
-                            new Error.Marking(
-                                source,
-                                "but here it is assumed to have " + argC
-                                    + " argument" + (argC == 1? "" : "s")
-                            )
+                            source
                         );
                         returnType = this.unify(
                             returnType, cReturnType, source

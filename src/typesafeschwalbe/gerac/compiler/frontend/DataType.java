@@ -239,4 +239,14 @@ public final class DataType {
         }
     }
 
+    @Override
+    public boolean equals(Object otherRaw) {
+        if(!(otherRaw instanceof DataType)) {
+            return false;
+        }
+        DataType other = (DataType) otherRaw;
+        return this.type == other.type
+            && this.value.equals(other.value);
+    }
+
 }
