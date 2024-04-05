@@ -6,13 +6,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import javax.smartcardio.Card;
-
 import typesafeschwalbe.gerac.compiler.Source;
 
 public final class DataType {
 
-    public static record UntypedClosureContext(
+    public static record ClosureContext(
         AstNode node,
         List<TypeChecker.CheckedBlock> context
     ) {}
@@ -28,7 +26,7 @@ public final class DataType {
     public static record Closure(
         Optional<List<DataType>> argumentTypes,
         Optional<DataType> returnType,
-        List<UntypedClosureContext> untypedBodies
+        List<ClosureContext> bodies
     ) {}
 
     public static record Union(
@@ -215,7 +213,7 @@ public final class DataType {
                 }
                 return new DataType(
                     this.type,
-                    new Closure(argumentTypes, returnType, data.untypedBodies()),
+                    new Closure(argumentTypes, returnType, data.bodies()),
                     this.source,
                     this.age
                 );
