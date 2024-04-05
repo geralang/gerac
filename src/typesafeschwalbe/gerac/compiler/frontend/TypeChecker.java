@@ -20,7 +20,7 @@ public class TypeChecker {
     private static Error makeNotAlwaysReturnError(DataType type, Source src) {
         return new Error(
             "Possibly missing return value",
-            new Error.Marking(
+            Error.Marking.error(
                 src,
                 "returns " + type.toString()
                     + ", but only on some branches"
@@ -31,10 +31,10 @@ public class TypeChecker {
     private static Error makeNonNumericError(DataType type, Source opSource) {
         return new Error(
             "Numeric operation used on non-numeric type",
-            new Error.Marking(
+            Error.Marking.error(
                 type.source, "this is " + type.toString()
             ),
-            new Error.Marking(
+            Error.Marking.error(
                 opSource, "but this operation requires a numeric type"
             )
         );
@@ -43,10 +43,10 @@ public class TypeChecker {
     private static Error makeNonBooleanError(DataType type, Source opSource) {
         return new Error(
             "Logical operation used on non-boolean type",
-            new Error.Marking(
+            Error.Marking.error(
                 type.source, "this is " + type.toString()
             ),
-            new Error.Marking(
+            Error.Marking.error(
                 opSource, "but this operation requires a boolean"
             )
         );
@@ -55,10 +55,10 @@ public class TypeChecker {
     private static Error makeNonClosureError(DataType type, Source opSource) {
         return new Error(
             "Call of dynamic value of non-closure type",
-            new Error.Marking(
+            Error.Marking.error(
                 type.source, "this is " + type.toString()
             ),
-            new Error.Marking(
+            Error.Marking.error(
                 opSource, "but this call requires a closure"
             )
         );
@@ -69,12 +69,12 @@ public class TypeChecker {
     ) {
         return new Error(
             "Invalid argument count",
-            new Error.Marking(
+            Error.Marking.error(
                 acceptsSource,
                 "this closure accepts " + acceptsArgC
                     + " argument" + (acceptsArgC == 1? "" : "s")
             ),
-            new Error.Marking(
+            Error.Marking.error(
                 usageSource,
                 "but here it is assumed to have " + usageArgC
                     + " argument" + (usageArgC == 1? "" : "s")
@@ -85,10 +85,10 @@ public class TypeChecker {
     private static Error makeNonbjectError(DataType type, Source opSource) {
         return new Error(
             "Member access done on non-object type",
-            new Error.Marking(
+            Error.Marking.error(
                 type.source, "this is " + type.toString()
             ),
-            new Error.Marking(
+            Error.Marking.error(
                 opSource, "but this access requires an object"
             )
         );
@@ -99,11 +99,11 @@ public class TypeChecker {
     ) {
         return new Error(
             "Object member does not exist",
-            new Error.Marking(
+            Error.Marking.error(
                 opSource, 
                 "this access requires a member '" + memberName + "'"
             ),
-            new Error.Marking(
+            Error.Marking.error(
                 type.source, "this is object does not have it"
             )
         );
@@ -114,10 +114,10 @@ public class TypeChecker {
     ) {
         return new Error(
             "Non-boolean value used as condition",
-            new Error.Marking(
+            Error.Marking.error(
                 type.source, "this is " + type.toString()
             ),
-            new Error.Marking(
+            Error.Marking.error(
                 condSource,
                 "but it's usage as the condition here"
                     + " requires it to be a boolean"
@@ -126,15 +126,21 @@ public class TypeChecker {
     }
 
     private static Error makeIncompatibleError(
-        Source opSource, Error.Marking aMarking, Error.Marking bMarking 
+        Source opSource,
+        Source aSource, String aType, 
+        Source bSource, String bType
     ) {
         return new Error(
             "Incompatible types",
-            new Error.Marking(
-                opSource, "types are expected to be compatible here"
+            Error.Marking.info(
+                aSource, "this is " + aType
             ),
-            aMarking,
-            bMarking
+            Error.Marking.info(
+                bSource, "this is " + bType
+            ),
+            Error.Marking.error(
+                opSource, "the two are expected to be compatible here"
+            )
         );
     }
 
@@ -165,6 +171,7 @@ public class TypeChecker {
     static class CheckedSymbol {
         private final Namespace path;
         private final List<DataType> argumentTypes;
+        private final DataType.UnknownOriginMarker unknownOriginMarker;
         private Optional<DataType> returnType;
         private int variant;
         private final List<CheckedBlock> blocks;
@@ -174,8 +181,9 @@ public class TypeChecker {
         ) {
             this.path = path;
             this.argumentTypes = argumentTypes;
-            this.variant = variant;
+            this.unknownOriginMarker = new DataType.UnknownOriginMarker();
             this.returnType = Optional.empty();
+            this.variant = variant;
             this.blocks = new LinkedList<>();
         }
     }
@@ -210,7 +218,10 @@ public class TypeChecker {
             return new CallCheckResult(
                 isDefinite
                     ? encountered.returnType.get()
-                    : new DataType(DataType.Type.UNKNOWN, callSource),
+                    : new DataType(
+                        DataType.Type.UNKNOWN, encountered.unknownOriginMarker, 
+                        callSource
+                    ),
                 encountered.variant
             );
         }
@@ -268,12 +279,13 @@ public class TypeChecker {
             symbol.node().source
         );
         symbol.variants.add(nodeTyped);
-        return new CallCheckResult(
-            checkedSymbol.returnType.isPresent()
-                ? checkedSymbol.returnType.get()
-                : new DataType(DataType.Type.UNIT, symbol.node().source),
-            variant
+        DataType returnType = checkedSymbol.returnType.isPresent()
+            ? checkedSymbol.returnType.get()
+            : new DataType(DataType.Type.UNIT, symbol.node().source);
+        returnType = returnType.replaceUnknown(
+            checkedSymbol.unknownOriginMarker, returnType
         );
+        return new CallCheckResult(returnType, variant);
     }
 
     private DataType checkGlobalVariable(
@@ -500,11 +512,11 @@ public class TypeChecker {
                 if(valueType.type != DataType.Type.UNION) {
                     throw new TypingException(new Error(
                         "Variant matching done on non-union type",
-                        new Error.Marking(
+                        Error.Marking.error(
                             valueType.source, 
                             "this is " + valueType.toString()
                         ),
-                        new Error.Marking(
+                        Error.Marking.error(
                             node.source, "but this access requires a union"
                         )
                     ));
@@ -554,12 +566,12 @@ public class TypeChecker {
                         if(!data.branchVariants().contains(variantName)) {
                             throw new TypingException(new Error(
                                 "Unhandled union variant",
-                                new Error.Marking(
+                                Error.Marking.error(
                                     valueType.source, 
                                     "this union has a variant '"
                                         + variantName + "'"
                                 ),
-                                new Error.Marking(
+                                Error.Marking.error(
                                     node.source, "which is not handled here"
                                 )
                             ));
@@ -761,7 +773,11 @@ public class TypeChecker {
                 AstNode.ArrayLiteral data = node.getValue();
                 List<AstNode> valuesTyped = new ArrayList<>();
                 DataType elementType = data.values().size() == 0
-                    ? new DataType(DataType.Type.UNKNOWN, node.source)
+                    ? new DataType(
+                        DataType.Type.UNKNOWN, 
+                        new DataType.UnknownOriginMarker(), 
+                        node.source
+                    )
                     : null;
                 for(
                     int valueI = 0; 
@@ -821,11 +837,11 @@ public class TypeChecker {
                 if(accessedType.type != DataType.Type.ARRAY) {
                     throw new TypingException(new Error(
                         "Array access done on non-array type",
-                        new Error.Marking(
+                        Error.Marking.error(
                             accessedType.source, 
                             "this is " + accessedType.toString()
                         ),
-                        new Error.Marking(
+                        Error.Marking.error(
                             node.source, "but this access requires an array"
                         )
                     ));
@@ -835,11 +851,11 @@ public class TypeChecker {
                 if(indexType.type != DataType.Type.INTEGER) {
                     throw new TypingException(new Error(
                         "Array access done with a non-integer type",
-                        new Error.Marking(
+                        Error.Marking.error(
                             indexType.source, 
                             "this is " + indexType.toString()
                         ),
-                        new Error.Marking(
+                        Error.Marking.error(
                             node.source, "but this index requires an integer"
                         )
                     ));
@@ -897,7 +913,7 @@ public class TypeChecker {
                     if(assignedType.isEmpty() && !wasInitialized) {
                         throw new TypingException(new Error(
                             "Variable is possibly uninitialized",
-                            new Error.Marking(
+                            Error.Marking.error(
                                 node.source,
                                 "it is possible for this variable to not be"
                                     + " initialized, but it is accessed here"
@@ -909,7 +925,7 @@ public class TypeChecker {
                     if(isInitializing && !mutable) {
                         throw new TypingException(new Error(
                             "Mutation of immutable variable",
-                            new Error.Marking(
+                            Error.Marking.error(
                                 node.source,
                                 "it is not possible to assign to this variable"
                                     + " as it has been not been marked"
@@ -937,7 +953,7 @@ public class TypeChecker {
                 if(!found) {
                     throw new TypingException(new Error(
                         "Variable does not exist",
-                        new Error.Marking(
+                        Error.Marking.error(
                             node.source,
                             "there is no variable called '" + variableName + "'"
                         )
@@ -1320,12 +1336,8 @@ public class TypeChecker {
         if(a.type != b.type) {
             throw new TypingException(TypeChecker.makeIncompatibleError(
                 source, 
-                new Error.Marking(
-                    a.source, "this is " + a.toString()
-                ),
-                new Error.Marking(
-                    b.source, "but this is " + b.toString()
-                )
+                a.source, a.toString(),
+                b.source, b.toString()
             ));
         }
         Object value;
@@ -1358,17 +1370,13 @@ public class TypeChecker {
                     boolean inA = dataA.memberTypes().containsKey(memberName);
                     boolean inB = dataB.memberTypes().containsKey(memberName);
                     if(!inA || !inB) {
-                        String inMsg = "this is an object with a property "
+                        String inMsg = "an object with a property "
                             + "'" + memberName + "'";
-                        String withoutMsg = "but this is an object without it";
+                        String withoutMsg = "an object without it";
                         Error e = TypeChecker.makeIncompatibleError(
                             source, 
-                            new Error.Marking(
-                                a.source, inA? inMsg : withoutMsg
-                            ),
-                            new Error.Marking(
-                                b.source, inB? inMsg : withoutMsg
-                            )
+                            a.source, inA? inMsg : withoutMsg,
+                            b.source, inB? inMsg : withoutMsg
                         );
                         throw new TypingException(e);
                     }
@@ -1407,14 +1415,14 @@ public class TypeChecker {
                 int aArgC = dataA.argumentTypes().get().size();
                 int bArgC = dataB.argumentTypes().get().size();
                 if(aArgC != bArgC) {
-                    String aMsg = "this is a closure with "
+                    String aMsg = "a closure with "
                     + aArgC + " argument" + (aArgC == 1? "" : "s");
-                    String bMsg = "this is a closure with "
+                    String bMsg = "a closure with "
                     + bArgC + " argument" + (bArgC == 1? "" : "s");
                     throw new TypingException(TypeChecker.makeIncompatibleError(
                         source,
-                        new Error.Marking(a.source, aMsg),
-                        new Error.Marking(b.source, bMsg)
+                        a.source, aMsg,
+                        b.source, bMsg
                     ));
                 }
                 List<DataType> argumentTypes = new ArrayList<>();

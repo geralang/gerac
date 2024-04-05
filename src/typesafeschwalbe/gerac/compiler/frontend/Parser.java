@@ -26,7 +26,7 @@ public class Parser {
     private void throwUnexpected(String expected) throws ParsingException {
         throw new ParsingException(new Error(
             "Unexpected syntax",
-            new Error.Marking(
+            Error.Marking.error(
                 this.current.source,
                 "expected " + expected + ", but " + (
                     this.current.type == Token.Type.FILE_END
@@ -164,7 +164,7 @@ public class Parser {
                     if(isPublic && !inGlobalScope) {
                         throw new ParsingException(new Error(
                             "Local variable marked as public",
-                            new Error.Marking(
+                            Error.Marking.error(
                                 start.source,
                                 "local variables may not be marked as public"
                             )
@@ -173,7 +173,7 @@ public class Parser {
                     if(isMutable && inGlobalScope) {
                         throw new ParsingException(new Error(
                             "Global variable marked as mutable",
-                            new Error.Marking(
+                            Error.Marking.error(
                                 start.source,
                                 "global variables may not be marked as mutable"
                             )
@@ -209,7 +209,7 @@ public class Parser {
                     if(!inGlobalScope) {
                         throw new ParsingException(new Error(
                             "Procedure in local context",
-                            new Error.Marking(
+                            Error.Marking.error(
                                 this.current.source,
                                 "procedures may not be defined here"
                             )
@@ -218,7 +218,7 @@ public class Parser {
                     if(isMutable) {
                         throw new ParsingException(new Error(
                             "Procedure marked as mutable",
-                            new Error.Marking(
+                            Error.Marking.error(
                                 mutableToken.source,
                                 "procedures may not be marked as mutable"
                             )
@@ -487,11 +487,11 @@ public class Parser {
                 if(!expr.isAssignable()) {
                     throw new ParsingException(new Error(
                         "Expression cannot be assigned to",
-                        new Error.Marking(
+                        Error.Marking.error(
                             expr.source,
                             "this expression is not mutable..."
                         ),
-                        new Error.Marking(
+                        Error.Marking.error(
                             this.current.source,
                             "...so it may not be assigned to"
                         )
@@ -603,7 +603,7 @@ public class Parser {
                         if(into.type != AstNode.Type.CALL) {
                             throw new ParsingException(new Error(
                                 "Cannot be piped into",
-                                new Error.Marking(into.source, "not a call") 
+                                Error.Marking.error(into.source, "not a call") 
                             ));
                         }
                         List<AstNode> arguments = new ArrayList<>();
@@ -790,7 +790,7 @@ public class Parser {
                         if(memberValues.containsKey(memberName)) {
                             throw new ParsingException(new Error(
                                 "Duplicate object property",
-                                new Error.Marking(
+                                Error.Marking.error(
                                     memberSource,
                                     "property '" + memberName + "'"
                                         + " appears more than once"

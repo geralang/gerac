@@ -6,18 +6,59 @@ import java.util.ArrayList;
 import java.util.Map;
 
 public class Error {
-    
+
+
     public static class Marking {
 
+        private enum Type {
+            ERROR(
+                '^', 
+                Color.from(Color.RED), Color.from(Color.RED)
+            ),
+            INFO(
+                '~', 
+                Color.from(Color.BRIGHT_BLUE), Color.from(Color.BRIGHT_BLUE)
+            ),
+            HELP(
+                '*',
+                Color.from(Color.GREEN), Color.from(Color.GREEN)
+            );
+
+            private final char marker;
+            private final String markingColor;
+            private final String noteColor;
+
+            private Type(char marker, String markingColor, String noteColor) {
+                this.marker = marker;
+                this.markingColor = markingColor;
+                this.noteColor = noteColor;
+            }
+        }
+
+        private final Type type;
         public final Source location;
         public final String note;
 
-        public Marking(Source location, String note) {
+        private Marking(Type type, Source location, String note) {
+            this.type = type;
             this.location = location;
             this.note = note;
         }
 
+        public static Marking error(Source location, String note) {
+            return new Marking(Type.ERROR, location, note);
+        }
+
+        public static Marking info(Source location, String note) {
+            return new Marking(Type.INFO, location, note);
+        }
+
+        public static Marking help(Source location, String note) {
+            return new Marking(Type.HELP, location, note);
+        }
+
     }
+
 
     public final String message;
     public final Marking[] markings;
@@ -46,10 +87,8 @@ public class Error {
             ? Color.from(Color.GRAY) : "";
         String markedLineColor = colored
             ? Color.from() : "";
-        String markingColor = colored
-            ? Color.from(Color.RED) : "";
-        String noteColor = colored
-            ? Color.from(Color.RED) : "";
+        String hiddenLinesNoteColor = colored
+            ? Color.from(Color.GRAY) : "";
         StringBuilder output = new StringBuilder();
         output.append(errorWordColor);
         output.append("error: ");
@@ -79,9 +118,16 @@ public class Error {
                 char c = atEnd? '\0' : fileContent.charAt(charIdx);
                 if(charIdx < marked.location.endOffset) {
                     boolean isMarked = charIdx >= marked.location.startOffset;
+                    String markingColor = colored
+                        ? marked.type.markingColor 
+                        : "";
+                    String noteColor = colored
+                        ? marked.type.noteColor
+                        : "";
+                    char marker = marked.type.marker;
                     lineMarked.append(
                         isMarked
-                        ? markingColor + '^'
+                        ? markingColor + marker
                         : ' '
                     );
                     if(markedStartLineIdx == -1 && isMarked) {
@@ -133,9 +179,34 @@ public class Error {
             output.append(":");
             output.append(markedStartLineOffset + 1);
             output.append("\n");
+            int skipAfterLineCount = 2;
             for(int displayedLineIdx = displayStartLineIdx;
                     displayedLineIdx <= displayEndLineIdx;
                     displayedLineIdx += 1) {
+                boolean skipLines = displayedLineIdx
+                        > displayStartLineIdx + skipAfterLineCount
+                    && displayedLineIdx
+                        < displayEndLineIdx - skipAfterLineCount;
+                if(skipLines) {
+                    int oldDisplayLineIdx = displayedLineIdx;
+                    displayedLineIdx = displayEndLineIdx - skipAfterLineCount
+                        - 1;
+                    output.append(separationLineColor);
+                    output.append(" ".repeat(
+                        paddingSpaces + maxLineNumberLength
+                    ));
+                    output.append("┊ ");
+                    output.append(hiddenLinesNoteColor);
+                    int hiddenCount = displayedLineIdx - oldDisplayLineIdx + 1;
+                    output.append("(");
+                    output.append(hiddenCount);
+                    output.append(" line");
+                    if(hiddenCount != 1) { 
+                        output.append("s"); 
+                    }
+                    output.append(" hidden)\n");
+                    continue;
+                }
                 boolean isMarked = displayedLineIdx >= markedStartLineIdx
                     && displayedLineIdx <= markedEndLineIdx;
                 output.append(

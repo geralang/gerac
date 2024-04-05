@@ -44,7 +44,7 @@ public class Symbols {
         if(nodes.get(0).type != AstNode.Type.MODULE_DECLARATION) {
             return Optional.of(new Error(
                 "File does not start with a module declaration",
-                new Error.Marking(nodes.get(0).source, "")
+                Error.Marking.error(nodes.get(0).source, "")
             ));
         }
         Namespace currentModule = null; // first node will overwrite this 
@@ -112,7 +112,7 @@ public class Symbols {
     private static Error makeInvalidSymbolError(Source src, Namespace path) {
         return new Error(
             "Invalid access",
-            new Error.Marking(
+            Error.Marking.error(
                 src,
                 "'" + path.toString() + "'"
                     + " is not a known and accessible symbol"

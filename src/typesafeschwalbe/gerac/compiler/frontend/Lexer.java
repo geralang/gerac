@@ -79,7 +79,7 @@ public class Lexer {
         if(this.atEnd()) {
             throw new ParsingException(new Error(
                 "Hexadecimal character escape incomplete",
-                new Error.Marking(
+                Error.Marking.error(
                     new Source(
                         this.fileName,
                         this.fileContent.length() - 1, this.fileContent.length()
@@ -94,7 +94,7 @@ public class Lexer {
         if('A' <= c && c <= 'F') { return (byte) (c - 'A' + 10); }
         throw new ParsingException(new Error(
             "Invalid hexadecimal digit in hexadecimal character escape",
-            new Error.Marking(
+            Error.Marking.error(
                 new Source(this.fileName, this.currentPos, this.currentPos + 1),
                 "should be [0-9], [a-f] or [A-F]"
             )
@@ -146,7 +146,7 @@ public class Lexer {
                 if(this.atEnd()) {
                     throw new ParsingException(new Error(
                         "Unclosed string literal",
-                        new Error.Marking(
+                        Error.Marking.error(
                             new Source(
                                 this.fileName, startPos, startPos + 1
                             ),
@@ -356,7 +356,7 @@ public class Lexer {
         }
         throw new ParsingException(new Error(
             "Invalid character",
-            new Error.Marking(
+            Error.Marking.error(
                 new Source(this.fileName, this.currentPos, this.currentPos + 1),
                 "'" + this.current() + "' is not a valid character"
             )

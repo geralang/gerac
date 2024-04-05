@@ -10,6 +10,8 @@ import typesafeschwalbe.gerac.compiler.Source;
 
 public final class DataType {
 
+    public static class UnknownOriginMarker {}
+
     public static record ClosureContext(
         AstNode node,
         List<TypeChecker.CheckedBlock> context
@@ -34,7 +36,7 @@ public final class DataType {
     ) {}
 
     public enum Type {
-        UNKNOWN,          // = null
+        UNKNOWN,          // UnknownOriginMarker
         UNIT,             // = null
         BOOLEAN,          // = null
         INTEGER,          // = null
@@ -159,12 +161,17 @@ public final class DataType {
         }
     }
 
-    public DataType replace(DataType replaced, DataType replacement) {
-        if(this == replaced) {
-            return replacement;
-        }
+    public DataType replaceUnknown(
+        UnknownOriginMarker replacedOrigin, DataType replacement
+    ) {
         switch(this.type) {
-            case UNKNOWN:
+            case UNKNOWN: {
+                UnknownOriginMarker marker = this.getValue();
+                if(marker == replacedOrigin) {
+                    return replacement;
+                }
+                return this;
+            }
             case UNIT:
             case BOOLEAN:
             case INTEGER:
@@ -175,7 +182,7 @@ public final class DataType {
             case ARRAY: {
                 Array data = this.getValue();
                 DataType elementType = data.elementType()
-                    .replace(replaced, replacement);
+                    .replaceUnknown(replacedOrigin, replacement);
                 return new DataType(
                     this.type, new Array(elementType), this.source, this.age
                 );
@@ -185,7 +192,7 @@ public final class DataType {
                 Map<String, DataType> memberTypes = new HashMap<>();
                 for(String memberName: data.memberTypes().keySet()) {
                     DataType memberType = data.memberTypes().get(memberName)
-                        .replace(replaced, replacement);
+                        .replaceUnknown(replacedOrigin, replacement);
                     memberTypes.put(memberName, memberType);
                 }
                 return new DataType(
@@ -200,15 +207,15 @@ public final class DataType {
                 Optional<List<DataType>> argumentTypes = Optional.empty();
                 if(data.argumentTypes().isPresent()) {
                     argumentTypes = Optional.of(data.argumentTypes().get()
-                        .stream().map(argumentType -> argumentType.replace(
-                            replaced, replacement
+                        .stream().map(argType -> argType.replaceUnknown(
+                            replacedOrigin, replacement
                         )).toList()
                     );
                 }
                 Optional<DataType> returnType = Optional.empty();
                 if(data.returnType().isPresent()) {
                     returnType = Optional.of(data.returnType().get()
-                        .replace(replaced, replacement)
+                        .replaceUnknown(replacedOrigin, replacement)
                     );
                 }
                 return new DataType(
@@ -223,7 +230,7 @@ public final class DataType {
                 Map<String, DataType> variants = new HashMap<>();
                 for(String memberName: data.variants().keySet()) {
                     DataType memberType = data.variants().get(memberName)
-                        .replace(replaced, replacement);
+                        .replaceUnknown(replacedOrigin, replacement);
                     variants.put(memberName, memberType);
                 }
                 return new DataType(
