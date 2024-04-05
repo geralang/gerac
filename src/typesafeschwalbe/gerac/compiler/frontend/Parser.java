@@ -639,7 +639,7 @@ public class Parser {
                         AstNode accessed = previous.get();
                         this.next();
                         AstNode index = this.parseExpression();
-                        this.expect(Token.Type.BRACE_CLOSE);
+                        this.expect(Token.Type.BRACKET_CLOSE);
                         Token end = this.current;
                         this.next();
                         previous = Optional.of(new AstNode(
@@ -814,7 +814,7 @@ public class Parser {
                 case BRACKET_OPEN: {
                     this.next();
                     List<AstNode> values = new ArrayList<>();
-                    while(this.current.type != Token.Type.BRACE_CLOSE) {
+                    while(this.current.type != Token.Type.BRACKET_CLOSE) {
                         values.add(this.parseExpression());
                         this.expect(Token.Type.BRACKET_CLOSE, Token.Type.COMMA);
                         if(this.current.type == Token.Type.COMMA) {
