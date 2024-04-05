@@ -818,7 +818,7 @@ public class TypeChecker {
                 AstNode.BiOp data = node.getValue();
                 AstNode accessedTyped = this.typeNode(data.left());
                 DataType accessedType = accessedTyped.resultType.get();
-                if(accessedType.type == DataType.Type.ARRAY) {
+                if(accessedType.type != DataType.Type.ARRAY) {
                     throw new TypingException(new Error(
                         "Array access done on non-array type",
                         new Error.Marking(
@@ -832,12 +832,12 @@ public class TypeChecker {
                 }
                 AstNode indexTyped = this.typeNode(data.right());
                 DataType indexType = indexTyped.resultType.get();
-                if(indexType.type == DataType.Type.INTEGER) {
+                if(indexType.type != DataType.Type.INTEGER) {
                     throw new TypingException(new Error(
                         "Array access done with a non-integer type",
                         new Error.Marking(
-                            accessedType.source, 
-                            "this is " + accessedType.toString()
+                            indexType.source, 
+                            "this is " + indexType.toString()
                         ),
                         new Error.Marking(
                             node.source, "but this index requires an integer"
@@ -1449,11 +1449,13 @@ public class TypeChecker {
                         variantTypes.put(
                             variantName, dataB.variants().get(variantName)
                         );
+                        continue;
                     }
                     if(!inB) {
                         variantTypes.put(
                             variantName, dataA.variants().get(variantName)
                         );
+                        continue;
                     }
                     DataType variantType = this.unify(
                         dataA.variants().get(variantName),
@@ -1463,7 +1465,7 @@ public class TypeChecker {
                     variantTypes.put(variantName, variantType);
                 }
                 value = new DataType.Union(variantTypes);
-            }
+            } break;
             default: {
                 throw new RuntimeException("type not handled!");
             }
