@@ -14,6 +14,22 @@ import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
 public class Symbols {
 
+    public static Error duplicateSymbolError(
+        Namespace path, Source duplicateSource, Symbol ogSymbol
+    ) {
+        return new Error(
+            "Duplicate symbol",
+            Error.Marking.error(
+                duplicateSource, 
+                "a symbol with the path '"
+                    + path.toString() + "' was already declared"
+            ),
+            Error.Marking.info(
+                ogSymbol.node.source, "previously declared here"
+            )
+        );
+    }
+
     public static class Symbol {
         private final boolean isPublic;
         private AstNode node;
@@ -34,9 +50,11 @@ public class Symbols {
     }
 
     private final Map<Namespace, Symbol> symbols;
+    private final Map<Namespace, Source> declaredModules;
 
     public Symbols() {
         this.symbols = new HashMap<>();
+        this.declaredModules = new HashMap<>();
     }
     
     public Optional<Error> add(List<AstNode> nodes) {
@@ -53,6 +71,21 @@ public class Symbols {
             switch(node.type) {
                 case MODULE_DECLARATION: {
                     AstNode.NamespacePath data = node.getValue();
+                    if(this.declaredModules.containsKey(data.path())) {
+                        return Optional.of(new Error(
+                            "Duplicate module",
+                            Error.Marking.error(
+                                node.source,
+                                "a module with the same path"
+                                    + " was already declared"
+                            ),
+                            Error.Marking.info(
+                                this.declaredModules.get(data.path()),
+                                "previously declared here"
+                            )
+                        ));
+                    }
+                    this.declaredModules.put(data.path(), node.source);
                     currentModule = data.path();
                     List<String> usageSegments = new ArrayList<>(
                         data.path().elements()
@@ -66,8 +99,14 @@ public class Symbols {
                         currentModule.elements()
                     );
                     fullPath.add(data.name());
+                    Namespace finalPath = new Namespace(fullPath);
+                    if(this.symbols.containsKey(finalPath)) {
+                        return Optional.of(Symbols.duplicateSymbolError(
+                            finalPath, node.source, this.symbols.get(finalPath)
+                        ));
+                    }
                     this.symbols.put(
-                        new Namespace(fullPath),
+                        finalPath,
                         new Symbol(
                             data.isPublic(), node,
                             usages.toArray(Namespace[]::new)
@@ -80,8 +119,14 @@ public class Symbols {
                         currentModule.elements()
                     );
                     fullPath.add(data.name());
+                    Namespace finalPath = new Namespace(fullPath);
+                    if(this.symbols.containsKey(finalPath)) {
+                        return Optional.of(Symbols.duplicateSymbolError(
+                            finalPath, node.source, this.symbols.get(finalPath)
+                        ));
+                    }
                     this.symbols.put(
-                        new Namespace(fullPath),
+                        finalPath,
                         new Symbol(
                             data.isPublic(), node,
                             usages.toArray(Namespace[]::new)

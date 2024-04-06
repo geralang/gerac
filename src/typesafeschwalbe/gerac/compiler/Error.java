@@ -7,7 +7,6 @@ import java.util.Map;
 
 public class Error {
 
-
     public static class Marking {
 
         private enum Type {

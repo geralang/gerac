@@ -214,7 +214,7 @@ public class TypeChecker {
             if(!encountered.path.equals(path)) { continue; }
             if(!argumentTypes.equals(encountered.argumentTypes)) { continue; }
             boolean isDefinite = encountered.returnType.isPresent()
-                && !encountered.returnType.get().isExpandable();
+                && encountered.returnType.get().isConcrete();
             return new CallCheckResult(
                 isDefinite
                     ? encountered.returnType.get()
@@ -400,8 +400,7 @@ public class TypeChecker {
                 );
                 newNode.resultType = Optional.of(new DataType(
                     DataType.Type.CLOSURE, 
-                    new DataType.Closure(
-                        Optional.empty(), Optional.empty(), List.of(
+                    new DataType.Closure(List.of(
                         new DataType.ClosureContext(newNode, context)
                     )), 
                     node.source
@@ -682,12 +681,9 @@ public class TypeChecker {
                             )
                         );
                     }
-                    DataType checkedClosureType = this.checkClosure(
+                    DataType returnType = this.checkClosure(
                         calledType, argumentTypes, node.source
                     );
-                    DataType.Closure calledTypeData = checkedClosureType
-                        .getValue();
-                    DataType returnType = calledTypeData.returnType().get();
                     return new AstNode(
                         node.type,
                         new AstNode.Call(
@@ -732,12 +728,9 @@ public class TypeChecker {
                         )
                     );
                 }
-                DataType checkedClosureType = this.checkClosure(
+                DataType returnType = this.checkClosure(
                     calledType, argumentTypes, node.source
                 );
-                DataType.Closure calledTypeData = checkedClosureType
-                    .getValue();
-                DataType returnType = calledTypeData.returnType().get();
                 return new AstNode(
                     node.type,
                     new AstNode.MethodCall(
@@ -946,6 +939,9 @@ public class TypeChecker {
                     }
                     if(cBlock != this.currentBlock()) {
                         this.currentBlock().captures.add(variableName);
+                    }
+                    if(assignedType.isPresent()) {
+                        cBlock.variableTypes.put(variableName, variableType);
                     }
                     found = true;
                     break;
@@ -1169,14 +1165,11 @@ public class TypeChecker {
                         );
                         newNode.resultType = Optional.of(new DataType(
                             DataType.Type.CLOSURE,
-                            new DataType.Closure(
-                                Optional.empty(), Optional.empty(),
-                                List.of(
-                                    new DataType.ClosureContext(
-                                        newNode, List.of()
-                                    )
+                            new DataType.Closure(List.of(
+                                new DataType.ClosureContext(
+                                    newNode, List.of()
                                 )
-                            ),
+                            )),
                             node.source
                         ));
                         return newNode;
@@ -1247,23 +1240,8 @@ public class TypeChecker {
         if(closureType.type != DataType.Type.CLOSURE) {
             throw new RuntimeException("must be a closure!");
         }
+        List<DataType> argTypes = new ArrayList<>(argumentTypes);
         DataType.Closure typeData = closureType.getValue();
-        List<DataType> argTypes = argumentTypes;
-        if(typeData.argumentTypes().isPresent()) {
-            List<DataType> typeArgTypes = typeData.argumentTypes().get();
-            if(typeArgTypes.size() != argTypes.size()) {
-                throw new TypingException(TypeChecker.makeInvalidArgCError(
-                    closureType.source, typeArgTypes.size(),
-                    usageSource, argTypes.size()
-                ));
-            }
-            for(int argI = 0; argI < argTypes.size(); argI += 1) {
-                DataType argType = this.unify(
-                    argTypes.get(argI), typeArgTypes.get(argI), usageSource
-                );
-                argTypes.set(argI, argType);
-            }
-        }
         DataType returnType = null;
         for(int bodyI = 0; bodyI < typeData.bodies().size(); bodyI += 1) {
             ClosureContext context = typeData.bodies().get(bodyI);
@@ -1273,6 +1251,16 @@ public class TypeChecker {
                     context.node().source, nodeData.argumentNames().size(),
                     usageSource, argTypes.size()
                 ));
+            }
+            if(nodeData.argumentTypes().isPresent()) {
+                for(int argI = 0; argI < argTypes.size(); argI += 1) {
+                    DataType argType = this.unify(
+                        argTypes.get(argI),
+                        nodeData.argumentTypes().get().get(argI),
+                        usageSource
+                    );
+                    argTypes.set(argI, argType);
+                }
             }
             this.enterSymbol(new Namespace(List.of()), argTypes);
             this.currentSymbol().blocks.addAll(context.context());
@@ -1314,20 +1302,7 @@ public class TypeChecker {
                 );
             }
         }
-        if(typeData.returnType().isPresent()) {
-            returnType = this.unify(
-                returnType, typeData.returnType().get(), usageSource
-            );
-        }
-        return new DataType(
-            DataType.Type.CLOSURE,
-            new DataType.Closure(
-                Optional.of(argTypes), Optional.of(returnType), 
-                typeData.bodies()
-            ),
-            closureType.source,
-            closureType.age
-        );
+        return returnType;
     }
 
     private DataType unify(
@@ -1392,55 +1367,10 @@ public class TypeChecker {
             case CLOSURE: {
                 DataType.Closure dataA = a.getValue();
                 DataType.Closure dataB = b.getValue();
-                boolean aIsTyped = dataA.argumentTypes().isPresent();
-                boolean bIsTyped = dataB.argumentTypes().isPresent();
-                if(!aIsTyped && !bIsTyped) {
-                    List<DataType.ClosureContext> contexts
-                        = new ArrayList<>(dataA.bodies());
-                    contexts.addAll(dataB.bodies());
-                    value = new DataType.Closure(
-                        Optional.empty(), Optional.empty(), contexts
-                    );
-                    break;
-                }
-                if(!aIsTyped || !bIsTyped) {
-                    DataType typed = this.checkClosure(
-                        (aIsTyped? a : b),
-                        (aIsTyped? dataA : dataB).argumentTypes().get(),
-                        source
-                    );
-                    value = typed.getValue();
-                    break;
-                }
-                int aArgC = dataA.argumentTypes().get().size();
-                int bArgC = dataB.argumentTypes().get().size();
-                if(aArgC != bArgC) {
-                    String aMsg = "a closure with "
-                    + aArgC + " argument" + (aArgC == 1? "" : "s");
-                    String bMsg = "a closure with "
-                    + bArgC + " argument" + (bArgC == 1? "" : "s");
-                    throw new TypingException(TypeChecker.makeIncompatibleError(
-                        source,
-                        a.source, aMsg,
-                        b.source, bMsg
-                    ));
-                }
-                List<DataType> argumentTypes = new ArrayList<>();
-                for(int argI = 0; argI < aArgC; argI += 1) {
-                    DataType argumentType = this.unify(
-                        dataA.argumentTypes().get().get(argI), 
-                        dataB.argumentTypes().get().get(argI), 
-                        source
-                    );
-                    argumentTypes.add(argumentType);
-                }
-                DataType returnType = this.unify(
-                    dataA.returnType().get(), dataB.returnType().get(), source
-                );
-                value = new DataType.Closure(
-                    Optional.of(argumentTypes), Optional.of(returnType), 
-                    List.of()
-                );
+                List<DataType.ClosureContext> contexts
+                    = new ArrayList<>(dataA.bodies());
+                contexts.addAll(dataB.bodies());
+                value = new DataType.Closure(contexts);
             } break;
             case UNION: {
                 DataType.Union dataA = a.getValue();

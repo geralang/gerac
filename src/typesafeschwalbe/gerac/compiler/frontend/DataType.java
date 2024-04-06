@@ -4,7 +4,6 @@ package typesafeschwalbe.gerac.compiler.frontend;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.Source;
 
@@ -26,8 +25,6 @@ public final class DataType {
     ) {}
 
     public static record Closure(
-        Optional<List<DataType>> argumentTypes,
-        Optional<DataType> returnType,
         List<ClosureContext> bodies
     ) {}
 
@@ -85,7 +82,7 @@ public final class DataType {
         return (T) this.value;
     }
 
-    public boolean isExpandable() {
+    public boolean isConcrete() {
         switch(this.type) {
             case UNKNOWN:
             case UNIT:
@@ -93,48 +90,23 @@ public final class DataType {
             case INTEGER:
             case FLOAT:
             case STRING: {
-                return false;
+                return true;
             }
             case ARRAY: {
-                return this.<Array>getValue().elementType.isExpandable();
+                return this.<Array>getValue().elementType.isConcrete();
             }
             case UNORDERED_OBJECT: {
                 UnorderedObject data = this.getValue();
                 for(DataType memberType: data.memberTypes.values()) {
-                    if(memberType.isExpandable()) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-            case CLOSURE: {
-                Closure data = this.getValue();
-                if(data.argumentTypes.isPresent()) {
-                    for(DataType argumentType: data.argumentTypes.get()) {
-                        if(argumentType.isExpandable()) {
-                            return true;
-                        }
-                    }
-                } else { 
-                    return true; 
-                }
-                if(data.returnType.isPresent()) {
-                    if(data.returnType.get().isExpandable()) {
-                        return true;
-                    }
-                } else {
-                    return true;
-                }
-                return false;
-            }
-            case UNION: {
-                Union data = this.getValue();
-                for(DataType memberType: data.variants.values()) {
-                    if(memberType.isExpandable()) {
-                        return true;
+                    if(!memberType.isConcrete()) {
+                        return false;
                     }
                 }
                 return true;
+            }
+            case CLOSURE:
+            case UNION: {
+                return false;
             }
             default: {
                 throw new RuntimeException("type not handled!");
@@ -203,27 +175,7 @@ public final class DataType {
                 );
             }
             case CLOSURE: {
-                Closure data = this.getValue();
-                Optional<List<DataType>> argumentTypes = Optional.empty();
-                if(data.argumentTypes().isPresent()) {
-                    argumentTypes = Optional.of(data.argumentTypes().get()
-                        .stream().map(argType -> argType.replaceUnknown(
-                            replacedOrigin, replacement
-                        )).toList()
-                    );
-                }
-                Optional<DataType> returnType = Optional.empty();
-                if(data.returnType().isPresent()) {
-                    returnType = Optional.of(data.returnType().get()
-                        .replaceUnknown(replacedOrigin, replacement)
-                    );
-                }
-                return new DataType(
-                    this.type,
-                    new Closure(argumentTypes, returnType, data.bodies()),
-                    this.source,
-                    this.age
-                );
+                return this;
             }
             case UNION: {
                 Union data = this.getValue();
