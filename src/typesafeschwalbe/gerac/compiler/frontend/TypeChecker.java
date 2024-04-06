@@ -1253,6 +1253,15 @@ public class TypeChecker {
                 ));
             }
             if(nodeData.argumentTypes().isPresent()) {
+                if(nodeData.argumentTypes().get().equals(argTypes)) {
+                    if(bodyI == 0) {
+                        returnType = nodeData.returnType().get();
+                    } else {
+                        returnType = this.unify(
+                            returnType, nodeData.returnType().get(), usageSource
+                        );
+                    }
+                }
                 for(int argI = 0; argI < argTypes.size(); argI += 1) {
                     DataType argType = this.unify(
                         argTypes.get(argI),
@@ -1288,6 +1297,11 @@ public class TypeChecker {
             DataType bodyReturnType = hasReturnType
                 ? symbol.returnType.get()
                 : new DataType(DataType.Type.UNIT, context.node().source);
+            if(nodeData.returnType().isPresent()) {
+                bodyReturnType = this.unify(
+                    bodyReturnType, nodeData.returnType().get(), usageSource
+                );
+            }
             context.node().setValue(new AstNode.Closure(
                 nodeData.argumentNames(), Optional.of(argTypes),
                 Optional.of(bodyReturnType),
