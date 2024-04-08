@@ -250,9 +250,7 @@ public class Parser {
                     return List.of(new AstNode(
                         AstNode.Type.PROCEDURE,
                         new AstNode.Procedure(
-                            isPublic, name, argumentNames,
-                            Optional.empty(), Optional.empty(),
-                            body
+                            isPublic, name, argumentNames, body
                         ),
                         new Source(start.source, end.source)
                     ));

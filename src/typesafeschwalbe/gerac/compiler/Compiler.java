@@ -20,6 +20,8 @@ public class Compiler {
         long maxCallDepth
     ) {
         Symbols symbols = new Symbols();
+        BuiltIns.addParsedFiles(files);
+        BuiltIns.addSymbols(symbols);
         for(String fileName: files.keySet()) {
             String fileContent = files.get(fileName);
             Lexer fileLexer = new Lexer(fileName, fileContent);
@@ -28,25 +30,28 @@ public class Compiler {
                 Parser fileParser = new Parser(fileLexer, target);
                 nodes = fileParser.parseGlobalStatements();
             } catch(ParsingException e) {
+                BuiltIns.addUnparsedFiles(files);
                 return Result.ofError(e.error);
             }
-            Optional<Error> symbolAddError = symbols.add(nodes);
+            Optional<Error> symbolAddError = symbols.addAll(nodes);
             if(symbolAddError.isPresent()) {
+                BuiltIns.addUnparsedFiles(files);
                 return Result.ofError(symbolAddError.get());
             }
         }
+        BuiltIns.addUnparsedFiles(files);
         List<Error> canonicalizationErrors = symbols.canonicalize();
         if(canonicalizationErrors.size() > 0) {
             return Result.ofError(canonicalizationErrors);
         }
         Namespace mainPath = new Namespace(List.of(mainRaw.split("::")));
         Optional<Symbols.Symbol> main = symbols.get(mainPath);
-        if(main.isEmpty() || main.get().node().type != AstNode.Type.PROCEDURE) {
+        if(main.isEmpty() || main.get().type != Symbols.Symbol.Type.PROCEDURE) {
             return Result.ofError(new Error(
                 "The main procedure '" + mainRaw + "' does not exist"
             ));
         }
-        int mainArgC = main.get().node().<AstNode.Procedure>getValue()
+        int mainArgC = main.get().<Symbols.Symbol.Procedure>getValue()
             .argumentNames().size();
         if(mainArgC != 0) {
             return Result.ofError(new Error(

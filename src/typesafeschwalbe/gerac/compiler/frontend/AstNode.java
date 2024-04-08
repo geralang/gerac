@@ -14,8 +14,6 @@ public class AstNode {
         boolean isPublic,
         String name,
         List<String> argumentNames,
-        Optional<List<DataType>> argumentTypes,
-        Optional<DataType> returnType,
         List<AstNode> body
     ) {}
 

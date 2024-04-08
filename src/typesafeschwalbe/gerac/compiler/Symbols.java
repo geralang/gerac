@@ -8,9 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
+import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.frontend.TypeChecker;
+import typesafeschwalbe.gerac.compiler.frontend.TypingException;
 
 public class Symbols {
 
@@ -25,28 +29,74 @@ public class Symbols {
                     + path.toString() + "' was already declared"
             ),
             Error.Marking.info(
-                ogSymbol.node.source, "previously declared here"
+                ogSymbol.source, "previously declared here"
             )
         );
     }
 
-    public static class Symbol {
-        private final boolean isPublic;
-        private AstNode node;
-        private final Namespace[] usages;
-        public final List<AstNode> variants;
+    @FunctionalInterface
+    public interface ArgTypeChecker {
+        public boolean isValid(
+            List<DataType> argTypes, TypeChecker typeChecker
+        ) throws TypingException;
+    }
 
-        private Symbol(
-            boolean isPublic, AstNode node, Namespace[] usages
+    public static class Symbol {
+        
+        public static record Procedure(
+            List<String> argumentNames,
+            Optional<ArgTypeChecker> allowedArgumentTypes,
+            Optional<List<DataType>> argumentTypes,
+            Optional<Function<Source, DataType>> returnType,
+            Optional<List<AstNode>> body
+        ) {}
+
+        public static record Variable(
+            Optional<DataType> valueType,
+            Optional<AstNode> value
+        ) {}
+
+        public enum Type {
+            PROCEDURE, // = Procedure
+            VARIABLE   // = Variable
+        }
+
+        public final Type type;
+        public final boolean isPublic;
+        public final Source source;
+        private final Namespace[] usages;
+        private Object value;
+        private final List<Object> variants;
+
+        public Symbol(
+            Type type, boolean isPublic, Source source,
+            Namespace[] usages,
+            Object value
         ) {
+            this.type = type;
             this.isPublic = isPublic;
-            this.node = node;
+            this.source = source;
             this.usages = usages;
+            this.value = value;
             this.variants = new ArrayList<>();
         }
 
-        public boolean isPublic() { return this.isPublic; }
-        public AstNode node() { return this.node; }
+        @SuppressWarnings("unchecked")
+        public <T> T getValue() {
+            return (T) this.value;
+        }
+
+        public int variantCount() {
+            return this.variants.size();
+        }
+        @SuppressWarnings("unchecked")
+        public <T> T getVariant(int variantIdx) {
+            return (T) this.variants.get(variantIdx);
+        }
+        public void addVariant(Object value) {
+            this.variants.add(value);
+        }
+
     }
 
     private final Map<Namespace, Symbol> symbols;
@@ -56,8 +106,12 @@ public class Symbols {
         this.symbols = new HashMap<>();
         this.declaredModules = new HashMap<>();
     }
+
+    public void add(Namespace path, Symbol symbol) {
+        this.symbols.put(path, symbol);
+    }
     
-    public Optional<Error> add(List<AstNode> nodes) {
+    public Optional<Error> addAll(List<AstNode> nodes) {
         if(nodes.size() == 0) { return Optional.empty(); }
         if(nodes.get(0).type != AstNode.Type.MODULE_DECLARATION) {
             return Optional.of(new Error(
@@ -67,6 +121,7 @@ public class Symbols {
         }
         Namespace currentModule = null; // first node will overwrite this 
         List<Namespace> usages = new ArrayList<>();
+        usages.add(new Namespace(List.of("core", "*")));
         for(AstNode node: nodes) {
             switch(node.type) {
                 case MODULE_DECLARATION: {
@@ -108,8 +163,14 @@ public class Symbols {
                     this.symbols.put(
                         finalPath,
                         new Symbol(
-                            data.isPublic(), node,
-                            usages.toArray(Namespace[]::new)
+                            Symbol.Type.PROCEDURE, data.isPublic(), 
+                            node.source, usages.toArray(Namespace[]::new),
+                            new Symbol.Procedure(
+                                data.argumentNames(),
+                                Optional.empty(),
+                                Optional.empty(), Optional.empty(),
+                                Optional.of(data.body())
+                            )
                         )
                     );
                 } break;
@@ -128,8 +189,11 @@ public class Symbols {
                     this.symbols.put(
                         finalPath,
                         new Symbol(
-                            data.isPublic(), node,
-                            usages.toArray(Namespace[]::new)
+                            Symbol.Type.VARIABLE, data.isPublic(), 
+                            node.source, usages.toArray(Namespace[]::new),
+                            new Symbol.Variable(
+                                Optional.empty(), data.value()
+                            )
                         )
                     );
                 } break;
@@ -146,10 +210,39 @@ public class Symbols {
 
     public List<Error> canonicalize() {
         List<Error> errors = new ArrayList<>();
-        for(Symbol symbols: this.symbols.values()) {
-            symbols.node = this.canonicalizeNode(
-                symbols.node, symbols, new HashSet<>(), errors
-            );
+        for(Symbol symbol: this.symbols.values()) {
+            switch(symbol.type) {
+                case VARIABLE: {
+                    Symbol.Variable data = symbol.getValue();
+                    if(data.value.isPresent()) {
+                        AstNode value = this.canonicalizeNode(
+                            data.value.get(), symbol, new HashSet<>(), errors
+                        );
+                        symbol.value = new Symbol.Variable(
+                            Optional.empty(), Optional.of(value)
+                        );
+                    }
+                } break;
+                case PROCEDURE: {
+                    Symbol.Procedure data = symbol.getValue();
+                    if(data.body.isPresent()) {
+                        Set<String> variables = new HashSet<>();
+                        for(String argument: data.argumentNames()) {
+                            variables.add(argument);
+                        }
+                        List<AstNode> body = data.body.get()
+                            .stream().map(node -> this.canonicalizeNode(
+                                node, symbol, variables, errors
+                            )).toList();
+                        symbol.value = new Symbol.Procedure(
+                            data.argumentNames(), 
+                            Optional.empty(),
+                            Optional.empty(), Optional.empty(),
+                            Optional.of(body)
+                        );
+                    }
+                } break;
+            }
         }
         return errors;
     }
@@ -171,16 +264,13 @@ public class Symbols {
         switch(node.type) {
             case VARIABLE: {
                 AstNode.Variable data = node.getValue();
-                boolean isLocal = symbol.node != node;
                 Optional<AstNode> value = Optional.empty();
                 if(data.value().isPresent()) {
                     value = Optional.of(this.canonicalizeNode(
                         data.value().get(), symbol, variables, errors
                     ));
                 }
-                if(isLocal) {
-                    variables.add(data.name());
-                }
+                variables.add(data.name());
                 return new AstNode(
                     node.type,
                     new AstNode.Variable(
@@ -219,7 +309,7 @@ public class Symbols {
                         Optional<Symbol> accessedSymbol = this.get(fullPath);
                         if(accessedSymbol.isEmpty()) { continue; }
                         boolean fileMatches = accessedSymbol.get()
-                            .node.source.file.equals(node.source.file);
+                            .source.file.equals(node.source.file);
                         boolean accessAllowed = accessedSymbol.get().isPublic
                             || fileMatches;
                         if(!accessAllowed) { continue; }
@@ -234,7 +324,7 @@ public class Symbols {
                     return node;
                 }
                 boolean accessAllowed = accessed.get().isPublic
-                    || accessed.get().node.source.file.equals(node.source.file);
+                    || accessed.get().source.file.equals(node.source.file);
                 if(!accessAllowed) {
                     errors.add(Symbols.makeInvalidSymbolError(
                         node.source, expanded
@@ -441,26 +531,6 @@ public class Symbols {
                     node.source
                 ); 
             }
-            case PROCEDURE: {
-                AstNode.Procedure data = node.getValue();
-                Set<String> bodyVariables = new HashSet<>(variables);
-                for(String argument: data.argumentNames()) {
-                    bodyVariables.add(argument);
-                }
-                List<AstNode> body = data.body()
-                    .stream().map(statement -> this.canonicalizeNode(
-                        statement, symbol, bodyVariables, errors
-                    )).toList();
-                return new AstNode(
-                    node.type,
-                    new AstNode.Procedure(
-                        data.isPublic(), data.name(),
-                        data.argumentNames(), data.argumentTypes(),
-                        data.returnType(), body
-                    ),
-                    node.source
-                );
-            }
             case ADD:
             case AND:
             case ARRAY_ACCESS:
@@ -506,7 +576,8 @@ public class Symbols {
             case UNIT_LITERAL:
             case TARGET:
             case USE:
-            case MODULE_DECLARATION: {
+            case MODULE_DECLARATION:
+            case PROCEDURE: {
                 return node;
             }
             default: {
