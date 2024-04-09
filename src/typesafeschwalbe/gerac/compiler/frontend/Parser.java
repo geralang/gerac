@@ -811,12 +811,34 @@ public class Parser {
                 }
                 case BRACKET_OPEN: {
                     this.next();
+                    AstNode value = this.parseExpression();
+                    this.expect(
+                        Token.Type.COMMA, Token.Type.SEMICOLON, 
+                        Token.Type.BRACKET_CLOSE
+                    );
+                    if(this.current.type == Token.Type.SEMICOLON) {
+                        this.next();
+                        AstNode size = this.parseExpression();
+                        this.expect(Token.Type.BRACKET_CLOSE);
+                        Token end = this.current;
+                        this.next();
+                        previous = Optional.of(new AstNode(
+                            AstNode.Type.REPEATING_ARRAY_LITERAL,
+                            new AstNode.BiOp(value, size),
+                            new Source(start.source, end.source)
+                        ));
+                        continue;
+                    }
                     List<AstNode> values = new ArrayList<>();
-                    while(this.current.type != Token.Type.BRACKET_CLOSE) {
-                        values.add(this.parseExpression());
-                        this.expect(Token.Type.BRACKET_CLOSE, Token.Type.COMMA);
-                        if(this.current.type == Token.Type.COMMA) {
-                            this.next();
+                    values.add(value);
+                    if(this.current.type == Token.Type.COMMA) {
+                        this.next();                        
+                        while(this.current.type != Token.Type.BRACKET_CLOSE) {
+                            values.add(this.parseExpression());
+                            this.expect(Token.Type.BRACKET_CLOSE, Token.Type.COMMA);
+                            if(this.current.type == Token.Type.COMMA) {
+                                this.next();
+                            }
                         }
                     }
                     Token end = this.current;

@@ -57,8 +57,8 @@ public class Symbols {
         ) {}
 
         public enum Type {
-            PROCEDURE, // = Procedure
-            VARIABLE   // = Variable
+            PROCEDURE, // Procedure
+            VARIABLE   // Variable
         }
 
         public final Type type;
@@ -531,6 +531,7 @@ public class Symbols {
                     node.source
                 ); 
             }
+            case REPEATING_ARRAY_LITERAL:
             case ADD:
             case AND:
             case ARRAY_ACCESS:

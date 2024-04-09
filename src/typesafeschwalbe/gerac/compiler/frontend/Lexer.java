@@ -329,6 +329,9 @@ public class Lexer {
                     return this.makeToken("::", Token.Type.DOUBLE_COLON);
                 }
                 break;
+            case ';':
+                this.next();
+                return this.makeToken(";", Token.Type.SEMICOLON);
             case '#':
                 this.next();
                 return this.makeToken("#", Token.Type.HASHTAG);

@@ -853,6 +853,36 @@ public class TypeChecker {
                     )
                 );
             }
+            case REPEATING_ARRAY_LITERAL: {
+                AstNode.BiOp data = node.getValue();
+                AstNode valueTyped = this.typeNode(data.left());
+                DataType valueType = valueTyped.resultType.get();
+                AstNode sizeTyped = this.typeNode(data.right());
+                DataType sizeType = sizeTyped.resultType.get();
+                if(sizeType.type != DataType.Type.INTEGER) {
+                    throw new TypingException(new Error(
+                        "Array size is a non-integer type",
+                        Error.Marking.error(
+                            sizeType.source, 
+                            "this is " + sizeType.toString()
+                        ),
+                        Error.Marking.error(
+                            sizeTyped.source, 
+                            "but the size value is required to be an integer"
+                        )
+                    ));
+                }
+                return new AstNode(
+                    node.type,
+                    new AstNode.BiOp(valueTyped, sizeTyped),
+                    node.source,
+                    new DataType(
+                        DataType.Type.ARRAY, 
+                        new DataType.Array(valueType), 
+                        node.source
+                    )
+                );
+            }
             case OBJECT_ACCESS: {
                 AstNode.ObjectAccess data = node.getValue();
                 AstNode accessedTyped = this.typeNode(data.accessed());
@@ -899,13 +929,14 @@ public class TypeChecker {
                 DataType indexType = indexTyped.resultType.get();
                 if(indexType.type != DataType.Type.INTEGER) {
                     throw new TypingException(new Error(
-                        "Array access done with a non-integer type",
+                        "Array indexed with a non-integer type",
                         Error.Marking.error(
                             indexType.source, 
                             "this is " + indexType.toString()
                         ),
                         Error.Marking.error(
-                            node.source, "but this index requires an integer"
+                            indexTyped.source, 
+                            "but the index is required to be an integer"
                         )
                     ));
                 }

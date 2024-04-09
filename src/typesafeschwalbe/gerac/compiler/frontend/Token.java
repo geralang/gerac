@@ -21,6 +21,7 @@ public class Token {
         COMMA("','"),
         ARROW("'->'"),
         DOUBLE_COLON("'::'"),
+        SEMICOLON("';'"),
         EXCLAMATION_MARK("'!'"),
         ASTERISK("'*'", 3),
         SLASH("'/'", 3),
