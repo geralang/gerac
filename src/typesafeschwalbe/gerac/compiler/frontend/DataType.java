@@ -24,6 +24,11 @@ public final class DataType {
         Map<String, DataType> memberTypes
     ) {}
 
+    public static record OrderedObject(
+        List<String> memberNames,
+        List<DataType> memberTypes
+    ) {}
+
     public static record Closure(
         List<ClosureContext> bodies
     ) {}
@@ -41,6 +46,7 @@ public final class DataType {
         STRING,           // = null
         ARRAY,            // Array
         UNORDERED_OBJECT, // UnorderedObject
+        ORDERED_OBJECT,   // OrderedObject
         CLOSURE,          // Closure
         UNION             // Union
     }

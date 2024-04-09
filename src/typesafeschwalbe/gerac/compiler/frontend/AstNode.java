@@ -22,7 +22,7 @@ public class AstNode {
         Optional<List<DataType>> argumentTypes,
         Optional<DataType> returnType,
         Optional<Set<String>> captures,
-        List<AstNode> body
+        Optional<List<AstNode>> body
     ) {}
 
     public static record Variable(

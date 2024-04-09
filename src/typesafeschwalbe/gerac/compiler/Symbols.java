@@ -465,7 +465,7 @@ public class Symbols {
                 for(String argument: data.argumentNames()) {
                     bodyVariables.add(argument);
                 }
-                List<AstNode> body = data.body()
+                List<AstNode> body = data.body().get()
                     .stream().map(statement -> this.canonicalizeNode(
                         statement, symbol, bodyVariables, errors
                     )).toList();
@@ -474,7 +474,7 @@ public class Symbols {
                     new AstNode.Closure(
                         data.argumentNames(), Optional.empty(),
                         Optional.empty(), Optional.empty(),
-                        body
+                        Optional.of(body)
                     ),
                     node.source
                 );

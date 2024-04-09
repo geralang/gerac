@@ -7,7 +7,7 @@ import java.util.List;
 
 import typesafeschwalbe.gerac.compiler.frontend.Lexer;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
-import typesafeschwalbe.gerac.compiler.frontend.Parser;
+import typesafeschwalbe.gerac.compiler.frontend.SourceParser;
 import typesafeschwalbe.gerac.compiler.frontend.ParsingException;
 import typesafeschwalbe.gerac.compiler.frontend.TypeChecker;
 import typesafeschwalbe.gerac.compiler.frontend.TypingException;
@@ -27,7 +27,7 @@ public class Compiler {
             Lexer fileLexer = new Lexer(fileName, fileContent);
             List<AstNode> nodes;
             try {
-                Parser fileParser = new Parser(fileLexer, target);
+                SourceParser fileParser = new SourceParser(fileLexer, target);
                 nodes = fileParser.parseGlobalStatements();
             } catch(ParsingException e) {
                 BuiltIns.addUnparsedFiles(files);

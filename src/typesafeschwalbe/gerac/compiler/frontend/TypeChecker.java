@@ -251,13 +251,12 @@ public class TypeChecker {
             List<DataType> argTypes = new ArrayList<>(argumentTypes);
             if(data.allowedArgumentTypes().isEmpty()) {
                 if(data.argumentTypes().isPresent()) {
-                    argTypes.clear();
                     for(int argI = 0; argI < argumentTypes.size(); argI += 1) {
-                        argTypes.add(this.unify(
+                        this.unify(
                             data.argumentTypes().get().get(argI), 
                             argumentTypes.get(argI), 
                             callSource
-                        ));
+                        );
                     }
                 }
             } else {
@@ -1242,11 +1241,11 @@ public class TypeChecker {
                                 symbolData.argumentNames(),
                                 Optional.empty(), Optional.empty(),
                                 Optional.empty(),
-                                List.of(new AstNode(
+                                Optional.of(List.of(new AstNode(
                                     AstNode.Type.RETURN,
                                     new AstNode.MonoOp(closureValue),
                                     node.source
-                                ))    
+                                )))
                             ),
                             node.source
                         );
@@ -1358,48 +1357,64 @@ public class TypeChecker {
                     argTypes.set(argI, argType);
                 }
             }
-            this.enterSymbol(new Namespace(List.of()), argTypes);
-            this.currentSymbol().blocks.addAll(context.context());
-            this.enterBlock();
-            for(int argI = 0; argI < argTypes.size(); argI += 1) {
-                String argName = nodeData.argumentNames().get(argI);
-                DataType argType = argTypes.get(argI);
-                this.currentBlock().variableTypes.put(
-                    argName, Optional.of(argType)
-                );
-                this.currentBlock().variablesMutable.put(argName, false);
-            }
-            List<AstNode> typedBody = this.typeNodes(nodeData.body());
-            CheckedBlock block = this.exitBlock();
-            CheckedSymbol symbol = this.exitSymbol();
-            boolean hasReturnType = symbol.returnType.isPresent()
+            DataType contextReturnType;
+            Optional<List<AstNode>> contextTypedBody;
+            Optional<Set<String>> contextCaptures;
+            if(nodeData.body().isPresent()) {
+                this.enterSymbol(new Namespace(List.of()), argTypes);
+                this.currentSymbol().blocks.addAll(context.context());
+                this.enterBlock();
+                for(int argI = 0; argI < argTypes.size(); argI += 1) {
+                    String argName = nodeData.argumentNames().get(argI);
+                    DataType argType = argTypes.get(argI);
+                    this.currentBlock().variableTypes.put(
+                        argName, Optional.of(argType)
+                    );
+                    this.currentBlock().variablesMutable.put(argName, false);
+                }
+                List<AstNode> typedBody = this.typeNodes(nodeData.body().get());
+                CheckedBlock block = this.exitBlock();
+                CheckedSymbol symbol = this.exitSymbol();
+                boolean hasReturnType = symbol.returnType.isPresent()
                 && symbol.returnType.get().type != DataType.Type.UNIT;
-            if(!block.returns && hasReturnType) {
-                throw new TypingException(
-                    TypeChecker.makeNotAlwaysReturnError(
-                        symbol.returnType.get(), context.node().source
-                    )
-                );
-            }
-            DataType bodyReturnType = hasReturnType
-                ? symbol.returnType.get()
-                : new DataType(DataType.Type.UNIT, context.node().source);
-            if(nodeData.returnType().isPresent()) {
-                bodyReturnType = this.unify(
-                    bodyReturnType, nodeData.returnType().get(), usageSource
-                );
+                if(!block.returns && hasReturnType) {
+                    throw new TypingException(
+                        TypeChecker.makeNotAlwaysReturnError(
+                            symbol.returnType.get(), context.node().source
+                        )
+                    );
+                }
+                contextReturnType = hasReturnType
+                    ? symbol.returnType.get()
+                    : new DataType(DataType.Type.UNIT, context.node().source);
+                contextTypedBody = Optional.of(typedBody);
+                contextCaptures = Optional.of(block.captures);
+                if(nodeData.returnType().isPresent()) {
+                    contextReturnType = this.unify(
+                        contextReturnType, nodeData.returnType().get(), usageSource
+                    );
+                } 
+            } else {
+                if(nodeData.returnType().isEmpty()) {
+                    throw new RuntimeException(
+                        "closures without bodies must specify types!"
+                    );
+                }
+                contextReturnType = nodeData.returnType().get();
+                contextTypedBody = Optional.empty();
+                contextCaptures = Optional.empty();
             }
             context.node().setValue(new AstNode.Closure(
                 nodeData.argumentNames(), Optional.of(argTypes),
-                Optional.of(bodyReturnType),
-                Optional.of(block.captures),
-                typedBody
+                Optional.of(contextReturnType),
+                contextCaptures,
+                contextTypedBody
             ));
             if(bodyI == 0) {
-                returnType = bodyReturnType;
+                returnType = contextReturnType;
             } else {
                 returnType = this.unify(
-                    returnType, bodyReturnType, usageSource
+                    returnType, contextReturnType, usageSource
                 );
             }
         }
@@ -1409,7 +1424,13 @@ public class TypeChecker {
     private DataType unify(
         DataType a, DataType b, Source source
     ) throws TypingException {
-        if(a.type != b.type) {
+        boolean isValid = a.type == b.type
+            || (a.type == DataType.Type.ORDERED_OBJECT
+                && b.type == DataType.Type.UNORDERED_OBJECT
+            ) || (b.type == DataType.Type.ORDERED_OBJECT
+                && a.type == DataType.Type.UNORDERED_OBJECT
+            );
+        if(!isValid) {
             throw new TypingException(TypeChecker.makeIncompatibleError(
                 source, 
                 a.source, a.toString(),
@@ -1465,6 +1486,29 @@ public class TypeChecker {
                 }
                 value = new DataType.UnorderedObject(memberTypes);
             } break;
+            case ORDERED_OBJECT: {
+                DataType.OrderedObject aData = a.getValue();
+                Map<String, DataType> aMemberTypes = new HashMap<>();
+                for(
+                    int memberI = 0;
+                    memberI < aData.memberNames().size();
+                    memberI += 1
+                ) {
+                    aMemberTypes.put(
+                        aData.memberNames().get(memberI), 
+                        aData.memberTypes().get(memberI)
+                    );
+                }
+                return this.unify(
+                    b,
+                    new DataType(
+                        DataType.Type.UNORDERED_OBJECT,
+                        new DataType.UnorderedObject(aMemberTypes),
+                        a.source
+                    ),
+                    source
+                );
+            }
             case CLOSURE: {
                 DataType.Closure dataA = a.getValue();
                 DataType.Closure dataB = b.getValue();
