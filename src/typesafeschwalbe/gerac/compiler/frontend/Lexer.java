@@ -184,7 +184,7 @@ public class Lexer {
             return new Token(
                 Token.Type.STRING,
                 content.toString(),
-                new Source(this.fileContent, startPos, this.currentPos)
+                new Source(this.fileName, startPos, this.currentPos)
             );
         }
         if(Lexer.isAlphanumeral(this.current())) {
