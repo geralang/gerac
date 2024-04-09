@@ -14,30 +14,131 @@ import typesafeschwalbe.gerac.compiler.Symbols;
 
 public class ExternalMappingsParser extends Parser {
 
+    private Symbols symbols;
     private Map<String, DataType> declaredTypes;
 
     public ExternalMappingsParser(
         Lexer lexer, Symbols symbols
     ) throws ParsingException {
         super(lexer);
+        this.symbols = symbols;
         this.declaredTypes = new HashMap<>();
     }
 
-    public void parseMappings() throws ParsingException {
+    public void parseStatements() throws ParsingException {
+        while(this.current.type != Token.Type.FILE_END) {
+            this.parseStatement(); 
+        }
+    }
+
+    private void parseStatement() throws ParsingException {
         Token start = this.current;
         switch(start.content) {
             case "type": {
-                // TODO: PARSE TYPE DECLARATION
-                throw new RuntimeException("not yet implemented");
-            }
+                this.next();
+                this.expect(Token.Type.IDENTIFIER);
+                String name = this.current.content;
+                this.next();
+                this.expect(Token.Type.EQUALS);
+                this.next();
+                DataType type = this.parseType();
+                this.declaredTypes.put(name, type);
+            } break;
             case "proc": {
-                // TODO: PARSE EXTERNAL PROCEDURE DECLARATION
-                throw new RuntimeException("not yet implemented");
-            }
+                this.next();
+                List<String> pathElements = new ArrayList<>();
+                this.expect(Token.Type.IDENTIFIER);
+                pathElements.add(this.current.content);
+                this.next();
+                this.expect(Token.Type.DOUBLE_COLON);
+                while(this.current.type == Token.Type.DOUBLE_COLON) {
+                    this.next();
+                    this.expect(Token.Type.IDENTIFIER);
+                    pathElements.add(this.current.content);
+                    this.next();
+                }
+                this.expect(Token.Type.PAREN_OPEN);
+                this.next();
+                List<DataType> argumentTypes = new ArrayList<>();
+                List<String> argumentNames = new ArrayList<>();
+                while(this.current.type != Token.Type.PAREN_CLOSE) {
+                    DataType argumentType = this.parseType();
+                    argumentTypes.add(argumentType);
+                    argumentNames.add("arg" + argumentNames.size());
+                    this.expect(Token.Type.PAREN_CLOSE, Token.Type.COMMA);
+                    if(this.current.type == Token.Type.COMMA) {
+                        this.next();
+                    }
+                }
+                this.next();
+                this.expect(Token.Type.ARROW, Token.Type.EQUALS);
+                DataType returnType;
+                if(this.current.type == Token.Type.ARROW) {
+                    this.next();
+                    returnType = this.parseType();
+                } else {
+                    returnType = new DataType(
+                        DataType.Type.UNIT, this.current.source
+                    );
+                }
+                this.expect(Token.Type.EQUALS);
+                this.next();
+                this.expect(Token.Type.IDENTIFIER);
+                String externalName = this.current.content;
+                Token end = this.current;
+                this.next();
+                this.symbols.add(
+                    new Namespace(pathElements),
+                    new Symbols.Symbol(
+                        Symbols.Symbol.Type.PROCEDURE, 
+                        true, new Source(start.source, end.source), 
+                        new Namespace[0], 
+                        new Symbols.Symbol.Procedure(
+                            argumentNames,
+                            Optional.empty(),
+                            Optional.of(argumentTypes), 
+                            Optional.of(src -> new DataType(
+                                    returnType.type, returnType.getValue(), src
+                            )),
+                            Optional.empty()
+                        ),
+                        Optional.of(externalName)
+                    )
+                );
+            } break;
             case "var": {
-                // TODO: PARSE EXTERNAL VARIABLE DECLARATION
-                throw new RuntimeException("not yet implemented");
-            }
+                this.next();
+                List<String> pathElements = new ArrayList<>();
+                this.expect(Token.Type.IDENTIFIER);
+                pathElements.add(this.current.content);
+                this.next();
+                this.expect(Token.Type.DOUBLE_COLON);
+                while(this.current.type == Token.Type.DOUBLE_COLON) {
+                    this.next();
+                    this.expect(Token.Type.IDENTIFIER);
+                    pathElements.add(this.current.content);
+                    this.next();
+                }
+                DataType valueType = this.parseType();
+                this.expect(Token.Type.EQUALS);
+                this.next();
+                this.expect(Token.Type.IDENTIFIER);
+                String externalName = this.current.content;
+                Token end = this.current;
+                this.next();
+                this.symbols.add(
+                    new Namespace(pathElements),
+                    new Symbols.Symbol(
+                        Symbols.Symbol.Type.VARIABLE,
+                        true, new Source(start.source, end.source),
+                        new Namespace[0],
+                        new Symbols.Symbol.Variable(
+                            Optional.of(valueType), Optional.empty()
+                        ),
+                        Optional.of(externalName)
+                    )
+                );
+            } break;
             default: {
                 this.throwUnexpected("'type', 'proc' or 'var'");
             }
@@ -112,6 +213,7 @@ public class ExternalMappingsParser extends Parser {
                         return new DataType(DataType.Type.STRING, start.source);
                     }
                     default: {
+                        this.next();
                         if(this.declaredTypes.containsKey(start.content)) {
                             return this.declaredTypes.get(start.content);
                         }

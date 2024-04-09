@@ -139,7 +139,7 @@ public class TypeChecker {
                 bSource, "this is " + bType
             ),
             Error.Marking.error(
-                opSource, "the two are expected to be compatible here"
+                opSource, "this expects the two to be compatible"
             )
         );
     }
@@ -753,14 +753,31 @@ public class TypeChecker {
                 AstNode.MethodCall data = node.getValue();
                 AstNode accessedTyped = this.typeNode(data.called());
                 DataType accessedType = accessedTyped.resultType.get();
-                if(accessedType.type != DataType.Type.UNORDERED_OBJECT) {
+                DataType calledType;
+                if(accessedType.type == DataType.Type.UNORDERED_OBJECT) {
+                    calledType = accessedType
+                        .<DataType.UnorderedObject>getValue()
+                        .memberTypes().get(data.memberName());
+                } else if(accessedType.type == DataType.Type.ORDERED_OBJECT) {
+                    calledType = null;
+                    DataType.OrderedObject accessedData
+                        = accessedType.getValue();
+                    for(
+                        int memberI = 0; 
+                        memberI < accessedData.memberNames().size(); 
+                        memberI += 1
+                    ) {
+                        boolean nameMatches = accessedData.memberNames()
+                            .get(memberI).equals(data.memberName());
+                        if(!nameMatches) { continue; }
+                        accessedType = accessedData.memberTypes().get(memberI);
+                        break;
+                    }
+                } else {
                     throw new TypingException(TypeChecker.makeNonbjectError(
                         accessedType, node.source
                     ));
                 }
-                DataType calledType = accessedType
-                    .<DataType.UnorderedObject>getValue()
-                    .memberTypes().get(data.memberName());
                 if(calledType == null) {
                     throw new TypingException(
                         TypeChecker.makeMissingMemberError(
@@ -886,14 +903,31 @@ public class TypeChecker {
                 AstNode.ObjectAccess data = node.getValue();
                 AstNode accessedTyped = this.typeNode(data.accessed());
                 DataType accessedType = accessedTyped.resultType.get();
-                if(accessedType.type != DataType.Type.UNORDERED_OBJECT) {
+                DataType resultType;
+                if(accessedType.type == DataType.Type.UNORDERED_OBJECT) {
+                    resultType = accessedType
+                        .<DataType.UnorderedObject>getValue()
+                        .memberTypes().get(data.memberName());
+                } else if(accessedType.type == DataType.Type.ORDERED_OBJECT) {
+                    resultType = null;
+                    DataType.OrderedObject accessedData
+                        = accessedType.getValue();
+                    for(
+                        int memberI = 0; 
+                        memberI < accessedData.memberNames().size(); 
+                        memberI += 1
+                    ) {
+                        boolean nameMatches = accessedData.memberNames()
+                            .get(memberI).equals(data.memberName());
+                        if(!nameMatches) { continue; }
+                        resultType = accessedData.memberTypes().get(memberI);
+                        break;
+                    }
+                } else {
                     throw new TypingException(TypeChecker.makeNonbjectError(
                         accessedType, node.source
                     ));
                 }
-                DataType resultType = accessedType
-                    .<DataType.UnorderedObject>getValue()
-                    .memberTypes().get(data.memberName());
                 if(resultType == null) {
                     throw new TypingException(
                         TypeChecker.makeMissingMemberError(
@@ -1472,8 +1506,8 @@ public class TypeChecker {
                         String withoutMsg = "an object without it";
                         Error e = TypeChecker.makeIncompatibleError(
                             source, 
-                            a.source, inA? inMsg : withoutMsg,
-                            b.source, inB? inMsg : withoutMsg
+                            (inA? a : b).source, inMsg,
+                            (inA? b : a).source, withoutMsg 
                         );
                         throw new TypingException(e);
                     }

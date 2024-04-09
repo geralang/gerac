@@ -63,9 +63,7 @@ public class Error {
     public final Marking[] markings;
 
     public Error(String message, Marking... markings) {
-        this.message = Math.floor(Math.random() * 10000) == 0
-            ? "You fucked up big time"
-            : message;
+        this.message = message;
         this.markings = markings;
     }
 

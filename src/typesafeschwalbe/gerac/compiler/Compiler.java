@@ -12,6 +12,7 @@ import typesafeschwalbe.gerac.compiler.frontend.ParsingException;
 import typesafeschwalbe.gerac.compiler.frontend.TypeChecker;
 import typesafeschwalbe.gerac.compiler.frontend.TypingException;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
+import typesafeschwalbe.gerac.compiler.frontend.ExternalMappingsParser;
 
 public class Compiler {
 
@@ -25,18 +26,34 @@ public class Compiler {
         for(String fileName: files.keySet()) {
             String fileContent = files.get(fileName);
             Lexer fileLexer = new Lexer(fileName, fileContent);
-            List<AstNode> nodes;
-            try {
-                SourceParser fileParser = new SourceParser(fileLexer, target);
-                nodes = fileParser.parseGlobalStatements();
-            } catch(ParsingException e) {
+            if(fileName.endsWith(".gera")) {
+                List<AstNode> nodes;
+                try {
+                    SourceParser fileParser = new SourceParser(fileLexer, target);
+                    nodes = fileParser.parseGlobalStatements();
+                } catch(ParsingException e) {
+                    BuiltIns.addUnparsedFiles(files);
+                    return Result.ofError(e.error);
+                }
+                Optional<Error> symbolAddError = symbols.addAll(nodes);
+                if(symbolAddError.isPresent()) {
+                    BuiltIns.addUnparsedFiles(files);
+                    return Result.ofError(symbolAddError.get());
+                }
+            } else if(fileName.endsWith(".gem")) {
+                try {
+                    ExternalMappingsParser fileParser
+                        = new ExternalMappingsParser(fileLexer, symbols);
+                    fileParser.parseStatements();
+                } catch(ParsingException e) {
+                    BuiltIns.addUnparsedFiles(files);
+                    return Result.ofError(e.error);
+                }
+            } else {
                 BuiltIns.addUnparsedFiles(files);
-                return Result.ofError(e.error);
-            }
-            Optional<Error> symbolAddError = symbols.addAll(nodes);
-            if(symbolAddError.isPresent()) {
-                BuiltIns.addUnparsedFiles(files);
-                return Result.ofError(symbolAddError.get());
+                return Result.ofError(new Error(
+                    "Unsupported file extension for file '" + fileName + "'"
+                ));
             }
         }
         BuiltIns.addUnparsedFiles(files);

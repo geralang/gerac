@@ -67,11 +67,13 @@ public class Symbols {
         private final Namespace[] usages;
         private Object value;
         private final List<Object> variants;
+        public final Optional<String> externalName;
 
         public Symbol(
             Type type, boolean isPublic, Source source,
             Namespace[] usages,
-            Object value
+            Object value, 
+            Optional<String> externalName
         ) {
             this.type = type;
             this.isPublic = isPublic;
@@ -79,6 +81,7 @@ public class Symbols {
             this.usages = usages;
             this.value = value;
             this.variants = new ArrayList<>();
+            this.externalName = externalName;
         }
 
         @SuppressWarnings("unchecked")
@@ -170,7 +173,8 @@ public class Symbols {
                                 Optional.empty(),
                                 Optional.empty(), Optional.empty(),
                                 Optional.of(data.body())
-                            )
+                            ),
+                            Optional.empty()
                         )
                     );
                 } break;
@@ -193,7 +197,8 @@ public class Symbols {
                             node.source, usages.toArray(Namespace[]::new),
                             new Symbol.Variable(
                                 Optional.empty(), data.value()
-                            )
+                            ),
+                            Optional.empty()
                         )
                     );
                 } break;

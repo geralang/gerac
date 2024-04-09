@@ -131,6 +131,7 @@ public final class DataType {
             case STRING: return "a string";
             case ARRAY: return "an array";
             case UNORDERED_OBJECT: return "an object";
+            case ORDERED_OBJECT: return "an object";
             case CLOSURE: return "a closure";
             case UNION: return "a union";
             default: {

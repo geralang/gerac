@@ -62,7 +62,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.BOOLEAN, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -85,7 +86,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.BOOLEAN, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -108,7 +110,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.INTEGER, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -149,7 +152,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.UNIT, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -168,7 +172,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.UNIT, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -185,7 +190,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.STRING, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -208,7 +214,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.INTEGER, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -231,7 +238,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.FLOAT, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -256,7 +264,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.STRING, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -279,7 +288,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.STRING, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
         symbols.add(
@@ -296,7 +306,8 @@ public class BuiltIns {
                         src -> new DataType(DataType.Type.INTEGER, src)
                     ),
                     Optional.empty()
-                )
+                ),
+                Optional.empty()
             )
         );
     }
