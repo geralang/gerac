@@ -8,9 +8,8 @@ import java.util.List;
 import typesafeschwalbe.gerac.compiler.frontend.Lexer;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 import typesafeschwalbe.gerac.compiler.frontend.SourceParser;
-import typesafeschwalbe.gerac.compiler.frontend.ParsingException;
 import typesafeschwalbe.gerac.compiler.frontend.TypeChecker;
-import typesafeschwalbe.gerac.compiler.frontend.TypingException;
+import typesafeschwalbe.gerac.compiler.backend.Interpreter;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.ExternalMappingsParser;
 
@@ -31,7 +30,7 @@ public class Compiler {
                 try {
                     SourceParser fileParser = new SourceParser(fileLexer, target);
                     nodes = fileParser.parseGlobalStatements();
-                } catch(ParsingException e) {
+                } catch(ErrorException e) {
                     BuiltIns.addUnparsedFiles(files);
                     return Result.ofError(e.error);
                 }
@@ -45,7 +44,7 @@ public class Compiler {
                     ExternalMappingsParser fileParser
                         = new ExternalMappingsParser(fileLexer, symbols);
                     fileParser.parseStatements();
-                } catch(ParsingException e) {
+                } catch(ErrorException e) {
                     BuiltIns.addUnparsedFiles(files);
                     return Result.ofError(e.error);
                 }
@@ -80,9 +79,28 @@ public class Compiler {
             typeChecker.checkProcedureCall(
                 mainPath, main.get(), List.of(), null
             );
-        } catch(TypingException e) {
+        } catch(ErrorException e) {
             return Result.ofError(e.error);
         }
+        // FOR DEBUGGING THE INTERPRETER ///////////////////////////////////////
+        Interpreter interpreter = new Interpreter(files, symbols);
+        try {
+            interpreter.evaluateNode(new AstNode(
+                AstNode.Type.CALL,
+                new AstNode.Call(
+                    new AstNode(
+                        AstNode.Type.MODULE_ACCESS,
+                        new AstNode.ModuleAccess(mainPath, Optional.of(0)),
+                        new Source(BuiltIns.BUILTIN_FILE_NAME, 0, 0)
+                    ),
+                    List.of()
+                ),
+                new Source(BuiltIns.BUILTIN_FILE_NAME, 0, 0)
+            ));
+        } catch(ErrorException e) {
+            return Result.ofError(e.error);
+        }
+        ////////////////////////////////////////////////////////////////////////
         return Result.ofValue("");
     }
 

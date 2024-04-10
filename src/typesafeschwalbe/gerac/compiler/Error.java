@@ -4,6 +4,8 @@ package typesafeschwalbe.gerac.compiler;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
 
 public class Error {
 
@@ -61,10 +63,20 @@ public class Error {
 
     public final String message;
     public final Marking[] markings;
+    public final Optional<Function<Boolean, String>> appended;
 
     public Error(String message, Marking... markings) {
         this.message = message;
         this.markings = markings;
+        this.appended = Optional.empty();
+    }
+
+    public Error(
+        String message, Function<Boolean, String> appended, Marking... markings
+    ) {
+        this.message = message;
+        this.markings = markings;
+        this.appended = Optional.of(appended);
     }
 
     public String render(Map<String, String> files, boolean colored) {
@@ -233,6 +245,15 @@ public class Error {
             output.append(separationLineColor);
             output.append(" ".repeat(paddingSpaces + maxLineNumberLength - 1));
             output.append("─╯\n");
+        }
+        if(colored) {
+            output.append(Color.from());
+        }
+        if(this.appended.isPresent()) {
+            output.append(this.appended.get().apply(colored));
+        }
+        if(colored) {
+            output.append(Color.from());
         }
         return output.toString();
     }

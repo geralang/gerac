@@ -253,9 +253,9 @@ public class BuiltIns {
                     Optional.of((args, tc) -> {
                         boolean sourceIsString = args.get(0).type
                             == DataType.Type.STRING;
-                        boolean startIsInt = args.get(0).type
+                        boolean startIsInt = args.get(1).type
                             == DataType.Type.INTEGER;
-                        boolean endIsInt = args.get(0).type
+                        boolean endIsInt = args.get(2).type
                             == DataType.Type.INTEGER;
                         return sourceIsString && startIsInt && endIsInt;
                     }),
@@ -279,7 +279,7 @@ public class BuiltIns {
                     Optional.of((args, tc) -> {
                         boolean aIsString = args.get(0).type
                             == DataType.Type.STRING;
-                        boolean bIsString = args.get(0).type
+                        boolean bIsString = args.get(1).type
                             == DataType.Type.STRING;
                         return aIsString && bIsString;
                     }),

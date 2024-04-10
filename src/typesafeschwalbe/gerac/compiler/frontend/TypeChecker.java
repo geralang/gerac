@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 
 import typesafeschwalbe.gerac.compiler.Error;
+import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.frontend.DataType.ClosureContext;
@@ -204,7 +205,7 @@ public class TypeChecker {
     public CallCheckResult checkProcedureCall(
         Namespace path, Symbols.Symbol symbol, List<DataType> argumentTypes,
         Source callSource
-    ) throws TypingException {
+    ) throws ErrorException {
         if(symbol.type != Symbols.Symbol.Type.PROCEDURE) {
             throw new IllegalArgumentException("must be a procedure symbol!");
         }
@@ -242,7 +243,7 @@ public class TypeChecker {
         }
         Symbols.Symbol.Procedure data = symbol.getValue();
         if(data.argumentNames().size() != argumentTypes.size()) {
-            throw new TypingException(TypeChecker.makeInvalidArgCError(
+            throw new ErrorException(TypeChecker.makeInvalidArgCError(
                 symbol.source, data.argumentNames().size(),
                 callSource, argumentTypes.size()
             ));
@@ -263,7 +264,7 @@ public class TypeChecker {
                 boolean argumentsValid = data.allowedArgumentTypes().get()
                     .isValid(argumentTypes, this);
                 if(!argumentsValid) {
-                    throw new TypingException(new Error(
+                    throw new ErrorException(new Error(
                         "Invalid arguments for built-in procedure",
                         Error.Marking.error(
                             callSource, "argument types are invalid"
@@ -303,7 +304,7 @@ public class TypeChecker {
         boolean hasReturnType = checkedSymbol.returnType.isPresent()
             && checkedSymbol.returnType.get().type != DataType.Type.UNIT;
         if(!checkedBlock.returns && hasReturnType) {
-            throw new TypingException(
+            throw new ErrorException(
                 TypeChecker.makeNotAlwaysReturnError(
                     checkedSymbol.returnType.get(), symbol.source
                 )
@@ -327,7 +328,7 @@ public class TypeChecker {
 
     private DataType checkGlobalVariable(
         Namespace path, Symbols.Symbol symbol, Source accessSource
-    ) throws TypingException {
+    ) throws ErrorException {
         if(symbol.type != Symbols.Symbol.Type.VARIABLE) {
             throw new IllegalArgumentException("must be a variable symbol!");
         }
@@ -344,7 +345,7 @@ public class TypeChecker {
                 .valueType().get();
         }
         Symbols.Symbol.Variable data = symbol.getValue();
-        if(data.value().isEmpty()) {
+        if(data.valueNode().isEmpty()) {
             if(symbol.variantCount() == 0) {
                 symbol.addVariant(symbol.<Symbols.Symbol.Variable>getValue());
             }
@@ -352,9 +353,10 @@ public class TypeChecker {
                 .valueType().get();
         }
         this.enterSymbol(path, List.of());
-        AstNode typedValue = this.typeNode(data.value().get());
+        AstNode typedValue = this.typeNode(data.valueNode().get());
         symbol.addVariant(new Symbols.Symbol.Variable(
-            typedValue.resultType, Optional.of(typedValue)
+            typedValue.resultType, Optional.of(typedValue),
+            Optional.empty()
         ));
         return typedValue.resultType.get();
     }
@@ -423,7 +425,7 @@ public class TypeChecker {
 
     private List<AstNode> typeNodes(
         List<AstNode> nodes
-    ) throws TypingException {
+    ) throws ErrorException {
         List<AstNode> typedNodes = new ArrayList<>(nodes.size());
         for(AstNode node: nodes) {
             typedNodes.add(this.typeNode(node));
@@ -431,13 +433,13 @@ public class TypeChecker {
         return typedNodes;
     }
 
-    private AstNode typeNode(AstNode node) throws TypingException {
+    private AstNode typeNode(AstNode node) throws ErrorException {
         return this.typeNode(node, Optional.empty());
     }
 
     private AstNode typeNode(
         AstNode node, Optional<DataType> assignedType
-    ) throws TypingException {
+    ) throws ErrorException {
         switch(node.type) {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
@@ -537,7 +539,7 @@ public class TypeChecker {
                 AstNode conditionTyped = this.typeNode(data.condition());
                 DataType condType = conditionTyped.resultType.get();
                 if(condType.type != DataType.Type.BOOLEAN) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeNonBooleanAsCondError(
                             condType, conditionTyped.source
                         )
@@ -564,7 +566,7 @@ public class TypeChecker {
                 AstNode valueTyped = this.typeNode(data.value());
                 DataType valueType = valueTyped.resultType.get();
                 if(valueType.type != DataType.Type.UNION) {
-                    throw new TypingException(new Error(
+                    throw new ErrorException(new Error(
                         "Variant matching done on non-union type",
                         Error.Marking.error(
                             valueType.source, 
@@ -618,7 +620,7 @@ public class TypeChecker {
                 if(data.elseBody().isEmpty()) {
                     for(String variantName: variantTypes.keySet()) {
                         if(!data.branchVariants().contains(variantName)) {
-                            throw new TypingException(new Error(
+                            throw new ErrorException(new Error(
                                 "Unhandled union variant",
                                 Error.Marking.error(
                                     valueType.source, 
@@ -730,7 +732,7 @@ public class TypeChecker {
                     AstNode calledTyped = this.typeNode(data.called());
                     DataType calledType = calledTyped.resultType.get();
                     if(calledType.type != DataType.Type.CLOSURE) {
-                        throw new TypingException(
+                        throw new ErrorException(
                             TypeChecker.makeNonClosureError(
                                 calledType, node.source
                             )
@@ -774,12 +776,12 @@ public class TypeChecker {
                         break;
                     }
                 } else {
-                    throw new TypingException(TypeChecker.makeNonbjectError(
+                    throw new ErrorException(TypeChecker.makeNonbjectError(
                         accessedType, node.source
                     ));
                 }
                 if(calledType == null) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeMissingMemberError(
                             data.memberName(), node.source, accessedType
                         )
@@ -794,7 +796,7 @@ public class TypeChecker {
                     argumentTypes.add(argumentTyped.resultType.get());
                 }
                 if(calledType.type != DataType.Type.CLOSURE) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeNonClosureError(
                             calledType, node.source
                         )
@@ -876,7 +878,7 @@ public class TypeChecker {
                 AstNode sizeTyped = this.typeNode(data.right());
                 DataType sizeType = sizeTyped.resultType.get();
                 if(sizeType.type != DataType.Type.INTEGER) {
-                    throw new TypingException(new Error(
+                    throw new ErrorException(new Error(
                         "Array size is a non-integer type",
                         Error.Marking.error(
                             sizeType.source, 
@@ -924,12 +926,12 @@ public class TypeChecker {
                         break;
                     }
                 } else {
-                    throw new TypingException(TypeChecker.makeNonbjectError(
+                    throw new ErrorException(TypeChecker.makeNonbjectError(
                         accessedType, node.source
                     ));
                 }
                 if(resultType == null) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeMissingMemberError(
                             data.memberName(), node.source, accessedType
                         )
@@ -947,7 +949,7 @@ public class TypeChecker {
                 AstNode accessedTyped = this.typeNode(data.left());
                 DataType accessedType = accessedTyped.resultType.get();
                 if(accessedType.type != DataType.Type.ARRAY) {
-                    throw new TypingException(new Error(
+                    throw new ErrorException(new Error(
                         "Array access done on non-array type",
                         Error.Marking.error(
                             accessedType.source, 
@@ -961,7 +963,7 @@ public class TypeChecker {
                 AstNode indexTyped = this.typeNode(data.right());
                 DataType indexType = indexTyped.resultType.get();
                 if(indexType.type != DataType.Type.INTEGER) {
-                    throw new TypingException(new Error(
+                    throw new ErrorException(new Error(
                         "Array indexed with a non-integer type",
                         Error.Marking.error(
                             indexType.source, 
@@ -1024,7 +1026,7 @@ public class TypeChecker {
                     }
                     boolean wasInitialized = initialized.isPresent();
                     if(assignedType.isEmpty() && !wasInitialized) {
-                        throw new TypingException(new Error(
+                        throw new ErrorException(new Error(
                             "Variable is possibly uninitialized",
                             Error.Marking.error(
                                 node.source,
@@ -1036,7 +1038,7 @@ public class TypeChecker {
                     boolean isInitializing = assignedType.isPresent() 
                         && !wasInitialized;
                     if(isInitializing && !mutable) {
-                        throw new TypingException(new Error(
+                        throw new ErrorException(new Error(
                             "Mutation of immutable variable",
                             Error.Marking.error(
                                 node.source,
@@ -1067,7 +1069,7 @@ public class TypeChecker {
                     break;
                 }
                 if(!found) {
-                    throw new TypingException(new Error(
+                    throw new ErrorException(new Error(
                         "Variable does not exist",
                         Error.Marking.error(
                             node.source,
@@ -1127,7 +1129,7 @@ public class TypeChecker {
                 boolean isNumberType = resultType.type == DataType.Type.INTEGER
                     || resultType.type == DataType.Type.FLOAT;
                 if(!isNumberType) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeNonNumericError(resultType, node.source)
                     );
                 }
@@ -1145,7 +1147,7 @@ public class TypeChecker {
                 boolean isNumberType = resultType.type == DataType.Type.INTEGER
                     || resultType.type == DataType.Type.FLOAT;
                 if(!isNumberType) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeNonNumericError(resultType, node.source)
                     );
                 }
@@ -1170,7 +1172,7 @@ public class TypeChecker {
                 boolean isNumberType = valuesType.type == DataType.Type.INTEGER
                     || valuesType.type == DataType.Type.FLOAT;
                 if(!isNumberType) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeNonNumericError(valuesType, node.source)
                     );
                 }
@@ -1202,7 +1204,7 @@ public class TypeChecker {
                 AstNode valueTyped = this.typeNode(data.value());
                 DataType resultType = valueTyped.resultType.get();
                 if(resultType.type != DataType.Type.BOOLEAN) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeNonBooleanError(resultType, node.source)
                     );
                 }
@@ -1223,7 +1225,7 @@ public class TypeChecker {
                     node.source
                 );
                 if(resultType.type != DataType.Type.BOOLEAN) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeNonBooleanError(resultType, node.source)
                     );
                 }
@@ -1356,7 +1358,7 @@ public class TypeChecker {
         DataType closureType,
         List<DataType> argumentTypes,
         Source usageSource
-    ) throws TypingException {
+    ) throws ErrorException {
         if(closureType.type != DataType.Type.CLOSURE) {
             throw new RuntimeException("must be a closure!");
         }
@@ -1367,7 +1369,7 @@ public class TypeChecker {
             ClosureContext context = typeData.bodies().get(bodyI);
             AstNode.Closure nodeData = context.node().getValue();
             if(argTypes.size() != nodeData.argumentNames().size()) {
-                throw new TypingException(TypeChecker.makeInvalidArgCError(
+                throw new ErrorException(TypeChecker.makeInvalidArgCError(
                     context.node().source, nodeData.argumentNames().size(),
                     usageSource, argTypes.size()
                 ));
@@ -1412,7 +1414,7 @@ public class TypeChecker {
                 boolean hasReturnType = symbol.returnType.isPresent()
                 && symbol.returnType.get().type != DataType.Type.UNIT;
                 if(!block.returns && hasReturnType) {
-                    throw new TypingException(
+                    throw new ErrorException(
                         TypeChecker.makeNotAlwaysReturnError(
                             symbol.returnType.get(), context.node().source
                         )
@@ -1457,7 +1459,7 @@ public class TypeChecker {
 
     private DataType unify(
         DataType a, DataType b, Source source
-    ) throws TypingException {
+    ) throws ErrorException {
         boolean isValid = a.type == b.type
             || (a.type == DataType.Type.ORDERED_OBJECT
                 && b.type == DataType.Type.UNORDERED_OBJECT
@@ -1465,7 +1467,7 @@ public class TypeChecker {
                 && a.type == DataType.Type.UNORDERED_OBJECT
             );
         if(!isValid) {
-            throw new TypingException(TypeChecker.makeIncompatibleError(
+            throw new ErrorException(TypeChecker.makeIncompatibleError(
                 source, 
                 a.source, a.toString(),
                 b.source, b.toString()
@@ -1509,7 +1511,7 @@ public class TypeChecker {
                             (inA? a : b).source, inMsg,
                             (inA? b : a).source, withoutMsg 
                         );
-                        throw new TypingException(e);
+                        throw new ErrorException(e);
                     }
                     DataType memberType = this.unify(
                         dataA.memberTypes().get(memberName),

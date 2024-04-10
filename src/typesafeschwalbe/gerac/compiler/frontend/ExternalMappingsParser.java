@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.Error;
+import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 
@@ -19,19 +20,19 @@ public class ExternalMappingsParser extends Parser {
 
     public ExternalMappingsParser(
         Lexer lexer, Symbols symbols
-    ) throws ParsingException {
+    ) throws ErrorException {
         super(lexer);
         this.symbols = symbols;
         this.declaredTypes = new HashMap<>();
     }
 
-    public void parseStatements() throws ParsingException {
+    public void parseStatements() throws ErrorException {
         while(this.current.type != Token.Type.FILE_END) {
             this.parseStatement(); 
         }
     }
 
-    private void parseStatement() throws ParsingException {
+    private void parseStatement() throws ErrorException {
         Token start = this.current;
         switch(start.content) {
             case "type": {
@@ -133,7 +134,8 @@ public class ExternalMappingsParser extends Parser {
                         true, new Source(start.source, end.source),
                         new Namespace[0],
                         new Symbols.Symbol.Variable(
-                            Optional.of(valueType), Optional.empty()
+                            Optional.of(valueType), Optional.empty(),
+                            Optional.empty()
                         ),
                         Optional.of(externalName)
                     )
@@ -145,7 +147,7 @@ public class ExternalMappingsParser extends Parser {
         }
     }
 
-    private DataType parseType() throws ParsingException {
+    private DataType parseType() throws ErrorException {
         Token start = this.current;
         switch(start.type) {
             case PIPE:
@@ -217,7 +219,7 @@ public class ExternalMappingsParser extends Parser {
                         if(this.declaredTypes.containsKey(start.content)) {
                             return this.declaredTypes.get(start.content);
                         }
-                        throw new ParsingException(new Error(
+                        throw new ErrorException(new Error(
                             "Unknown type name",
                             Error.Marking.error(
                                 start.source, 

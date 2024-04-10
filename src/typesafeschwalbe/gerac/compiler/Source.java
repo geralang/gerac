@@ -1,6 +1,8 @@
 
 package typesafeschwalbe.gerac.compiler;
 
+import java.util.Map;
+
 public class Source {
 
     public final String file;
@@ -22,6 +24,13 @@ public class Source {
         this.file = start.file;
         this.startOffset = start.startOffset;
         this.endOffset = end.endOffset;
+    }
+
+    public int computeLine(Map<String, String> files) {
+        return (int) files.get(this.file)
+            .substring(0, this.startOffset)
+            .lines()
+            .count();
     }
 
 }

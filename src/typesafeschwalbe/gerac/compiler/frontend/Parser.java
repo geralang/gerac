@@ -4,19 +4,20 @@ package typesafeschwalbe.gerac.compiler.frontend;
 import java.util.List;
 
 import typesafeschwalbe.gerac.compiler.Error;
+import typesafeschwalbe.gerac.compiler.ErrorException;
 
 public abstract class Parser {
 
     private final Lexer lexer;
     protected Token current;
 
-    public Parser(Lexer lexer) throws ParsingException {
+    public Parser(Lexer lexer) throws ErrorException {
         this.lexer = lexer;
         this.current = lexer.nextFilteredToken();
     }
     
-    protected void throwUnexpected(String expected) throws ParsingException {
-        throw new ParsingException(new Error(
+    protected void throwUnexpected(String expected) throws ErrorException {
+        throw new ErrorException(new Error(
             "Unexpected syntax",
             Error.Marking.error(
                 this.current.source,
@@ -29,11 +30,11 @@ public abstract class Parser {
         ));
     }
 
-    protected void next() throws ParsingException {
+    protected void next() throws ErrorException {
         this.current = lexer.nextFilteredToken();
     }
         
-    protected void expect(Token.Type... allowedTypes) throws ParsingException {
+    protected void expect(Token.Type... allowedTypes) throws ErrorException {
         if(!List.of(allowedTypes).contains(this.current.type)) {
             StringBuilder expected = new StringBuilder();
             for(int expIdx = 0; expIdx < allowedTypes.length; expIdx += 1) {

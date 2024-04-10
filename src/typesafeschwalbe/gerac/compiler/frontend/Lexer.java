@@ -5,6 +5,7 @@ import java.util.function.Function;
 
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Error;
+import typesafeschwalbe.gerac.compiler.ErrorException;
 
 public class Lexer {
     
@@ -75,9 +76,9 @@ public class Lexer {
         );
     }
 
-    private byte parseHexDigit() throws ParsingException {
+    private byte parseHexDigit() throws ErrorException {
         if(this.atEnd()) {
-            throw new ParsingException(new Error(
+            throw new ErrorException(new Error(
                 "Hexadecimal character escape incomplete",
                 Error.Marking.error(
                     new Source(
@@ -92,7 +93,7 @@ public class Lexer {
         if('0' <= c && c <= '9') { return (byte) (c - '0'); }
         if('a' <= c && c <= 'f') { return (byte) (c - 'a' + 10); }
         if('A' <= c && c <= 'F') { return (byte) (c - 'A' + 10); }
-        throw new ParsingException(new Error(
+        throw new ErrorException(new Error(
             "Invalid hexadecimal digit in hexadecimal character escape",
             Error.Marking.error(
                 new Source(this.fileName, this.currentPos, this.currentPos + 1),
@@ -101,7 +102,7 @@ public class Lexer {
         ));
     }
 
-    public Token nextToken() throws ParsingException {
+    public Token nextToken() throws ErrorException {
         if(this.currentPos >= this.fileContent.length()) {
             return new Token(
                 Token.Type.FILE_END, "", new Source(
@@ -144,7 +145,7 @@ public class Lexer {
             boolean escaped = false;
             while(escaped || this.current() != '"') {
                 if(this.atEnd()) {
-                    throw new ParsingException(new Error(
+                    throw new ErrorException(new Error(
                         "Unclosed string literal",
                         Error.Marking.error(
                             new Source(
@@ -357,7 +358,7 @@ public class Lexer {
                 this.next();
                 return this.makeToken("}", Token.Type.BRACE_CLOSE);
         }
-        throw new ParsingException(new Error(
+        throw new ErrorException(new Error(
             "Invalid character",
             Error.Marking.error(
                 new Source(this.fileName, this.currentPos, this.currentPos + 1),
@@ -366,7 +367,7 @@ public class Lexer {
         ));
     }
 
-    public Token nextFilteredToken() throws ParsingException {
+    public Token nextFilteredToken() throws ErrorException {
         while(true) {
             Token c = this.nextToken();
             boolean filter = c.type != Token.Type.WHITESPACE

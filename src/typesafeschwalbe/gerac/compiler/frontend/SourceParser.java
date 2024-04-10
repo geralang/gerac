@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.Error;
+import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Target;
 
@@ -15,12 +16,12 @@ public class SourceParser extends Parser {
 
     private final Target target;
     
-    public SourceParser(Lexer lexer, Target target) throws ParsingException {
+    public SourceParser(Lexer lexer, Target target) throws ErrorException {
         super(lexer);
         this.target = target;
     }
 
-    public List<AstNode> parseGlobalStatements() throws ParsingException {
+    public List<AstNode> parseGlobalStatements() throws ErrorException {
         return this.parseStatements(GLOBALLY_SCOPED);
     }
 
@@ -29,7 +30,7 @@ public class SourceParser extends Parser {
 
     private List<AstNode> parseStatements(
         boolean inGlobalScope
-    ) throws ParsingException {
+    ) throws ErrorException {
         List<AstNode> nodes = new ArrayList<>();
         while(this.current.type != Token.Type.BRACE_CLOSE
                 && this.current.type != Token.Type.FILE_END) {
@@ -40,7 +41,7 @@ public class SourceParser extends Parser {
 
     private static record Usages(List<Namespace> paths, Source source) {}
 
-    private Usages parseUsages() throws ParsingException {
+    private Usages parseUsages() throws ErrorException {
         this.expect(
             Token.Type.PAREN_OPEN,
             Token.Type.IDENTIFIER,
@@ -93,7 +94,7 @@ public class SourceParser extends Parser {
 
     private List<AstNode> parseStatement(
         boolean inGlobalScope
-    ) throws ParsingException {
+    ) throws ErrorException {
         if(inGlobalScope) {
             this.expect(
                 Token.Type.KEYWORD_PUBLIC,
@@ -128,7 +129,7 @@ public class SourceParser extends Parser {
                 );
                 if(this.current.type == Token.Type.KEYWORD_VARIABLE) {
                     if(isPublic && !inGlobalScope) {
-                        throw new ParsingException(new Error(
+                        throw new ErrorException(new Error(
                             "Local variable marked as public",
                             Error.Marking.error(
                                 start.source,
@@ -137,7 +138,7 @@ public class SourceParser extends Parser {
                         ));
                     }
                     if(isMutable && inGlobalScope) {
-                        throw new ParsingException(new Error(
+                        throw new ErrorException(new Error(
                             "Global variable marked as mutable",
                             Error.Marking.error(
                                 start.source,
@@ -173,7 +174,7 @@ public class SourceParser extends Parser {
                     ));
                 } else {
                     if(!inGlobalScope) {
-                        throw new ParsingException(new Error(
+                        throw new ErrorException(new Error(
                             "Procedure in local context",
                             Error.Marking.error(
                                 this.current.source,
@@ -182,7 +183,7 @@ public class SourceParser extends Parser {
                         ));
                     }
                     if(isMutable) {
-                        throw new ParsingException(new Error(
+                        throw new ErrorException(new Error(
                             "Procedure marked as mutable",
                             Error.Marking.error(
                                 mutableToken.source,
@@ -207,18 +208,32 @@ public class SourceParser extends Parser {
                         }
                     }
                     this.next();
-                    this.expect(Token.Type.BRACE_OPEN);
-                    this.next();
-                    List<AstNode> body = this.parseStatements(LOCALLY_SCOPED);
-                    this.expect(Token.Type.BRACE_CLOSE);
-                    Token end = this.current;
-                    this.next();
+                    this.expect(Token.Type.BRACE_OPEN, Token.Type.EQUALS);
+                    List<AstNode> body;
+                    Source endSource;
+                    if(this.current.type == Token.Type.EQUALS) {
+                        Source returnSourceStart = this.current.source;
+                        this.next();
+                        AstNode value = this.parseExpression();
+                        body = List.of(new AstNode(
+                            AstNode.Type.RETURN,
+                            new AstNode.MonoOp(value),
+                            new Source(returnSourceStart, value.source)
+                        ));
+                        endSource = value.source;
+                    } else {
+                        this.next();
+                        body = this.parseStatements(LOCALLY_SCOPED);
+                        this.expect(Token.Type.BRACE_CLOSE);
+                        endSource = this.current.source;
+                        this.next();
+                    }
                     return List.of(new AstNode(
                         AstNode.Type.PROCEDURE,
                         new AstNode.Procedure(
                             isPublic, name, argumentNames, body
                         ),
-                        new Source(start.source, end.source)
+                        new Source(start.source, endSource)
                     ));
                 }
             }
@@ -449,7 +464,7 @@ public class SourceParser extends Parser {
                     return List.of(expr);
                 }
                 if(!expr.isAssignable()) {
-                    throw new ParsingException(new Error(
+                    throw new ErrorException(new Error(
                         "Expression cannot be assigned to",
                         Error.Marking.error(
                             expr.source,
@@ -472,7 +487,7 @@ public class SourceParser extends Parser {
         }
     }
 
-    private AstNode parseExpression() throws ParsingException {
+    private AstNode parseExpression() throws ErrorException {
         return this.parseExpression(999);
     }
 
@@ -495,7 +510,7 @@ public class SourceParser extends Parser {
         }
     }
 
-    private AstNode parseExpression(int precedence) throws ParsingException {
+    private AstNode parseExpression(int precedence) throws ErrorException {
         Optional<AstNode> previous = Optional.empty();
         while(true) {
             int currentPrecedence = this.current.type.infixPrecedence;
@@ -565,7 +580,7 @@ public class SourceParser extends Parser {
                             Token.Type.FUNCTION_PIPE.infixPrecedence
                         );
                         if(into.type != AstNode.Type.CALL) {
-                            throw new ParsingException(new Error(
+                            throw new ErrorException(new Error(
                                 "Cannot be piped into",
                                 Error.Marking.error(into.source, "not a call") 
                             ));
@@ -752,7 +767,7 @@ public class SourceParser extends Parser {
                             );
                         }
                         if(memberValues.containsKey(memberName)) {
-                            throw new ParsingException(new Error(
+                            throw new ErrorException(new Error(
                                 "Duplicate object property",
                                 Error.Marking.error(
                                     memberSource,

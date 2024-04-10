@@ -10,11 +10,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
+import typesafeschwalbe.gerac.compiler.backend.Value;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 import typesafeschwalbe.gerac.compiler.frontend.TypeChecker;
-import typesafeschwalbe.gerac.compiler.frontend.TypingException;
 
 public class Symbols {
 
@@ -38,7 +38,7 @@ public class Symbols {
     public interface ArgTypeChecker {
         public boolean isValid(
             List<DataType> argTypes, TypeChecker typeChecker
-        ) throws TypingException;
+        ) throws ErrorException;
     }
 
     public static class Symbol {
@@ -53,7 +53,8 @@ public class Symbols {
 
         public static record Variable(
             Optional<DataType> valueType,
-            Optional<AstNode> value
+            Optional<AstNode> valueNode,
+            Optional<Value> value
         ) {}
 
         public enum Type {
@@ -87,6 +88,9 @@ public class Symbols {
         @SuppressWarnings("unchecked")
         public <T> T getValue() {
             return (T) this.value;
+        }
+        public void setValue(Object value) {
+            this.value = value;
         }
 
         public int variantCount() {
@@ -196,7 +200,8 @@ public class Symbols {
                             Symbol.Type.VARIABLE, data.isPublic(), 
                             node.source, usages.toArray(Namespace[]::new),
                             new Symbol.Variable(
-                                Optional.empty(), data.value()
+                                Optional.empty(), data.value(),
+                                Optional.empty()
                             ),
                             Optional.empty()
                         )
@@ -219,12 +224,14 @@ public class Symbols {
             switch(symbol.type) {
                 case VARIABLE: {
                     Symbol.Variable data = symbol.getValue();
-                    if(data.value.isPresent()) {
+                    if(data.valueNode.isPresent()) {
                         AstNode value = this.canonicalizeNode(
-                            data.value.get(), symbol, new HashSet<>(), errors
+                            data.valueNode.get(), symbol, new HashSet<>(), 
+                            errors
                         );
                         symbol.value = new Symbol.Variable(
-                            Optional.empty(), Optional.of(value)
+                            Optional.empty(), Optional.of(value),
+                            Optional.empty()
                         );
                     }
                 } break;
