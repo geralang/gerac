@@ -10,6 +10,8 @@ import java.util.Optional;
 import java.util.Map;
 import java.util.Set;
 
+import typesafeschwalbe.gerac.compiler.BuiltIns;
+import typesafeschwalbe.gerac.compiler.Color;
 import typesafeschwalbe.gerac.compiler.Error;
 import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
@@ -145,6 +147,19 @@ public class TypeChecker {
         );
     }
 
+    private static Error makeInvalidSymbolError(
+        Source accessSource, Namespace path
+    ) {
+        return new Error(
+            "Invalid access",
+            Error.Marking.error(
+                accessSource,
+                "'" + path.toString() + "'"
+                    + " is not a known and accessible symbol"
+            )
+        );
+    }
+
     static class CheckedBlock {
         private final Map<String, Optional<DataType>> variableTypes;
         private final Map<String, Boolean> variablesMutable;
@@ -176,9 +191,11 @@ public class TypeChecker {
         private Optional<DataType> returnType;
         private int variant;
         private final List<CheckedBlock> blocks;
+        private final Symbols.Symbol symbol;
 
         private CheckedSymbol(
-            Namespace path, List<DataType> argumentTypes, int variant
+            Namespace path, List<DataType> argumentTypes, int variant,
+            Symbols.Symbol symbol
         ) {
             this.path = path;
             this.argumentTypes = argumentTypes;
@@ -186,6 +203,7 @@ public class TypeChecker {
             this.returnType = Optional.empty();
             this.variant = variant;
             this.blocks = new LinkedList<>();
+            this.symbol = symbol;
         }
     }
 
@@ -198,132 +216,215 @@ public class TypeChecker {
         this.checked = new LinkedList<>();
     }
 
+    public void checkMain(Namespace path) throws ErrorException {
+        Source src = new Source(BuiltIns.BUILTIN_FILE_NAME, 0, 0);
+        Symbols.Symbol symbol = new Symbols.Symbol(
+            Symbols.Symbol.Type.PROCEDURE, true, src, new Namespace[0],
+            new Symbols.Symbol.Procedure(
+                List.of(), Optional.empty(), Optional.empty(), Optional.empty(), 
+                Optional.empty()
+            ),
+            Optional.empty()
+        );
+        this.enterSymbol(
+            new Namespace(List.of("<builtin>")), List.of(), symbol
+        );
+        this.checkProcedureCall(
+            path, List.of(), src, src
+        );
+        this.exitSymbol();
+    }
+
     private static record CallCheckResult(
-        DataType returnType, int variant
+        DataType returnType, Namespace fullPath, int variant
     ) {}
 
-    public CallCheckResult checkProcedureCall(
-        Namespace path, Symbols.Symbol symbol, List<DataType> argumentTypes,
-        Source callSource
+    private CallCheckResult checkProcedureCall(
+        Namespace shortPath, List<DataType> argumentTypes,
+        Source accessSource, Source callSource
     ) throws ErrorException {
-        if(symbol.type != Symbols.Symbol.Type.PROCEDURE) {
-            throw new IllegalArgumentException("must be a procedure symbol!");
+        List<Namespace> fullPaths = this.symbols.allowedPathExpansions(
+            shortPath, this.currentSymbol().symbol, accessSource
+        );
+        if(fullPaths.size() == 0) {
+            // this is an exception! in this case we assume the short path
+            // is a valid access, which the node checker checks for
+            fullPaths.add(shortPath);
         }
-        for(CheckedSymbol encountered: this.checked) {
-            // skip closures
-            if(encountered.path.elements().size() == 0) { continue; }
-            if(!encountered.path.equals(path)) { continue; }
-            if(!argumentTypes.equals(encountered.argumentTypes)) { continue; }
-            boolean isDefinite = encountered.returnType.isPresent()
-                && encountered.returnType.get().isConcrete();
-            return new CallCheckResult(
-                isDefinite
-                    ? encountered.returnType.get()
-                    : new DataType(
-                        DataType.Type.UNKNOWN, encountered.unknownOriginMarker, 
-                        callSource
-                    ),
-                encountered.variant
-            );
-        }
+        List<Error> failures = new ArrayList<>();
         for(
-            int variantI = 0; 
-            variantI < symbol.variantCount(); 
-            variantI += 1
+            int candidateI = fullPaths.size() - 1;
+            candidateI >= 0;
+            candidateI -= 1
         ) {
-            Symbols.Symbol.Procedure variant = symbol
-                .<Symbols.Symbol.Procedure>getVariant(variantI);
-            if(!argumentTypes.equals(variant.argumentTypes().get())) { 
-                continue;
-            }
-            return new CallCheckResult(
-                variant.returnType().get().apply(callSource),
-                variantI
-            );
-        }
-        Symbols.Symbol.Procedure data = symbol.getValue();
-        if(data.argumentNames().size() != argumentTypes.size()) {
-            throw new ErrorException(TypeChecker.makeInvalidArgCError(
-                symbol.source, data.argumentNames().size(),
-                callSource, argumentTypes.size()
-            ));
-        }
-        if(data.body().isEmpty()) {
-            List<DataType> argTypes = new ArrayList<>(argumentTypes);
-            if(data.allowedArgumentTypes().isEmpty()) {
-                if(data.argumentTypes().isPresent()) {
-                    for(int argI = 0; argI < argumentTypes.size(); argI += 1) {
-                        this.unify(
-                            data.argumentTypes().get().get(argI), 
-                            argumentTypes.get(argI), 
+            Namespace fullPath = fullPaths.get(candidateI);
+            Symbols.Symbol symbol = this.symbols.get(fullPath).get();
+            if(symbol.type != Symbols.Symbol.Type.PROCEDURE) { continue; }
+            Symbols.Symbol.Procedure symbolData = symbol.getValue();
+            int argC = symbolData.argumentNames().size();
+            if(argC != argumentTypes.size()) { continue; }
+            for(CheckedSymbol encountered: this.checked) {
+                // skip closures
+                if(encountered.path.elements().size() == 0) { continue; }
+                if(!encountered.path.equals(fullPath)) { continue; }
+                if(!argumentTypes.equals(encountered.argumentTypes)) {
+                    continue; 
+                }
+                System.out.println(encountered.path);
+                boolean isDefinite = encountered.returnType.isPresent()
+                    && encountered.returnType.get().isConcrete();
+                return new CallCheckResult(
+                    isDefinite
+                        ? encountered.returnType.get()
+                        : new DataType(
+                            DataType.Type.UNKNOWN,
+                            encountered.unknownOriginMarker, 
                             callSource
-                        );
+                        ),
+                    fullPath,
+                    encountered.variant
+                );
+            }
+            for(
+                int variantI = 0; 
+                variantI < symbol.variantCount(); 
+                variantI += 1
+            ) {
+                Symbols.Symbol.Procedure variant = symbol
+                    .<Symbols.Symbol.Procedure>getVariant(variantI);
+                if(!argumentTypes.equals(variant.argumentTypes().get())) { 
+                    continue;
+                }
+                return new CallCheckResult(
+                    variant.returnType().get().apply(callSource),
+                    fullPath,
+                    variantI
+                );
+            }
+            Symbols.Symbol.Procedure data = symbol.getValue();
+            if(data.body().isEmpty()) {
+                List<DataType> argTypes = new ArrayList<>(argumentTypes);
+                if(data.allowedArgumentTypes().isEmpty()) {
+                    if(data.argumentTypes().isPresent()) {
+                        try {
+                            for(
+                                int argI = 0; 
+                                argI < argumentTypes.size(); 
+                                argI += 1
+                            ) {
+                                this.unify(
+                                    data.argumentTypes().get().get(argI), 
+                                    argumentTypes.get(argI), 
+                                    callSource
+                                );
+                            }
+                        } catch(ErrorException e) {
+                            failures.add(e.error);
+                            continue;
+                        }
+                    }
+                } else {
+                    boolean argumentsValid = data.allowedArgumentTypes().get()
+                        .isValid(argumentTypes, this);
+                    if(!argumentsValid) {
+                        failures.add(new Error(
+                            "Invalid arguments for built-in procedure",
+                            Error.Marking.error(
+                                callSource, "argument types are invalid"
+                            ) 
+                        ));
+                        continue;
                     }
                 }
-            } else {
-                boolean argumentsValid = data.allowedArgumentTypes().get()
-                    .isValid(argumentTypes, this);
-                if(!argumentsValid) {
-                    throw new ErrorException(new Error(
-                        "Invalid arguments for built-in procedure",
-                        Error.Marking.error(
-                            callSource, "argument types are invalid"
-                        ) 
-                    ));
+                if(symbol.variantCount() == 0) {
+                    symbol.addVariant(
+                        new Symbols.Symbol.Procedure(
+                            data.argumentNames(),
+                            Optional.empty(), Optional.of(argTypes),
+                            data.returnType(), Optional.empty()
+                        )
+                    );
                 }
+                return new CallCheckResult(
+                    symbol.<Symbols.Symbol.Procedure>getVariant(0)
+                        .returnType().get().apply(callSource),
+                    fullPath,
+                    0
+                );
             }
-            if(symbol.variantCount() == 0) {
-                symbol.addVariant(
-                    new Symbols.Symbol.Procedure(
-                        data.argumentNames(),
-                        Optional.empty(), Optional.of(argTypes),
-                        data.returnType(), Optional.empty()
+            int variantIdx = symbol.variantCount();
+            this.enterSymbol(fullPath, argumentTypes, symbol);
+            this.currentSymbol().variant = variantIdx;
+            this.enterBlock();
+            for(int argI = 0; argI < argumentTypes.size(); argI += 1) {
+                String argumentName = data.argumentNames().get(argI);
+                this.currentBlock().variableTypes.put(
+                    argumentName, Optional.of(argumentTypes.get(argI))
+                );
+                this.currentBlock().variablesMutable.put(argumentName, false);
+            }
+            List<AstNode> bodyTyped;
+            try {
+                 bodyTyped = this.typeNodes(data.body().get());
+            } catch(ErrorException e) {
+                failures.add(e.error);
+                this.exitBlock();
+                this.exitSymbol();
+                continue;
+            }
+            CheckedBlock checkedBlock = this.exitBlock();
+            CheckedSymbol checkedSymbol = this.exitSymbol();
+            boolean hasReturnType = checkedSymbol.returnType.isPresent()
+                && checkedSymbol.returnType.get().type != DataType.Type.UNIT;
+            if(!checkedBlock.returns && hasReturnType) {
+                throw new ErrorException(
+                    TypeChecker.makeNotAlwaysReturnError(
+                        checkedSymbol.returnType.get(), symbol.source
                     )
                 );
             }
-            return new CallCheckResult(
-                symbol.<Symbols.Symbol.Procedure>getVariant(0)
-                    .returnType().get().apply(callSource),
-                0
+            symbol.addVariant(new Symbols.Symbol.Procedure(
+                data.argumentNames(),
+                Optional.empty(),
+                Optional.of(argumentTypes),
+                checkedSymbol.returnType.map(t -> src -> t),
+                Optional.of(bodyTyped)
+            ));
+            DataType returnType = checkedSymbol.returnType.isPresent()
+                ? checkedSymbol.returnType.get()
+                : new DataType(DataType.Type.UNIT, symbol.source);
+            returnType = returnType.replaceUnknown(
+                checkedSymbol.unknownOriginMarker, returnType
             );
+            return new CallCheckResult(returnType, fullPath, variantIdx);
         }
-        int variantIdx = symbol.variantCount();
-        this.enterSymbol(path, argumentTypes);
-        this.currentSymbol().variant = variantIdx;
-        this.enterBlock();
-        for(int argI = 0; argI < argumentTypes.size(); argI += 1) {
-            String argumentName = data.argumentNames().get(argI);
-            this.currentBlock().variableTypes.put(
-                argumentName, Optional.of(argumentTypes.get(argI))
-            );
-            this.currentBlock().variablesMutable.put(argumentName, false);
+        if(failures.size() == 1) {
+            throw new ErrorException(failures.get(0));
         }
-        List<AstNode> bodyTyped = this.typeNodes(data.body().get());
-        CheckedBlock checkedBlock = this.exitBlock();
-        CheckedSymbol checkedSymbol = this.exitSymbol();
-        boolean hasReturnType = checkedSymbol.returnType.isPresent()
-            && checkedSymbol.returnType.get().type != DataType.Type.UNIT;
-        if(!checkedBlock.returns && hasReturnType) {
-            throw new ErrorException(
-                TypeChecker.makeNotAlwaysReturnError(
-                    checkedSymbol.returnType.get(), symbol.source
-                )
-            );
-        }
-        symbol.addVariant(new Symbols.Symbol.Procedure(
-            data.argumentNames(),
-            Optional.empty(),
-            Optional.of(argumentTypes),
-            checkedSymbol.returnType.map(t -> src -> t),
-            Optional.of(bodyTyped)
+        throw new ErrorException(new Error(
+            "No valid candidates for procedure call",
+            colored -> {
+                String errorNoteColor = colored
+                    ? Color.from(Color.GRAY) : "";
+                String errorProcedureColor = colored
+                    ? Color.from(Color.GREEN, Color.BOLD) : "";
+                StringBuilder info = new StringBuilder();
+                info.append(errorNoteColor);
+                info.append("considered candidates (specify the full path");
+                info.append(" to get a specific error)\n");
+                for(Namespace candidate: fullPaths) {
+                    info.append(errorNoteColor);
+                    info.append(" - ");
+                    info.append(errorProcedureColor);
+                    info.append(candidate);
+                    info.append("\n");
+                }
+                return info.toString();
+            },
+            Error.Marking.error(
+                accessSource, "path could not be expanded"
+            )
         ));
-        DataType returnType = checkedSymbol.returnType.isPresent()
-            ? checkedSymbol.returnType.get()
-            : new DataType(DataType.Type.UNIT, symbol.source);
-        returnType = returnType.replaceUnknown(
-            checkedSymbol.unknownOriginMarker, returnType
-        );
-        return new CallCheckResult(returnType, variantIdx);
     }
 
     private DataType checkGlobalVariable(
@@ -352,7 +453,7 @@ public class TypeChecker {
             return symbol.<Symbols.Symbol.Variable>getVariant(0)
                 .valueType().get();
         }
-        this.enterSymbol(path, List.of());
+        this.enterSymbol(path, List.of(), symbol);
         AstNode typedValue = this.typeNode(data.valueNode().get());
         symbol.addVariant(new Symbols.Symbol.Variable(
             typedValue.resultType, Optional.of(typedValue),
@@ -361,8 +462,10 @@ public class TypeChecker {
         return typedValue.resultType.get();
     }
 
-    private void enterSymbol(Namespace path, List<DataType> argumentTypes) {
-        this.checked.add(new CheckedSymbol(path, argumentTypes, 0));
+    private void enterSymbol(
+        Namespace path, List<DataType> argumentTypes, Symbols.Symbol symbol
+    ) {
+        this.checked.add(new CheckedSymbol(path, argumentTypes, 0, symbol));
     }
 
     private CheckedSymbol currentSymbol() {
@@ -692,41 +795,53 @@ public class TypeChecker {
                 }
                 boolean isProcCall;
                 if(data.called().type == AstNode.Type.MODULE_ACCESS) {
-                    Optional<Symbols.Symbol> called = this.symbols.get(
-                        data.called().<AstNode.ModuleAccess>getValue().path()
-                    );
-                    if(!called.isPresent()) {
-                        throw new RuntimeException(
-                            "module management didn't catch this!"
+                    Namespace shortPath = data.called()
+                        .<AstNode.ModuleAccess>getValue().path();
+                    List<Namespace> longPaths = this.symbols
+                        .allowedPathExpansions(
+                            shortPath, 
+                            this.currentSymbol().symbol, 
+                            data.called().source
                         );
+                    Namespace longPath = longPaths.size() > 0
+                        ? longPaths.get(longPaths.size() - 1)
+                        : shortPath;
+                    Optional<Symbols.Symbol> called = this.symbols
+                        .get(longPath);
+                    if(called.isPresent()) {
+                        boolean isProcedure = called.get().type
+                            == Symbols.Symbol.Type.PROCEDURE;
+                        boolean accessedAllowed = this.symbols.accessAllowed(
+                            called.get(), data.called().source
+                        );
+                        isProcCall = isProcedure && accessedAllowed;
+                    } else {
+                        isProcCall = false;
                     }
-                    isProcCall = called.get().type
-                        == Symbols.Symbol.Type.PROCEDURE;
                 } else {
                     isProcCall = false;
                 }
                 if(isProcCall) {
-                    Namespace calledPath = data.called()
+                    Namespace shortPath = data.called()
                         .<AstNode.ModuleAccess>getValue().path();
-                    Symbols.Symbol symbol = this.symbols.get(calledPath).get();
                     CallCheckResult call = this.checkProcedureCall(
-                        calledPath, symbol, argumentTypes, node.source
+                        shortPath, argumentTypes,
+                        data.called().source, node.source
                     );
-                    DataType returnType = call.returnType;
                     return new AstNode(
                         node.type,
                         new AstNode.Call(
                             new AstNode(
                                 AstNode.Type.MODULE_ACCESS,
                                 new AstNode.ModuleAccess(
-                                    calledPath, Optional.of(call.variant)
+                                    call.fullPath, Optional.of(call.variant)
                                 ),
                                 data.called().source
                             ), 
                             argumentsTyped
                         ),
                         node.source,
-                        returnType
+                        call.returnType
                     );
                 } else {
                     AstNode calledTyped = this.typeNode(data.called());
@@ -984,106 +1099,6 @@ public class TypeChecker {
                     resultType
                 );
             }
-            case VARIABLE_ACCESS: {
-                AstNode.VariableAccess data = node.getValue();
-                String variableName = data.variableName();
-                boolean found = false;
-                Optional<DataType> variableType = assignedType;
-                for(
-                    int blockI = this.currentSymbol().blocks.size() - 1;
-                    blockI >= 0;
-                    blockI -= 1
-                ) {
-                    CheckedBlock cBlock = this.currentSymbol()
-                        .blocks.get(blockI);
-                    if(!cBlock.variableTypes.containsKey(variableName)) {
-                        if(cBlock.initializes.containsKey(variableName)) {
-                            DataType initType = cBlock.initializes
-                                .get(variableName);
-                            if(variableType.isPresent()) {
-                                variableType = Optional.of(this.unify(
-                                    variableType.get(), initType, node.source
-                                ));
-                            } else {
-                                variableType = Optional.of(initType);
-                            } 
-                        }
-                        continue;
-                    }
-                    boolean mutable = cBlock.variablesMutable.get(
-                        data.variableName()
-                    );
-                    Optional<DataType> initialized = cBlock.variableTypes.get(
-                        data.variableName()
-                    );
-                    if(variableType.isPresent() && initialized.isPresent()) {
-                        variableType = Optional.of(this.unify(
-                            variableType.get(), initialized.get(), node.source
-                        ));
-                    } else {
-                        variableType = variableType.isPresent()
-                            ? variableType : initialized;
-                    }
-                    boolean wasInitialized = initialized.isPresent();
-                    if(assignedType.isEmpty() && !wasInitialized) {
-                        throw new ErrorException(new Error(
-                            "Variable is possibly uninitialized",
-                            Error.Marking.error(
-                                node.source,
-                                "it is possible for this variable to not be"
-                                    + " initialized, but it is accessed here"
-                            )
-                        ));
-                    }
-                    boolean isInitializing = assignedType.isPresent() 
-                        && !wasInitialized;
-                    if(isInitializing && !mutable) {
-                        throw new ErrorException(new Error(
-                            "Mutation of immutable variable",
-                            Error.Marking.error(
-                                node.source,
-                                "it is not possible to assign to this variable"
-                                    + " as it has been not been marked"
-                                    + " as mutable"
-                            )
-                        ));
-                    }
-                    if(assignedType.isPresent() && !wasInitialized) {
-                        if(cBlock == this.currentBlock()) {
-                            this.currentBlock().variableTypes.put(
-                                variableName, variableType
-                            );
-                        } else {
-                            this.currentBlock().initializes.put(
-                                variableName, variableType.get()
-                            );
-                        }
-                    }
-                    if(cBlock != this.currentBlock()) {
-                        this.currentBlock().captures.add(variableName);
-                    }
-                    if(assignedType.isPresent()) {
-                        cBlock.variableTypes.put(variableName, variableType);
-                    }
-                    found = true;
-                    break;
-                }
-                if(!found) {
-                    throw new ErrorException(new Error(
-                        "Variable does not exist",
-                        Error.Marking.error(
-                            node.source,
-                            "there is no variable called '" + variableName + "'"
-                        )
-                    ));
-                }
-                return new AstNode(
-                    node.type,
-                    new AstNode.VariableAccess(variableName),
-                    node.source,
-                    variableType.get()
-                );
-            }
             case BOOLEAN_LITERAL: {
                 return new AstNode(
                     node.type, node.getValue(), node.source, 
@@ -1238,10 +1253,115 @@ public class TypeChecker {
             }
             case MODULE_ACCESS: {
                 AstNode.ModuleAccess data = node.getValue();
-                Optional<Symbols.Symbol> symbol = this.symbols.get(data.path());
+                if(data.path().elements().size() == 1) {
+                    String variableName = data.path().elements().get(0);
+                    boolean found = false;
+                    Optional<DataType> variableType = assignedType;
+                    for(
+                        int blockI = this.currentSymbol().blocks.size() - 1;
+                        blockI >= 0;
+                        blockI -= 1
+                    ) {
+                        CheckedBlock cBlock = this.currentSymbol()
+                            .blocks.get(blockI);
+                        if(!cBlock.variableTypes.containsKey(variableName)) {
+                            if(cBlock.initializes.containsKey(variableName)) {
+                                DataType initType = cBlock.initializes
+                                    .get(variableName);
+                                if(variableType.isPresent()) {
+                                    variableType = Optional.of(this.unify(
+                                        variableType.get(), initType, node.source
+                                    ));
+                                } else {
+                                    variableType = Optional.of(initType);
+                                } 
+                            }
+                            continue;
+                        }
+                        boolean mutable = cBlock.variablesMutable
+                            .get(variableName);
+                        Optional<DataType> initialized = cBlock.variableTypes
+                            .get(variableName);
+                        if(variableType.isPresent()
+                                && initialized.isPresent()) {
+                            variableType = Optional.of(this.unify(
+                                variableType.get(), initialized.get(),
+                                node.source
+                            ));
+                        } else {
+                            variableType = variableType.isPresent()
+                                ? variableType : initialized;
+                        }
+                        boolean wasInitialized = initialized.isPresent();
+                        if(assignedType.isEmpty() && !wasInitialized) {
+                            throw new ErrorException(new Error(
+                                "Variable is possibly uninitialized",
+                                Error.Marking.error(
+                                    node.source,
+                                    "it is possible for this variable to not be"
+                                        + " initialized, but"
+                                        + " it is accessed here"
+                                )
+                            ));
+                        }
+                        boolean isInitializing = assignedType.isPresent() 
+                            && !wasInitialized;
+                        if(isInitializing && !mutable) {
+                            throw new ErrorException(new Error(
+                                "Mutation of immutable variable",
+                                Error.Marking.error(
+                                    node.source,
+                                    "it is not possible"
+                                        + " to assign to this variable"
+                                        + " as it has been not been marked"
+                                        + " as mutable"
+                                )
+                            ));
+                        }
+                        if(assignedType.isPresent() && !wasInitialized) {
+                            if(cBlock == this.currentBlock()) {
+                                this.currentBlock().variableTypes.put(
+                                    variableName, variableType
+                                );
+                            } else {
+                                this.currentBlock().initializes.put(
+                                    variableName, variableType.get()
+                                );
+                            }
+                        }
+                        if(cBlock != this.currentBlock()) {
+                            this.currentBlock().captures.add(variableName);
+                        }
+                        if(assignedType.isPresent()) {
+                            cBlock.variableTypes.put(
+                                variableName, variableType
+                            );
+                        }
+                        found = true;
+                        break;
+                    }
+                    if(found) {
+                        return new AstNode(
+                            AstNode.Type.VARIABLE_ACCESS,
+                            new AstNode.VariableAccess(variableName),
+                            node.source,
+                            variableType.get()
+                        );
+                    }
+                }
+                List<Namespace> expandedPaths = this.symbols
+                    .allowedPathExpansions(
+                        data.path(), this.currentSymbol().symbol, node.source
+                    );
+                Namespace fullPath = expandedPaths.size() > 0
+                    ? expandedPaths.get(expandedPaths.size() - 1)
+                    : data.path();
+                Optional<Symbols.Symbol> symbol = this.symbols.get(fullPath);
                 if(symbol.isEmpty()) {
-                    throw new RuntimeException(
-                        "module management didn't catch this!"
+                    throw new ErrorException(
+                        TypeChecker.makeInvalidSymbolError(
+                            node.source, fullPath
+                        )
                     );
                 }
                 switch(symbol.get().type) {
@@ -1297,13 +1417,22 @@ public class TypeChecker {
                         return newNode;
                     }
                     case VARIABLE: {
+                        if(!this.symbols.accessAllowed(
+                            symbol.get(), node.source
+                        )) {
+                            throw new ErrorException(
+                                TypeChecker.makeInvalidSymbolError(
+                                    node.source, fullPath
+                                )
+                            );
+                        }
                         DataType variableType = this.checkGlobalVariable(
-                            data.path(), symbol.get(), node.source
+                            fullPath, symbol.get(), node.source
                         );
                         return new AstNode(
                             node.type,
                             new AstNode.ModuleAccess(
-                                data.path(), Optional.of(0)
+                                fullPath, Optional.of(0)
                             ), 
                             node.source, 
                             variableType
@@ -1343,15 +1472,14 @@ public class TypeChecker {
             case PROCEDURE:
             case TARGET:
             case USE:
-            case MODULE_DECLARATION: {
+            case MODULE_DECLARATION:
+            case VARIABLE_ACCESS: {
                 throw new RuntimeException("should not be encountered!");
             }
             default: {
                 throw new RuntimeException("unhandled node type!");
             }
         }
-
-
     }
 
     public DataType checkClosure(
@@ -1397,7 +1525,11 @@ public class TypeChecker {
             Optional<List<AstNode>> contextTypedBody;
             Optional<Set<String>> contextCaptures;
             if(nodeData.body().isPresent()) {
-                this.enterSymbol(new Namespace(List.of()), argTypes);
+                this.enterSymbol(
+                    new Namespace(List.of()),
+                    argTypes,
+                    this.currentSymbol().symbol
+                );
                 this.currentSymbol().blocks.addAll(context.context());
                 this.enterBlock();
                 for(int argI = 0; argI < argTypes.size(); argI += 1) {

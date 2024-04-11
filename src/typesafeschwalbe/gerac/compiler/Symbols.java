@@ -3,11 +3,9 @@ package typesafeschwalbe.gerac.compiler;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 
 import typesafeschwalbe.gerac.compiler.backend.Value;
@@ -218,385 +216,39 @@ public class Symbols {
         return Optional.empty();
     }
 
-    public List<Error> canonicalize() {
-        List<Error> errors = new ArrayList<>();
-        for(Symbol symbol: this.symbols.values()) {
-            switch(symbol.type) {
-                case VARIABLE: {
-                    Symbol.Variable data = symbol.getValue();
-                    if(data.valueNode.isPresent()) {
-                        AstNode value = this.canonicalizeNode(
-                            data.valueNode.get(), symbol, new HashSet<>(), 
-                            errors
-                        );
-                        symbol.value = new Symbol.Variable(
-                            Optional.empty(), Optional.of(value),
-                            Optional.empty()
-                        );
-                    }
-                } break;
-                case PROCEDURE: {
-                    Symbol.Procedure data = symbol.getValue();
-                    if(data.body.isPresent()) {
-                        Set<String> variables = new HashSet<>();
-                        for(String argument: data.argumentNames()) {
-                            variables.add(argument);
-                        }
-                        List<AstNode> body = data.body.get()
-                            .stream().map(node -> this.canonicalizeNode(
-                                node, symbol, variables, errors
-                            )).toList();
-                        symbol.value = new Symbol.Procedure(
-                            data.argumentNames(), 
-                            Optional.empty(),
-                            Optional.empty(), Optional.empty(),
-                            Optional.of(body)
-                        );
-                    }
-                } break;
-            }
-        }
-        return errors;
-    }
-    
-    private static Error makeInvalidSymbolError(Source src, Namespace path) {
-        return new Error(
-            "Invalid access",
-            Error.Marking.error(
-                src,
-                "'" + path.toString() + "'"
-                    + " is not a known and accessible symbol"
-            )
-        );
-    }
-
-    private AstNode canonicalizeNode(
-        AstNode node, Symbol symbol, Set<String> variables, List<Error> errors
+    public boolean accessAllowed(
+        Symbol accessedSymbol, Source accessSource
     ) {
-        switch(node.type) {
-            case VARIABLE: {
-                AstNode.Variable data = node.getValue();
-                Optional<AstNode> value = Optional.empty();
-                if(data.value().isPresent()) {
-                    value = Optional.of(this.canonicalizeNode(
-                        data.value().get(), symbol, variables, errors
-                    ));
-                }
-                variables.add(data.name());
-                return new AstNode(
-                    node.type,
-                    new AstNode.Variable(
-                        data.isPublic(), data.isMutable(), data.name(), value
-                    ),
-                    node.source
-                );
+        boolean fileMatches = accessedSymbol.source.file
+            .equals(accessSource.file);
+        return accessedSymbol.isPublic || fileMatches;
+    }   
+
+    public List<Namespace> allowedPathExpansions(
+        Namespace path, Symbol inSymbol, Source accessSource
+    ) {
+        String firstPathElement = path.elements().get(0);
+        List<Namespace> validExpansions = new ArrayList<>();
+        for(Namespace usage: inSymbol.usages) {
+            String lastUsageElement = usage.elements()
+                .get(usage.elements().size() - 1);
+            boolean isWildcard = lastUsageElement.equals("*");
+            boolean qualifies = isWildcard 
+                || lastUsageElement.equals(firstPathElement);
+            if(!qualifies) { continue; }
+            List<String> fullPathElements = new ArrayList<>();
+            fullPathElements.addAll(usage.elements());
+            fullPathElements.remove(fullPathElements.size() - 1);
+            fullPathElements.addAll(path.elements());
+            Namespace fullPath = new Namespace(fullPathElements);
+            Optional<Symbols.Symbol> accessedSymbol = this.get(fullPath);
+            if(accessedSymbol.isEmpty()) { continue; }
+            if(!this.accessAllowed(accessedSymbol.get(), accessSource)) {
+                continue;
             }
-            case MODULE_ACCESS: {
-                AstNode.ModuleAccess data = node.getValue();
-                boolean isLocalVariable = data.path().elements().size() == 1
-                    && variables.contains(data.path().elements().get(0));
-                if(isLocalVariable) {
-                    return new AstNode(
-                        AstNode.Type.VARIABLE_ACCESS,
-                        new AstNode.VariableAccess(
-                            data.path().elements().get(0)
-                        ),
-                        node.source
-                    );
-                }
-                String firstPathElement = data.path().elements().get(0);
-                Namespace expanded = data.path();
-                for(Namespace usage: symbol.usages) {
-                    String lastUsageElement = usage.elements()
-                        .get(usage.elements().size() - 1);
-                    boolean isWildcard = lastUsageElement.equals("*");
-                    boolean qualifies = isWildcard
-                        || lastUsageElement.equals(firstPathElement);
-                    if(qualifies) {
-                        List<String> fullPathElements = new ArrayList<>();
-                        fullPathElements.addAll(usage.elements());
-                        fullPathElements.remove(fullPathElements.size() - 1);
-                        fullPathElements.addAll(data.path().elements());
-                        Namespace fullPath = new Namespace(fullPathElements);
-                        Optional<Symbol> accessedSymbol = this.get(fullPath);
-                        if(accessedSymbol.isEmpty()) { continue; }
-                        boolean fileMatches = accessedSymbol.get()
-                            .source.file.equals(node.source.file);
-                        boolean accessAllowed = accessedSymbol.get().isPublic
-                            || fileMatches;
-                        if(!accessAllowed) { continue; }
-                        expanded = fullPath;
-                    }
-                }
-                Optional<Symbol> accessed = this.get(expanded);
-                if(accessed.isEmpty()) {
-                    errors.add(Symbols.makeInvalidSymbolError(
-                        node.source, expanded
-                    ));
-                    return node;
-                }
-                boolean accessAllowed = accessed.get().isPublic
-                    || accessed.get().source.file.equals(node.source.file);
-                if(!accessAllowed) {
-                    errors.add(Symbols.makeInvalidSymbolError(
-                        node.source, expanded
-                    ));
-                    return node;
-                }
-                return new AstNode(
-                    node.type, 
-                    new AstNode.ModuleAccess(expanded, Optional.empty()),
-                    node.source
-                );
-            }
-            case ARRAY_LITERAL: {
-                AstNode.ArrayLiteral data = node.getValue();
-                List<AstNode> values = data.values()
-                    .stream().map(value -> this.canonicalizeNode(
-                        value, symbol, variables, errors
-                    )).toList();
-                return new AstNode(
-                    node.type,
-                    new AstNode.ArrayLiteral(values),
-                    node.source
-                );
-            }
-            case CASE_BRANCHING: {
-                AstNode.CaseBranching data = node.getValue();
-                AstNode value = this.canonicalizeNode(
-                    data.value(), symbol, variables, errors
-                );
-                List<AstNode> branchValues = data.branchValues()
-                    .stream().map(branchValue -> this.canonicalizeNode(
-                        branchValue, symbol, new HashSet<String>(), errors
-                    )).toList();
-                List<List<AstNode>> branchBodies = new ArrayList<>();
-                for(List<AstNode> oldBranchBody: data.branchBodies()) {
-                    Set<String> branchVariables = new HashSet<>(variables);
-                    List<AstNode> branchBody = oldBranchBody
-                        .stream().map(statement -> this.canonicalizeNode(
-                            statement, symbol, branchVariables, errors
-                        )).toList();
-                    branchBodies.add(branchBody);
-                }
-                Set<String> elseVariables = new HashSet<>(variables);
-                List<AstNode> elseBody = data.elseBody()
-                    .stream().map(statement -> this.canonicalizeNode(
-                        statement, symbol, elseVariables, errors
-                    )).toList();
-                return new AstNode(
-                    node.type,
-                    new AstNode.CaseBranching(
-                        value, branchValues, branchBodies, elseBody
-                    ),
-                    node.source
-                );
-            }
-            case CASE_CONDITIONAL: {
-                AstNode.CaseConditional data = node.getValue();
-                AstNode condition = this.canonicalizeNode(
-                    data.condition(), symbol, variables, errors
-                );
-                Set<String> ifVariables = new HashSet<>(variables);
-                List<AstNode> ifBody = data.ifBody()
-                    .stream().map(statement -> this.canonicalizeNode(
-                        statement, symbol, ifVariables, errors
-                    )).toList();
-                Set<String> elseVariables = new HashSet<>(variables);
-                List<AstNode> elseBody = data.elseBody()
-                    .stream().map(statement -> this.canonicalizeNode(
-                        statement, symbol, elseVariables, errors
-                    )).toList();
-                return new AstNode(
-                    node.type,
-                    new AstNode.CaseConditional(condition, ifBody, elseBody),
-                    node.source
-                );
-            }
-            case CASE_VARIANT: {
-                AstNode.CaseVariant data = node.getValue();
-                AstNode value = this.canonicalizeNode(
-                    data.value(), symbol, variables, errors
-                );
-                List<List<AstNode>> branchBodies = new ArrayList<>();
-                for(
-                    int branchI = 0; 
-                    branchI < data.branchBodies().size(); 
-                    branchI += 1
-                ) {
-                    List<AstNode> oldBranchBody = data.branchBodies()
-                        .get(branchI);
-                    Set<String> branchVariables = new HashSet<>(variables);
-                    Optional<String> branchVariableName = data.branchVariableNames()
-                        .get(branchI);
-                    if(branchVariableName.isPresent()) {
-                        branchVariables.add(branchVariableName.get());
-                    }
-                    List<AstNode> branchBody = oldBranchBody
-                        .stream().map(statement -> this.canonicalizeNode(
-                            statement, symbol, branchVariables, errors
-                        )).toList();
-                    branchBodies.add(branchBody);
-                }
-                Set<String> elseVariables = new HashSet<>(variables);
-                Optional<List<AstNode>> elseBody = Optional.empty();
-                if(data.elseBody().isPresent()) {
-                    elseBody = Optional.of(data.elseBody().get()
-                        .stream().map(statement -> this.canonicalizeNode(
-                            statement, symbol, elseVariables, errors
-                        )).toList()
-                    );
-                }
-                return new AstNode(
-                    node.type,
-                    new AstNode.CaseVariant(
-                        value,
-                        data.branchVariants(),
-                        data.branchVariableNames(),
-                        branchBodies, elseBody
-                    ),
-                    node.source
-                );
-            }
-            case CALL: {
-                AstNode.Call data = node.getValue();
-                AstNode called = this.canonicalizeNode(
-                    data.called(), symbol, variables, errors
-                );
-                List<AstNode> arguments = data.arguments()
-                    .stream().map(argument -> this.canonicalizeNode(
-                        argument, symbol, variables, errors
-                    )).toList();
-                return new AstNode(
-                    node.type, new AstNode.Call(called, arguments), node.source
-                );
-            }
-            case CLOSURE: {
-                AstNode.Closure data = node.getValue();
-                Set<String> bodyVariables = new HashSet<>(variables);
-                for(String argument: data.argumentNames()) {
-                    bodyVariables.add(argument);
-                }
-                List<AstNode> body = data.body().get()
-                    .stream().map(statement -> this.canonicalizeNode(
-                        statement, symbol, bodyVariables, errors
-                    )).toList();
-                return new AstNode(
-                    node.type,
-                    new AstNode.Closure(
-                        data.argumentNames(), Optional.empty(),
-                        Optional.empty(), Optional.empty(),
-                        Optional.of(body)
-                    ),
-                    node.source
-                );
-            }
-            case METHOD_CALL: {
-                AstNode.MethodCall data = node.getValue();
-                AstNode called = this.canonicalizeNode(
-                    data.called(), symbol, variables, errors
-                );
-                List<AstNode> arguments = data.arguments()
-                    .stream().map(argument -> this.canonicalizeNode(
-                        argument, symbol, variables, errors
-                    )).toList();
-                return new AstNode(
-                    node.type,
-                    new AstNode.MethodCall(
-                        called, data.memberName(), arguments
-                    ), 
-                    node.source
-                );
-            }
-            case OBJECT_ACCESS: {
-                AstNode.ObjectAccess data = node.getValue();
-                AstNode accessed = this.canonicalizeNode(
-                    data.accessed(), symbol, variables, errors
-                );
-                return new AstNode(
-                    node.type, 
-                    new AstNode.ObjectAccess(accessed, data.memberName()), 
-                    node.source
-                );
-            }
-            case OBJECT_LITERAL: {
-                AstNode.ObjectLiteral data = node.getValue();
-                Map<String, AstNode> values = new HashMap<>();
-                for(String memberName: data.values().keySet()) {
-                    AstNode memberValue = this.canonicalizeNode(
-                        data.values().get(memberName), symbol, variables, errors
-                    );
-                    values.put(memberName, memberValue);
-                }
-                return new AstNode(
-                    node.type, new AstNode.ObjectLiteral(values), node.source
-                );
-            }
-            case VARIANT_LITERAL: {
-                AstNode.VariantLiteral data = node.getValue();
-                AstNode value = this.canonicalizeNode(
-                    data.value(), symbol, variables, errors
-                );
-                return new AstNode(
-                    node.type, 
-                    new AstNode.VariantLiteral(data.variantName(), value), 
-                    node.source
-                ); 
-            }
-            case REPEATING_ARRAY_LITERAL:
-            case ADD:
-            case AND:
-            case ARRAY_ACCESS:
-            case ASSIGNMENT:
-            case DIVIDE:
-            case EQUALS:
-            case GREATER_THAN:
-            case GREATER_THAN_EQUAL:
-            case LESS_THAN:
-            case LESS_THAN_EQUAL:
-            case MODULO:
-            case MULTIPLY:
-            case NOT_EQUALS:
-            case OR:
-            case SUBTRACT: {
-                AstNode.BiOp data = node.getValue();
-                AstNode left = this.canonicalizeNode(
-                    data.left(), symbol, variables, errors
-                );
-                AstNode right = this.canonicalizeNode(
-                    data.right(), symbol, variables, errors
-                );
-                return new AstNode(
-                    node.type, new AstNode.BiOp(left, right), node.source
-                );
-            }
-            case NEGATE:
-            case NOT:
-            case RETURN:
-            case STATIC: {
-                AstNode.MonoOp data = node.getValue();
-                AstNode value = this.canonicalizeNode(
-                    data.value(), symbol, variables, errors
-                );
-                return new AstNode(
-                    node.type, new AstNode.MonoOp(value), node.source
-                );
-            }
-            case BOOLEAN_LITERAL:
-            case FLOAT_LITERAL:
-            case INTEGER_LITERAL:
-            case STRING_LITERAL:
-            case UNIT_LITERAL:
-            case TARGET:
-            case USE:
-            case MODULE_DECLARATION:
-            case PROCEDURE: {
-                return node;
-            }
-            default: {
-                throw new RuntimeException("unhandled node type");
-            }
+            validExpansions.add(fullPath);
         }
+        return validExpansions;
     }
 
     public Optional<Symbol> get(Namespace path) {

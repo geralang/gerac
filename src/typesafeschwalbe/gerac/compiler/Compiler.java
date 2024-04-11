@@ -56,10 +56,6 @@ public class Compiler {
             }
         }
         BuiltIns.addUnparsedFiles(files);
-        List<Error> canonicalizationErrors = symbols.canonicalize();
-        if(canonicalizationErrors.size() > 0) {
-            return Result.ofError(canonicalizationErrors);
-        }
         Namespace mainPath = new Namespace(List.of(mainRaw.split("::")));
         Optional<Symbols.Symbol> main = symbols.get(mainPath);
         if(main.isEmpty() || main.get().type != Symbols.Symbol.Type.PROCEDURE) {
@@ -76,9 +72,7 @@ public class Compiler {
         }
         TypeChecker typeChecker = new TypeChecker(symbols);
         try {
-            typeChecker.checkProcedureCall(
-                mainPath, main.get(), List.of(), null
-            );
+            typeChecker.checkMain(mainPath);
         } catch(ErrorException e) {
             return Result.ofError(e.error);
         }
