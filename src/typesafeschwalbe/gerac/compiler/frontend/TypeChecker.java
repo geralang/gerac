@@ -375,7 +375,7 @@ public class TypeChecker {
             CheckedBlock checkedBlock = this.exitBlock();
             CheckedSymbol checkedSymbol = this.exitSymbol();
             boolean hasReturnType = checkedSymbol.returnType.isPresent()
-                && checkedSymbol.returnType.get().type != DataType.Type.UNIT;
+                && !checkedSymbol.returnType.get().isType(DataType.Type.UNIT);
             if(!checkedBlock.returns && hasReturnType) {
                 throw new ErrorException(
                     TypeChecker.makeNotAlwaysReturnError(
@@ -641,7 +641,7 @@ public class TypeChecker {
                 AstNode.CaseConditional data = node.getValue();
                 AstNode conditionTyped = this.typeNode(data.condition());
                 DataType condType = conditionTyped.resultType.get();
-                if(condType.type != DataType.Type.BOOLEAN) {
+                if(condType.exactType() != DataType.Type.BOOLEAN) {
                     throw new ErrorException(
                         TypeChecker.makeNonBooleanAsCondError(
                             condType, conditionTyped.source
@@ -668,7 +668,7 @@ public class TypeChecker {
                 AstNode.CaseVariant data = node.getValue();
                 AstNode valueTyped = this.typeNode(data.value());
                 DataType valueType = valueTyped.resultType.get();
-                if(valueType.type != DataType.Type.UNION) {
+                if(valueType.exactType() != DataType.Type.UNION) {
                     throw new ErrorException(new Error(
                         "Variant matching done on non-union type",
                         Error.Marking.error(
@@ -846,7 +846,7 @@ public class TypeChecker {
                 } else {
                     AstNode calledTyped = this.typeNode(data.called());
                     DataType calledType = calledTyped.resultType.get();
-                    if(calledType.type != DataType.Type.CLOSURE) {
+                    if(calledType.exactType() != DataType.Type.CLOSURE) {
                         throw new ErrorException(
                             TypeChecker.makeNonClosureError(
                                 calledType, node.source
@@ -871,11 +871,13 @@ public class TypeChecker {
                 AstNode accessedTyped = this.typeNode(data.called());
                 DataType accessedType = accessedTyped.resultType.get();
                 DataType calledType;
-                if(accessedType.type == DataType.Type.UNORDERED_OBJECT) {
+                if(accessedType.exactType() == DataType.Type.UNORDERED_OBJECT) {
                     calledType = accessedType
                         .<DataType.UnorderedObject>getValue()
                         .memberTypes().get(data.memberName());
-                } else if(accessedType.type == DataType.Type.ORDERED_OBJECT) {
+                } else if(
+                    accessedType.exactType() == DataType.Type.ORDERED_OBJECT
+                ) {
                     calledType = null;
                     DataType.OrderedObject accessedData
                         = accessedType.getValue();
@@ -910,7 +912,7 @@ public class TypeChecker {
                     argumentsTyped.add(argumentTyped);
                     argumentTypes.add(argumentTyped.resultType.get());
                 }
-                if(calledType.type != DataType.Type.CLOSURE) {
+                if(calledType.exactType() != DataType.Type.CLOSURE) {
                     throw new ErrorException(
                         TypeChecker.makeNonClosureError(
                             calledType, node.source
@@ -992,7 +994,7 @@ public class TypeChecker {
                 DataType valueType = valueTyped.resultType.get();
                 AstNode sizeTyped = this.typeNode(data.right());
                 DataType sizeType = sizeTyped.resultType.get();
-                if(sizeType.type != DataType.Type.INTEGER) {
+                if(sizeType.exactType() != DataType.Type.INTEGER) {
                     throw new ErrorException(new Error(
                         "Array size is a non-integer type",
                         Error.Marking.error(
@@ -1021,11 +1023,13 @@ public class TypeChecker {
                 AstNode accessedTyped = this.typeNode(data.accessed());
                 DataType accessedType = accessedTyped.resultType.get();
                 DataType resultType;
-                if(accessedType.type == DataType.Type.UNORDERED_OBJECT) {
+                if(accessedType.exactType() == DataType.Type.UNORDERED_OBJECT) {
                     resultType = accessedType
                         .<DataType.UnorderedObject>getValue()
                         .memberTypes().get(data.memberName());
-                } else if(accessedType.type == DataType.Type.ORDERED_OBJECT) {
+                } else if(
+                    accessedType.exactType() == DataType.Type.ORDERED_OBJECT
+                ) {
                     resultType = null;
                     DataType.OrderedObject accessedData
                         = accessedType.getValue();
@@ -1063,7 +1067,7 @@ public class TypeChecker {
                 AstNode.BiOp data = node.getValue();
                 AstNode accessedTyped = this.typeNode(data.left());
                 DataType accessedType = accessedTyped.resultType.get();
-                if(accessedType.type != DataType.Type.ARRAY) {
+                if(accessedType.exactType() != DataType.Type.ARRAY) {
                     throw new ErrorException(new Error(
                         "Array access done on non-array type",
                         Error.Marking.error(
@@ -1077,7 +1081,7 @@ public class TypeChecker {
                 }
                 AstNode indexTyped = this.typeNode(data.right());
                 DataType indexType = indexTyped.resultType.get();
-                if(indexType.type != DataType.Type.INTEGER) {
+                if(indexType.exactType() != DataType.Type.INTEGER) {
                     throw new ErrorException(new Error(
                         "Array indexed with a non-integer type",
                         Error.Marking.error(
@@ -1141,8 +1145,9 @@ public class TypeChecker {
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
                 );
-                boolean isNumberType = resultType.type == DataType.Type.INTEGER
-                    || resultType.type == DataType.Type.FLOAT;
+                boolean isNumberType = resultType.exactType()
+                        == DataType.Type.INTEGER
+                    || resultType.exactType() == DataType.Type.FLOAT;
                 if(!isNumberType) {
                     throw new ErrorException(
                         TypeChecker.makeNonNumericError(resultType, node.source)
@@ -1159,8 +1164,9 @@ public class TypeChecker {
                 AstNode.MonoOp data = node.getValue();
                 AstNode valueTyped = this.typeNode(data.value());
                 DataType resultType = valueTyped.resultType.get();
-                boolean isNumberType = resultType.type == DataType.Type.INTEGER
-                    || resultType.type == DataType.Type.FLOAT;
+                boolean isNumberType = resultType.exactType() 
+                        == DataType.Type.INTEGER
+                    || resultType.exactType() == DataType.Type.FLOAT;
                 if(!isNumberType) {
                     throw new ErrorException(
                         TypeChecker.makeNonNumericError(resultType, node.source)
@@ -1184,8 +1190,9 @@ public class TypeChecker {
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
                 );
-                boolean isNumberType = valuesType.type == DataType.Type.INTEGER
-                    || valuesType.type == DataType.Type.FLOAT;
+                boolean isNumberType = valuesType.exactType() 
+                        == DataType.Type.INTEGER
+                    || valuesType.exactType() == DataType.Type.FLOAT;
                 if(!isNumberType) {
                     throw new ErrorException(
                         TypeChecker.makeNonNumericError(valuesType, node.source)
@@ -1218,7 +1225,7 @@ public class TypeChecker {
                 AstNode.MonoOp data = node.getValue();
                 AstNode valueTyped = this.typeNode(data.value());
                 DataType resultType = valueTyped.resultType.get();
-                if(resultType.type != DataType.Type.BOOLEAN) {
+                if(resultType.exactType() != DataType.Type.BOOLEAN) {
                     throw new ErrorException(
                         TypeChecker.makeNonBooleanError(resultType, node.source)
                     );
@@ -1239,7 +1246,7 @@ public class TypeChecker {
                     leftTyped.resultType.get(), rightTyped.resultType.get(),
                     node.source
                 );
-                if(resultType.type != DataType.Type.BOOLEAN) {
+                if(resultType.exactType() != DataType.Type.BOOLEAN) {
                     throw new ErrorException(
                         TypeChecker.makeNonBooleanError(resultType, node.source)
                     );
@@ -1487,7 +1494,7 @@ public class TypeChecker {
         List<DataType> argumentTypes,
         Source usageSource
     ) throws ErrorException {
-        if(closureType.type != DataType.Type.CLOSURE) {
+        if(closureType.exactType() != DataType.Type.CLOSURE) {
             throw new RuntimeException("must be a closure!");
         }
         List<DataType> argTypes = new ArrayList<>(argumentTypes);
@@ -1544,7 +1551,7 @@ public class TypeChecker {
                 CheckedBlock block = this.exitBlock();
                 CheckedSymbol symbol = this.exitSymbol();
                 boolean hasReturnType = symbol.returnType.isPresent()
-                && symbol.returnType.get().type != DataType.Type.UNIT;
+                && !symbol.returnType.get().isType(DataType.Type.UNIT);
                 if(!block.returns && hasReturnType) {
                     throw new ErrorException(
                         TypeChecker.makeNotAlwaysReturnError(
@@ -1592,11 +1599,17 @@ public class TypeChecker {
     private DataType unify(
         DataType a, DataType b, Source source
     ) throws ErrorException {
-        boolean isValid = a.type == b.type
-            || (a.type == DataType.Type.ORDERED_OBJECT
-                && b.type == DataType.Type.UNORDERED_OBJECT
-            ) || (b.type == DataType.Type.ORDERED_OBJECT
-                && a.type == DataType.Type.UNORDERED_OBJECT
+        if(a.exactType() == DataType.Type.PANIC) {
+            return b;
+        }
+        if(b.exactType() == DataType.Type.PANIC) {
+            return a;
+        }
+        boolean isValid = a.exactType() == b.exactType()
+            || (a.exactType() == DataType.Type.ORDERED_OBJECT
+                && b.exactType() == DataType.Type.UNORDERED_OBJECT
+            ) || (b.exactType() == DataType.Type.ORDERED_OBJECT
+                && a.exactType() == DataType.Type.UNORDERED_OBJECT
             );
         if(!isValid) {
             throw new ErrorException(TypeChecker.makeIncompatibleError(
@@ -1606,7 +1619,7 @@ public class TypeChecker {
             ));
         }
         Object value;
-        switch(a.type) {
+        switch(a.exactType()) {
             case UNKNOWN:
             case UNIT:
             case BOOLEAN:
@@ -1717,14 +1730,17 @@ public class TypeChecker {
                 }
                 value = new DataType.Union(variantTypes);
             } break;
+            case PANIC: {
+                throw new RuntimeException("should not be encountered!");
+            }
             default: {
                 throw new RuntimeException("type not handled!");
             }
         }
         if(a.age > b.age) {
-            return new DataType(a.type, value, a.source, a.age + 1);
+            return new DataType(a.exactType(), value, a.source, a.age + 1);
         } else {
-            return new DataType(a.type, value, b.source, b.age + 1);
+            return new DataType(a.exactType(), value, b.source, b.age + 1);
         }
     }
 

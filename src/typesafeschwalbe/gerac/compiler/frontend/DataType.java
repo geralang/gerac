@@ -39,6 +39,7 @@ public final class DataType {
 
     public enum Type {
         UNKNOWN,          // UnknownOriginMarker
+        PANIC,            // = null
         UNIT,             // = null
         BOOLEAN,          // = null
         INTEGER,          // = null
@@ -51,7 +52,7 @@ public final class DataType {
         UNION             // Union
     }
 
-    public final Type type;
+    private final Type type;
     private final Object value;
     // The origin of the type used for error reporting.
     // 'source' describes the location in the code where the
@@ -83,6 +84,20 @@ public final class DataType {
         this.age = age;
     }
 
+    public boolean isType(DataType.Type... types) {
+        if(this.type == Type.PANIC) {
+            return true;
+        }
+        for(int i = 0; i < types.length; i += 1) {
+            if(this.type == types[i]) { return true; }
+        }
+        return false;
+    }
+
+    public DataType.Type exactType() {
+        return this.type;
+    }
+
     @SuppressWarnings("unchecked")
     public <T> T getValue() {
         return (T) this.value;
@@ -90,6 +105,7 @@ public final class DataType {
 
     public boolean isConcrete() {
         switch(this.type) {
+            case PANIC:
             case UNKNOWN:
             case UNIT:
             case BOOLEAN:
@@ -123,6 +139,7 @@ public final class DataType {
     @Override
     public String toString() {
         switch(this.type) {
+            case PANIC: return "a panic";
             case UNKNOWN: return "not known at this point";
             case UNIT: return "the unit value";
             case BOOLEAN: return "a boolean";

@@ -51,11 +51,9 @@ public class BuiltIns {
                     List.of("a", "b"),
                     Optional.of((args, tc) -> {
                         boolean argsMatch = args.get(0).equals(args.get(1));
-                        boolean isArray = args.get(0).type
-                            == DataType.Type.ARRAY;
-                        boolean isObject = args.get(0).type
-                            == DataType.Type.UNORDERED_OBJECT;
-                        return argsMatch && (isArray || isObject);
+                        return argsMatch && args.get(0).isType(
+                            DataType.Type.ARRAY, DataType.Type.UNORDERED_OBJECT
+                        );
                     }),
                     Optional.empty(),
                     Optional.of(
@@ -75,10 +73,10 @@ public class BuiltIns {
                 new Symbols.Symbol.Procedure(
                     List.of("a", "b"),
                     Optional.of((args, tc) -> {
-                        boolean aIsUnion = args.get(0).type
-                            == DataType.Type.UNION;
-                        boolean bIsUnion = args.get(1).type
-                            == DataType.Type.UNION;
+                        boolean aIsUnion = args.get(0)
+                            .isType(DataType.Type.UNION);
+                        boolean bIsUnion = args.get(1)
+                            .isType(DataType.Type.UNION);
                         return aIsUnion && bIsUnion;
                     }),
                     Optional.empty(),
@@ -99,11 +97,9 @@ public class BuiltIns {
                 new Symbols.Symbol.Procedure(
                     List.of("thing"),
                     Optional.of((args, tc) -> {
-                        boolean isString = args.get(0).type
-                            == DataType.Type.STRING;
-                        boolean isArray = args.get(0).type
-                            == DataType.Type.ARRAY;
-                        return isString || isArray;
+                        return args.get(0).isType(
+                            DataType.Type.STRING, DataType.Type.ARRAY
+                        );
                     }),
                     Optional.empty(),
                     Optional.of(
@@ -123,8 +119,8 @@ public class BuiltIns {
                 new Symbols.Symbol.Procedure(
                     List.of("iter"),
                     Optional.of((args, tc) -> {
-                        boolean isClosure = args.get(0).type
-                            == DataType.Type.CLOSURE;
+                        boolean isClosure = args.get(0)
+                            .isType(DataType.Type.CLOSURE);
                         if(!isClosure) { return false; }
                         DataType.Closure argData = args.get(0).getValue();
                         for(DataType.ClosureContext cc: argData.bodies()) {
@@ -136,8 +132,8 @@ public class BuiltIns {
                             args.get(0), List.of(), 
                             new Source(BUILTIN_FILE_NAME, 0, 0)    
                         );
-                        boolean returnsUnion = returnType.type
-                            == DataType.Type.UNION;
+                        boolean returnsUnion = returnType
+                            .isType(DataType.Type.UNION);
                         if(!returnsUnion) { return false; }
                         DataType.Union returnData = returnType.getValue();
                         for(String variant: returnData.variants().keySet()) {
@@ -165,11 +161,11 @@ public class BuiltIns {
                 new Symbols.Symbol.Procedure(
                     List.of("reason"),
                     Optional.of((args, tc) -> {
-                        return args.get(0).type == DataType.Type.STRING;
+                        return args.get(0).isType(DataType.Type.STRING);
                     }),
                     Optional.empty(),
                     Optional.of(
-                        src -> new DataType(DataType.Type.UNIT, src)
+                        src -> new DataType(DataType.Type.PANIC, src)
                     ),
                     Optional.empty()
                 ),
@@ -203,11 +199,9 @@ public class BuiltIns {
                 new Symbols.Symbol.Procedure(
                     List.of("converted"),
                     Optional.of((args, tc) -> {
-                        boolean isFloat = args.get(0).type
-                            == DataType.Type.FLOAT;
-                        boolean isInteger = args.get(0).type
-                            == DataType.Type.INTEGER;
-                        return isFloat || isInteger;
+                        return args.get(0).isType(
+                            DataType.Type.FLOAT, DataType.Type.INTEGER
+                        );
                     }),
                     Optional.empty(),
                     Optional.of(
@@ -227,11 +221,9 @@ public class BuiltIns {
                 new Symbols.Symbol.Procedure(
                     List.of("converted"),
                     Optional.of((args, tc) -> {
-                        boolean isFloat = args.get(0).type
-                            == DataType.Type.FLOAT;
-                        boolean isInteger = args.get(0).type
-                            == DataType.Type.INTEGER;
-                        return isFloat || isInteger;
+                        return args.get(0).isType(
+                            DataType.Type.FLOAT, DataType.Type.INTEGER
+                        );
                     }),
                     Optional.empty(),
                     Optional.of(
@@ -251,12 +243,12 @@ public class BuiltIns {
                 new Symbols.Symbol.Procedure(
                     List.of("source", "start", "end"),
                     Optional.of((args, tc) -> {
-                        boolean sourceIsString = args.get(0).type
-                            == DataType.Type.STRING;
-                        boolean startIsInt = args.get(1).type
-                            == DataType.Type.INTEGER;
-                        boolean endIsInt = args.get(2).type
-                            == DataType.Type.INTEGER;
+                        boolean sourceIsString = args.get(0)
+                            .isType(DataType.Type.STRING);
+                        boolean startIsInt = args.get(1)
+                            .isType(DataType.Type.INTEGER);
+                        boolean endIsInt = args.get(2)
+                            .isType(DataType.Type.INTEGER);
                         return sourceIsString && startIsInt && endIsInt;
                     }),
                     Optional.empty(),
@@ -277,10 +269,10 @@ public class BuiltIns {
                 new Symbols.Symbol.Procedure(
                     List.of("a", "b"),
                     Optional.of((args, tc) -> {
-                        boolean aIsString = args.get(0).type
-                            == DataType.Type.STRING;
-                        boolean bIsString = args.get(1).type
-                            == DataType.Type.STRING;
+                        boolean aIsString = args.get(0)
+                            .isType(DataType.Type.STRING);
+                        boolean bIsString = args.get(1)
+                            .isType(DataType.Type.STRING);
                         return aIsString && bIsString;
                     }),
                     Optional.empty(),

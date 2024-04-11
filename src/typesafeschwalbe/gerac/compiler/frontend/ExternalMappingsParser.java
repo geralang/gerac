@@ -99,7 +99,8 @@ public class ExternalMappingsParser extends Parser {
                             Optional.empty(),
                             Optional.of(argumentTypes), 
                             Optional.of(src -> new DataType(
-                                    returnType.type, returnType.getValue(), src
+                                returnType.exactType(), returnType.getValue(),
+                                src
                             )),
                             Optional.empty()
                         ),
