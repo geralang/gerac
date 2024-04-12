@@ -270,7 +270,6 @@ public class TypeChecker {
                 if(!argumentTypes.equals(encountered.argumentTypes)) {
                     continue; 
                 }
-                System.out.println(encountered.path);
                 boolean isDefinite = encountered.returnType.isPresent()
                     && encountered.returnType.get().isConcrete();
                 return new CallCheckResult(
@@ -295,8 +294,11 @@ public class TypeChecker {
                 if(!argumentTypes.equals(variant.argumentTypes().get())) { 
                     continue;
                 }
+                DataType returnType = variant
+                    .returnType().get().apply(callSource);
                 return new CallCheckResult(
-                    variant.returnType().get().apply(callSource),
+                    // remove ordered objects (never fails)
+                    this.unify(returnType, returnType, callSource),
                     fullPath,
                     variantI
                 );
@@ -345,9 +347,12 @@ public class TypeChecker {
                         )
                     );
                 }
+                DataType returnType = symbol
+                    .<Symbols.Symbol.Procedure>getVariant(0)
+                    .returnType().get().apply(callSource);
                 return new CallCheckResult(
-                    symbol.<Symbols.Symbol.Procedure>getVariant(0)
-                        .returnType().get().apply(callSource),
+                    // remove ordered objects (never fails)
+                    this.unify(returnType, returnType, callSource),
                     fullPath,
                     0
                 );
@@ -875,23 +880,6 @@ public class TypeChecker {
                     calledType = accessedType
                         .<DataType.UnorderedObject>getValue()
                         .memberTypes().get(data.memberName());
-                } else if(
-                    accessedType.exactType() == DataType.Type.ORDERED_OBJECT
-                ) {
-                    calledType = null;
-                    DataType.OrderedObject accessedData
-                        = accessedType.getValue();
-                    for(
-                        int memberI = 0; 
-                        memberI < accessedData.memberNames().size(); 
-                        memberI += 1
-                    ) {
-                        boolean nameMatches = accessedData.memberNames()
-                            .get(memberI).equals(data.memberName());
-                        if(!nameMatches) { continue; }
-                        accessedType = accessedData.memberTypes().get(memberI);
-                        break;
-                    }
                 } else {
                     throw new ErrorException(TypeChecker.makeNonbjectError(
                         accessedType, node.source
@@ -1027,23 +1015,6 @@ public class TypeChecker {
                     resultType = accessedType
                         .<DataType.UnorderedObject>getValue()
                         .memberTypes().get(data.memberName());
-                } else if(
-                    accessedType.exactType() == DataType.Type.ORDERED_OBJECT
-                ) {
-                    resultType = null;
-                    DataType.OrderedObject accessedData
-                        = accessedType.getValue();
-                    for(
-                        int memberI = 0; 
-                        memberI < accessedData.memberNames().size(); 
-                        memberI += 1
-                    ) {
-                        boolean nameMatches = accessedData.memberNames()
-                            .get(memberI).equals(data.memberName());
-                        if(!nameMatches) { continue; }
-                        resultType = accessedData.memberTypes().get(memberI);
-                        break;
-                    }
                 } else {
                     throw new ErrorException(TypeChecker.makeNonbjectError(
                         accessedType, node.source
@@ -1602,16 +1573,32 @@ public class TypeChecker {
         if(a.exactType() == DataType.Type.PANIC) {
             return b;
         }
+        if(a.exactType() == DataType.Type.ORDERED_OBJECT) {
+            return this.unify(
+                new DataType(
+                    DataType.Type.UNORDERED_OBJECT,
+                    DataType.makeUnordered(a.getValue()),
+                    a.source
+                ),
+                b,
+                source
+            );
+        }
         if(b.exactType() == DataType.Type.PANIC) {
             return a;
         }
-        boolean isValid = a.exactType() == b.exactType()
-            || (a.exactType() == DataType.Type.ORDERED_OBJECT
-                && b.exactType() == DataType.Type.UNORDERED_OBJECT
-            ) || (b.exactType() == DataType.Type.ORDERED_OBJECT
-                && a.exactType() == DataType.Type.UNORDERED_OBJECT
+        if(b.exactType() == DataType.Type.ORDERED_OBJECT) {
+            return this.unify(
+                a,
+                new DataType(
+                    DataType.Type.UNORDERED_OBJECT,
+                    DataType.makeUnordered(b.getValue()),
+                    b.source
+                ),
+                source
             );
-        if(!isValid) {
+        }
+        if(a.exactType() != b.exactType()) {
             throw new ErrorException(TypeChecker.makeIncompatibleError(
                 source, 
                 a.source, a.toString(),
@@ -1667,29 +1654,6 @@ public class TypeChecker {
                 }
                 value = new DataType.UnorderedObject(memberTypes);
             } break;
-            case ORDERED_OBJECT: {
-                DataType.OrderedObject aData = a.getValue();
-                Map<String, DataType> aMemberTypes = new HashMap<>();
-                for(
-                    int memberI = 0;
-                    memberI < aData.memberNames().size();
-                    memberI += 1
-                ) {
-                    aMemberTypes.put(
-                        aData.memberNames().get(memberI), 
-                        aData.memberTypes().get(memberI)
-                    );
-                }
-                return this.unify(
-                    b,
-                    new DataType(
-                        DataType.Type.UNORDERED_OBJECT,
-                        new DataType.UnorderedObject(aMemberTypes),
-                        a.source
-                    ),
-                    source
-                );
-            }
             case CLOSURE: {
                 DataType.Closure dataA = a.getValue();
                 DataType.Closure dataB = b.getValue();
@@ -1730,7 +1694,8 @@ public class TypeChecker {
                 }
                 value = new DataType.Union(variantTypes);
             } break;
-            case PANIC: {
+            case PANIC:
+            case ORDERED_OBJECT: {
                 throw new RuntimeException("should not be encountered!");
             }
             default: {

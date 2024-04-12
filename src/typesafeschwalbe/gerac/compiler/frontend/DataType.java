@@ -9,6 +9,21 @@ import typesafeschwalbe.gerac.compiler.Source;
 
 public final class DataType {
 
+    public static UnorderedObject makeUnordered(OrderedObject data) {
+        Map<String, DataType> memberTypes = new HashMap<>();
+        for(
+            int memberI = 0;
+            memberI < data.memberNames().size();
+            memberI += 1
+        ) {
+            memberTypes.put(
+                data.memberNames().get(memberI), 
+                data.memberTypes().get(memberI)
+            );
+        }
+        return new UnorderedObject(memberTypes);
+    }
+
     public static class UnknownOriginMarker {}
 
     public static record ClosureContext(
