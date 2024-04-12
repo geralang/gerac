@@ -160,6 +160,11 @@ public class TypeChecker {
         );
     }
 
+    private static final Namespace CLOSURE_CHECKING_PATH
+        = new Namespace(List.of());
+    private static final Namespace STATIC_CHECKING_PATH
+        = new Namespace(List.of());
+
     static class CheckedBlock {
         private final Map<String, Optional<DataType>> variableTypes;
         private final Map<String, Boolean> variablesMutable;
@@ -209,7 +214,7 @@ public class TypeChecker {
 
 
     private final Symbols symbols;
-    private final List<CheckedSymbol> checked;
+    private List<CheckedSymbol> checked;
 
     public TypeChecker(Symbols symbols) {
         this.symbols = symbols;
@@ -264,7 +269,7 @@ public class TypeChecker {
             int argC = symbolData.argumentNames().size();
             if(argC != argumentTypes.size()) { continue; }
             for(CheckedSymbol encountered: this.checked) {
-                // skip closures
+                // skip closures and static exprs
                 if(encountered.path.elements().size() == 0) { continue; }
                 if(!encountered.path.equals(fullPath)) { continue; }
                 if(!argumentTypes.equals(encountered.argumentTypes)) {
@@ -358,6 +363,7 @@ public class TypeChecker {
                 );
             }
             int variantIdx = symbol.variantCount();
+            List<CheckedSymbol> prevChecked = new LinkedList<>(this.checked);
             this.enterSymbol(fullPath, argumentTypes, symbol);
             this.currentSymbol().variant = variantIdx;
             this.enterBlock();
@@ -373,8 +379,7 @@ public class TypeChecker {
                  bodyTyped = this.typeNodes(data.body().get());
             } catch(ErrorException e) {
                 failures.add(e.error);
-                this.exitBlock();
-                this.exitSymbol();
+                this.checked = prevChecked;
                 continue;
             }
             CheckedBlock checkedBlock = this.exitBlock();
@@ -619,7 +624,12 @@ public class TypeChecker {
                     branchI += 1
                 ) {
                     AstNode branchValue = data.branchValues().get(branchI);
+                    this.enterSymbol(
+                        STATIC_CHECKING_PATH, List.of(), 
+                        this.currentSymbol().symbol
+                    );
                     AstNode branchValueTyped = this.typeNode(branchValue);
+                    this.exitSymbol();
                     this.unify(
                         valueTyped.resultType.get(), 
                         branchValueTyped.resultType.get(),
@@ -1439,7 +1449,12 @@ public class TypeChecker {
             }
             case STATIC: {
                 AstNode.MonoOp data = node.getValue();
+                this.enterSymbol(
+                    STATIC_CHECKING_PATH, List.of(), 
+                    this.currentSymbol().symbol
+                );
                 AstNode valueTyped = this.typeNode(data.value());
+                this.exitSymbol();
                 return new AstNode(
                     node.type,
                     new AstNode.MonoOp(valueTyped),
@@ -1504,7 +1519,7 @@ public class TypeChecker {
             Optional<Set<String>> contextCaptures;
             if(nodeData.body().isPresent()) {
                 this.enterSymbol(
-                    new Namespace(List.of()),
+                    CLOSURE_CHECKING_PATH,
                     argTypes,
                     this.currentSymbol().symbol
                 );
