@@ -6,8 +6,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
+import typesafeschwalbe.gerac.compiler.backend.Ir;
 import typesafeschwalbe.gerac.compiler.backend.Value;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.DataType;
@@ -41,6 +43,12 @@ public class Symbols {
 
     public static class Symbol {
         
+        public static record LoweredProcedure(
+            List<DataType> argumentTypes,
+            Ir.Context context,
+            List<Ir.Instr> body
+        ) {}
+
         public static record Procedure(
             List<String> argumentNames,
             Optional<ArgTypeChecker> allowedArgumentTypes,
@@ -100,6 +108,9 @@ public class Symbols {
         }
         public void addVariant(Object value) {
             this.variants.add(value);
+        }
+        public void setVariant(int variantIdx, Object value) {
+            this.variants.set(variantIdx, value);
         }
 
     }
@@ -253,6 +264,10 @@ public class Symbols {
 
     public Optional<Symbol> get(Namespace path) {
         return Optional.ofNullable(this.symbols.get(path));
+    }
+
+    public Set<Namespace> allSymbolPaths() {
+        return this.symbols.keySet();
     }
 
 }

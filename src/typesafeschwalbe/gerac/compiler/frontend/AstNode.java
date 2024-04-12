@@ -4,7 +4,6 @@ package typesafeschwalbe.gerac.compiler.frontend;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 import typesafeschwalbe.gerac.compiler.Source;
 
@@ -21,7 +20,7 @@ public class AstNode {
         List<String> argumentNames,
         Optional<List<DataType>> argumentTypes,
         Optional<DataType> returnType,
-        Optional<Set<String>> captures,
+        Optional<Map<String, DataType>> captures,
         Optional<List<AstNode>> body
     ) {}
 
@@ -55,6 +54,11 @@ public class AstNode {
 
     public static record Call(
         AstNode called,
+        List<AstNode> arguments
+    ) {}
+
+    public static record ProcedureCall(
+        Namespace path, int variant,
         List<AstNode> arguments
     ) {}
 
@@ -138,6 +142,7 @@ public class AstNode {
         ASSIGNMENT,              // BiOp
         RETURN,                  // MonoOp
         CALL,                    // Call
+        PROCEDURE_CALL,          // ProcedureCall
         METHOD_CALL,             // MethodCall
         OBJECT_LITERAL,          // ObjectLiteral
         ARRAY_LITERAL,           // ArrayLiteral

@@ -9,9 +9,9 @@ import typesafeschwalbe.gerac.compiler.frontend.Lexer;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 import typesafeschwalbe.gerac.compiler.frontend.SourceParser;
 import typesafeschwalbe.gerac.compiler.frontend.TypeChecker;
-import typesafeschwalbe.gerac.compiler.backend.Interpreter;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.ExternalMappingsParser;
+import typesafeschwalbe.gerac.compiler.backend.Lowerer;
 
 public class Compiler {
 
@@ -71,30 +71,15 @@ public class Compiler {
             ));
         }
         TypeChecker typeChecker = new TypeChecker(symbols);
-        try {
-            typeChecker.checkMain(mainPath);
-        } catch(ErrorException e) {
-            return Result.ofError(e.error);
+        Optional<Error> typeCheckError = typeChecker.checkMain(mainPath);
+        if(typeCheckError.isPresent()) {
+            return Result.ofError(typeCheckError.get());
         }
-        // FOR DEBUGGING THE INTERPRETER ///////////////////////////////////////
-        Interpreter interpreter = new Interpreter(files, symbols);
-        try {
-            interpreter.evaluateNode(new AstNode(
-                AstNode.Type.CALL,
-                new AstNode.Call(
-                    new AstNode(
-                        AstNode.Type.MODULE_ACCESS,
-                        new AstNode.ModuleAccess(mainPath, Optional.of(0)),
-                        new Source(BuiltIns.BUILTIN_FILE_NAME, 0, 0)
-                    ),
-                    List.of()
-                ),
-                new Source(BuiltIns.BUILTIN_FILE_NAME, 0, 0)
-            ));
-        } catch(ErrorException e) {
-            return Result.ofError(e.error);
+        Lowerer lowerer = new Lowerer(files, symbols);
+        Optional<Error> loweringError = lowerer.lowerProcedures();
+        if(loweringError.isPresent()) {
+            return Result.ofError(loweringError.get());
         }
-        ////////////////////////////////////////////////////////////////////////
         return Result.ofValue("");
     }
 

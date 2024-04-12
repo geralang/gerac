@@ -3,7 +3,6 @@ package typesafeschwalbe.gerac.compiler.frontend;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -179,7 +178,7 @@ public class ExternalMappingsParser extends Parser {
                             new AstNode.Closure(
                                 argNames, 
                                 Optional.of(argTypes), Optional.of(returnType), 
-                                Optional.of(new HashSet<>()), Optional.empty()
+                                Optional.of(new HashMap<>()), Optional.empty()
                             ),
                             new Source(start.source, returnType.source)
                         ),

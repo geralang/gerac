@@ -448,53 +448,6 @@ public class Interpreter {
             }
             case CALL: {
                 AstNode.Call data = node.getValue();
-                if(data.called().type == AstNode.Type.MODULE_ACCESS) {
-                    AstNode.ModuleAccess calledData = data.called().getValue();
-                    Optional<Symbols.Symbol> symbol = this.symbols.get(
-                        calledData.path()
-                    );
-                    if(symbol.isEmpty()) {
-                        throw new RuntimeException("symbol should exist!");
-                    }
-                    Symbols.Symbol.Procedure symbolData = symbol.get()
-                        .getVariant(calledData.variant().get());
-                    if(symbolData.body().isEmpty()) {
-                        if(!this.builtIns.containsKey(calledData.path())) {
-                            throw new ErrorException(
-                                Interpreter.makeExternalUsageError(
-                                    calledData.path(), data.called().source
-                                )
-                            );
-                        }
-                        List<Value> args = new ArrayList<>(
-                            data.arguments().size()
-                        );
-                        for(AstNode argument: data.arguments()) {
-                            args.add(this.evaluateNode(argument));
-                        }
-                        this.enterCall(calledData.path(), node.source);
-                        Value returned = this.builtIns.get(calledData.path())
-                            .eval(args, node.source);
-                        this.exitCall();
-                        return returned;
-                    }
-                    this.enterCall(calledData.path(), node.source);
-                    this.enterFrame();
-                    for(
-                        int argI = 0; 
-                        argI < symbolData.argumentNames().size(); 
-                        argI += 1
-                    ) {
-                        String argName = symbolData.argumentNames().get(argI);
-                        Value argValue = this.evaluateNode(
-                            data.arguments().get(argI)
-                        );
-                        this.currentFrame().put(argName, Optional.of(argValue));
-                    }
-                    this.evaluateBlock(symbolData.body().get());
-                    this.exitFrame();
-                    return this.exitCall();
-                }
                 Value.Closure called = this.evaluateNode(data.called())
                     .getValue();
                 List<Value> argumentValues = new ArrayList<>(
@@ -504,6 +457,53 @@ public class Interpreter {
                     argumentValues.add(this.evaluateNode(argument));
                 }
                 return this.callClosure(called, argumentValues, node.source);
+            }
+            case PROCEDURE_CALL: {
+                AstNode.ProcedureCall data = node.getValue();
+                Optional<Symbols.Symbol> symbol = this.symbols.get(
+                    data.path()
+                );
+                if(symbol.isEmpty()) {
+                    throw new RuntimeException("symbol should exist!");
+                }
+                Symbols.Symbol.Procedure symbolData = symbol.get()
+                    .getVariant(data.variant());
+                if(symbolData.body().isEmpty()) {
+                    if(!this.builtIns.containsKey(data.path())) {
+                        throw new ErrorException(
+                            Interpreter.makeExternalUsageError(
+                                data.path(), node.source
+                            )
+                        );
+                    }
+                    List<Value> args = new ArrayList<>(
+                        data.arguments().size()
+                    );
+                    for(AstNode argument: data.arguments()) {
+                        args.add(this.evaluateNode(argument));
+                    }
+                    this.enterCall(data.path(), node.source);
+                    Value returned = this.builtIns.get(data.path())
+                        .eval(args, node.source);
+                    this.exitCall();
+                    return returned;
+                }
+                this.enterCall(data.path(), node.source);
+                this.enterFrame();
+                for(
+                    int argI = 0; 
+                    argI < symbolData.argumentNames().size(); 
+                    argI += 1
+                ) {
+                    String argName = symbolData.argumentNames().get(argI);
+                    Value argValue = this.evaluateNode(
+                        data.arguments().get(argI)
+                    );
+                    this.currentFrame().put(argName, Optional.of(argValue));
+                }
+                this.evaluateBlock(symbolData.body().get());
+                this.exitFrame();
+                return this.exitCall();
             }
             case METHOD_CALL: {
                 AstNode.MethodCall data = node.getValue();

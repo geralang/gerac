@@ -169,14 +169,14 @@ public class TypeChecker {
         private final Map<String, Optional<DataType>> variableTypes;
         private final Map<String, Boolean> variablesMutable;
         private final Map<String, DataType> initializes;
-        private final Set<String> captures;
+        private final Map<String, DataType> captures;
         private boolean returns;
 
         private CheckedBlock() {
             this.variableTypes = new HashMap<>();
             this.variablesMutable = new HashMap<>();
             this.initializes = new HashMap<>();
-            this.captures = new HashSet<>();
+            this.captures = new HashMap<>();
             this.returns = false;
         }
 
@@ -184,7 +184,7 @@ public class TypeChecker {
             this.variableTypes = new HashMap<>(src.variableTypes);
             this.variablesMutable = new HashMap<>(src.variablesMutable);
             this.initializes = new HashMap<>(src.initializes);
-            this.captures = new HashSet<>(src.captures);
+            this.captures = new HashMap<>(src.captures);
             this.returns = src.returns;
         }
     }
@@ -221,7 +221,7 @@ public class TypeChecker {
         this.checked = new LinkedList<>();
     }
 
-    public void checkMain(Namespace path) throws ErrorException {
+    public Optional<Error> checkMain(Namespace path) {
         Source src = new Source(BuiltIns.BUILTIN_FILE_NAME, 0, 0);
         Symbols.Symbol symbol = new Symbols.Symbol(
             Symbols.Symbol.Type.PROCEDURE, true, src, new Namespace[0],
@@ -234,10 +234,15 @@ public class TypeChecker {
         this.enterSymbol(
             new Namespace(List.of("<builtin>")), List.of(), symbol
         );
-        this.checkProcedureCall(
-            path, List.of(), src, src
-        );
+        try {
+            this.checkProcedureCall(
+                path, List.of(), src, src
+            );
+        } catch(ErrorException e) {
+            return Optional.of(e.error);
+        }
         this.exitSymbol();
+        return Optional.empty();
     }
 
     private static record CallCheckResult(
@@ -505,11 +510,11 @@ public class TypeChecker {
     private void handleBranches(List<CheckedBlock> branches) {
         CheckedBlock currentBlock = this.currentBlock();
         Map<String, DataType> initialized = null;
-        Set<String> captures = new HashSet<>();
+        Map<String, DataType> captures = new HashMap<>();
         boolean returns = false;
         for(int branchI = 0; branchI < branches.size(); branchI += 1) {
             CheckedBlock branch = branches.get(branchI);
-            captures.addAll(branch.captures);
+            captures.putAll(branch.captures);
             if(branchI == 0) {
                 initialized = new HashMap<>(branch.initializes);
                 returns = branch.returns;
@@ -528,9 +533,11 @@ public class TypeChecker {
                 currentBlock.initializes.put(initializedName, initializedType);
             }
         }
-        for(String captureName: captures) {
+        for(String captureName: captures.keySet()) {
             if(!currentBlock.variableTypes.containsKey(captureName)) {
-                currentBlock.captures.add(captureName);
+                currentBlock.captures.put(
+                    captureName, captures.get(captureName)
+                );
             }
         }
         currentBlock.returns |= returns;
@@ -844,15 +851,9 @@ public class TypeChecker {
                         data.called().source, node.source
                     );
                     return new AstNode(
-                        node.type,
-                        new AstNode.Call(
-                            new AstNode(
-                                AstNode.Type.MODULE_ACCESS,
-                                new AstNode.ModuleAccess(
-                                    call.fullPath, Optional.of(call.variant)
-                                ),
-                                data.called().source
-                            ), 
+                        AstNode.Type.PROCEDURE_CALL,
+                        new AstNode.ProcedureCall(
+                            call.fullPath, call.variant,
                             argumentsTyped
                         ),
                         node.source,
@@ -1318,7 +1319,9 @@ public class TypeChecker {
                             }
                         }
                         if(cBlock != this.currentBlock()) {
-                            this.currentBlock().captures.add(variableName);
+                            this.currentBlock().captures.put(
+                                variableName, variableType.get()
+                            );
                         }
                         if(assignedType.isPresent()) {
                             cBlock.variableTypes.put(
@@ -1516,7 +1519,7 @@ public class TypeChecker {
             }
             DataType contextReturnType;
             Optional<List<AstNode>> contextTypedBody;
-            Optional<Set<String>> contextCaptures;
+            Optional<Map<String, DataType>> contextCaptures;
             if(nodeData.body().isPresent()) {
                 this.enterSymbol(
                     CLOSURE_CHECKING_PATH,
