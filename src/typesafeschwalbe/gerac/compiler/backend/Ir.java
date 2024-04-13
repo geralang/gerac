@@ -44,6 +44,11 @@ public class Ir {
             this.index = index;
         }
 
+        @Override
+        public String toString() {
+            return "{value}";
+        }
+
     }
 
     public static class Context {
@@ -90,6 +95,12 @@ public class Ir {
         @Override
         public Variable clone() {
             return new Variable(this.index, this.version);
+        }
+
+        @Override
+        public String toString() {
+            return String.valueOf(this.index)
+                + "<" + String.valueOf(this.version) + ">";
         }
 
     }
@@ -194,6 +205,28 @@ public class Ir {
         @SuppressWarnings("unchecked")
         public <T> T getValue() {
             return (T) this.value;
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder out = new StringBuilder();
+            if(this.value != null) {
+                out.append(this.value);
+            } else {
+                out.append(this.type);
+            }
+            out.append("(");
+            out.append(String.join(
+                ", ",
+                this.arguments.stream()
+                    .map(Variable::toString).toArray(String[]::new)
+            ));
+            out.append(")");
+            if(this.dest.isPresent()) {
+                out.append(" -> ");
+                out.append(this.dest.get());
+            }
+            return out.toString();
         }
 
     }

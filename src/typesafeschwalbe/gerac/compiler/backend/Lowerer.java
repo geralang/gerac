@@ -87,6 +87,11 @@ public class Lowerer {
                     this.exitBlock();
                     return Optional.of(e.error);
                 }
+                // DEBUG //
+                for(Ir.Instr i: body) {
+                    System.out.println(i);
+                }
+                ///////////
                 symbol.setVariant(
                     variantI,
                     new Symbols.Symbol.LoweredProcedure(
@@ -179,9 +184,10 @@ public class Lowerer {
                 for(String captureName: data.captures().get().keySet()) {
                     captureNames.add(captureName);
                     if(this.variables().variables.containsKey(captureName)) {
-                        captureValues.add(
-                            this.variables().variables.get(captureName).clone()
-                        );
+                        Ir.Variable var = this.variables().variables
+                            .get(captureName).clone();
+                        captureValues.add(var);
+                        this.context.markCaptured(var);
                     } else {
                         Ir.Variable value = this.context
                             .allocate(data.captures().get().get(captureName));
@@ -670,13 +676,89 @@ public class Lowerer {
             }
             case OR: {
                 AstNode.BiOp data = node.getValue();
-                // TODO
-                throw new RuntimeException("not yet implemented!");
+                Ir.Variable left = this.lowerNode(data.left()).get();
+                Ir.Variable dest = this.context.allocate(node.resultType.get());
+                StaticValue trueValue = this.staticValues.add(
+                    new Value.Bool(true)
+                );
+                this.enterBlock();
+                Ir.Variable right = this.lowerNode(data.right()).get();
+                List<Ir.Instr> rightInstr = this.exitBlock();
+                Ir.Variable destRight = dest.clone();
+                rightInstr.add(new Ir.Instr(
+                    Ir.Instr.Type.COPY,
+                    List.of(destRight, right),
+                    null, Optional.empty()
+                ));
+                dest.version += 1;
+                Ir.Variable destLeft = dest.clone();
+                this.block().add(new Ir.Instr(
+                    Ir.Instr.Type.BRANCH_ON_VALUE,
+                    List.of(left),
+                    new Ir.Instr.BranchOnValue(
+                        List.of(trueValue),
+                        List.of(List.of(
+                            new Ir.Instr(
+                                Ir.Instr.Type.COPY,
+                                List.of(destLeft, left),
+                                null, Optional.empty()
+                            )
+                        )),
+                        rightInstr
+                    ),
+                    Optional.empty()
+                ));
+                dest.version += 1;
+                this.block().add(new Ir.Instr(
+                    Ir.Instr.Type.PHI,
+                    List.of(destLeft, destRight),
+                    null,
+                    Optional.of(dest)
+                ));
+                return Optional.of(dest);
             }
             case AND: {
                 AstNode.BiOp data = node.getValue();
-                // TODO
-                throw new RuntimeException("not yet implemented!");
+                Ir.Variable left = this.lowerNode(data.left()).get();
+                Ir.Variable dest = this.context.allocate(node.resultType.get());
+                StaticValue falseValue = this.staticValues.add(
+                    new Value.Bool(false)
+                );
+                this.enterBlock();
+                Ir.Variable right = this.lowerNode(data.right()).get();
+                List<Ir.Instr> rightInstr = this.exitBlock();
+                Ir.Variable destRight = dest.clone();
+                rightInstr.add(new Ir.Instr(
+                    Ir.Instr.Type.COPY,
+                    List.of(destRight, right),
+                    null, Optional.empty()
+                ));
+                dest.version += 1;
+                Ir.Variable destLeft = dest.clone();
+                this.block().add(new Ir.Instr(
+                    Ir.Instr.Type.BRANCH_ON_VALUE,
+                    List.of(left),
+                    new Ir.Instr.BranchOnValue(
+                        List.of(falseValue),
+                        List.of(List.of(
+                            new Ir.Instr(
+                                Ir.Instr.Type.COPY,
+                                List.of(destLeft, left),
+                                null, Optional.empty()
+                            )
+                        )),
+                        rightInstr
+                    ),
+                    Optional.empty()
+                ));
+                dest.version += 1;
+                this.block().add(new Ir.Instr(
+                    Ir.Instr.Type.PHI,
+                    List.of(destLeft, destRight),
+                    null,
+                    Optional.of(dest)
+                ));
+                return Optional.of(dest);
             }
             case MODULE_ACCESS: {
                 // this can only be a global variable access
