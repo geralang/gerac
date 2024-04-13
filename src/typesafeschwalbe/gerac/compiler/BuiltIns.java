@@ -17,22 +17,27 @@ public class BuiltIns {
     public static final String BUILTIN_CORE_FILE_NAME = "<builtin>/core.gera";
 
     public static void addParsedFiles(Map<String, String> files) {
-        files.put(BUILTIN_CORE_FILE_NAME,
-            "mod core\n" +
-            "\n" +
-            "pub proc range(start, end) {\n" +
-            "    mut var i = start\n" +
-            "    return || {\n" +
-            "        case i >= end -> return #end unit\n" +
-            "        i = i + 1\n" +
-            "        return #next i - 1\n" +
-            "    }\n" +
-            "}\n" +
-            "\n" +
-            "pub proc range_incl(start, end) {\n" +
-            "    return range(start, end + 1)\n" +
-            "}\n" +
-            "\n"
+        files.put(BUILTIN_CORE_FILE_NAME, """
+            mod core
+
+            pub proc range(start, end) {
+                mut var i = start
+                return || {
+                    case i >= end -> return #end unit
+                    i = i + 1
+                    return #next i - 1
+                }
+            }
+
+            pub proc range_incl(start, end) {
+                mut var i = start
+                return || {
+                    case i > end -> return #end unit
+                    i = i + 1
+                    return #next i - 1
+                }
+            }
+            """
         );
     }
 
