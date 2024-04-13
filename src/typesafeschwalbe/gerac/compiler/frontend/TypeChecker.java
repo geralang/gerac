@@ -457,16 +457,18 @@ public class TypeChecker {
             );
         }
         if(symbol.variantCount() != 0) {
-            return symbol.<Symbols.Symbol.Variable>getVariant(0)
+            DataType valueType = symbol.<Symbols.Symbol.Variable>getVariant(0)
                 .valueType().get();
+            return this.unify(valueType, valueType, accessSource);
         }
         Symbols.Symbol.Variable data = symbol.getValue();
         if(data.valueNode().isEmpty()) {
             if(symbol.variantCount() == 0) {
                 symbol.addVariant(symbol.<Symbols.Symbol.Variable>getValue());
             }
-            return symbol.<Symbols.Symbol.Variable>getVariant(0)
+            DataType valueType = symbol.<Symbols.Symbol.Variable>getVariant(0)
                 .valueType().get();
+            return this.unify(valueType, valueType, accessSource);
         }
         this.enterSymbol(path, List.of(), symbol);
         AstNode typedValue = this.typeNode(data.valueNode().get());
@@ -1295,7 +1297,7 @@ public class TypeChecker {
                         }
                         boolean isInitializing = assignedType.isPresent() 
                             && !wasInitialized;
-                        if(isInitializing && !mutable) {
+                        if(!isInitializing && !mutable) {
                             throw new ErrorException(new Error(
                                 "Mutation of immutable variable",
                                 Error.Marking.error(
@@ -1321,11 +1323,6 @@ public class TypeChecker {
                         if(cBlock != this.currentBlock()) {
                             this.currentBlock().captures.put(
                                 variableName, variableType.get()
-                            );
-                        }
-                        if(assignedType.isPresent()) {
-                            cBlock.variableTypes.put(
-                                variableName, variableType
                             );
                         }
                         found = true;

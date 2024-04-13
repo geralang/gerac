@@ -545,6 +545,9 @@ public class Interpreter {
                 Value value = this.evaluateNode(data.left());
                 Value.Int size = this.evaluateNode(data.right()).getValue();
                 if(size.value < 0) {
+                    this.enterCall(
+                        new Namespace(List.of("<array-init>")), node.source
+                    );
                     this.panic(
                         "the value " + size.value
                             + " is not a valid array size", 

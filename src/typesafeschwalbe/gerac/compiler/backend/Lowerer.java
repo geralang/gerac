@@ -35,10 +35,10 @@ public class Lowerer {
     private final Symbols symbols;
     private final Interpreter interpreter;
 
-    private final Ir.StaticValues staticValues;
+    public final Ir.StaticValues staticValues;
     private Ir.Context context;
     private final List<List<Ir.Instr>> blockStack;
-    private final List<BlockVariables> variableStack;
+    private List<BlockVariables> variableStack;
 
     public Lowerer(
         Map<String, String> sourceFiles,
@@ -87,11 +87,6 @@ public class Lowerer {
                     this.exitBlock();
                     return Optional.of(e.error);
                 }
-                // DEBUG //
-                for(Ir.Instr i: body) {
-                    System.out.println(i);
-                }
-                ///////////
                 symbol.setVariant(
                     variantI,
                     new Symbols.Symbol.LoweredProcedure(
@@ -187,7 +182,7 @@ public class Lowerer {
                         Ir.Variable var = this.variables().variables
                             .get(captureName).clone();
                         captureValues.add(var);
-                        this.context.markCaptured(var);
+                        this.context.markCaptured(var, captureName);
                     } else {
                         Ir.Variable value = this.context
                             .allocate(data.captures().get().get(captureName));
@@ -201,7 +196,9 @@ public class Lowerer {
                     }
                 }
                 Ir.Context prevContext = this.context;
+                List<BlockVariables> prevVars = this.variableStack;
                 this.context = new Ir.Context();
+                this.variableStack = new LinkedList<>();
                 this.enterBlock();
                 for(
                     int argI = 0; 
@@ -219,6 +216,7 @@ public class Lowerer {
                 List<Ir.Instr> body = this.exitBlock();
                 Ir.Context context = this.context;
                 this.context = prevContext;
+                this.variableStack = prevVars;
                 this.block().add(new Ir.Instr(
                     Ir.Instr.Type.LOAD_CLOSURE,
                     captureValues,
@@ -232,7 +230,14 @@ public class Lowerer {
             }
             case VARIABLE: {
                 AstNode.Variable data = node.getValue();
-                Ir.Variable value = this.lowerNode(data.value().get()).get();
+                Ir.Variable value;
+                if(data.value().isPresent()) {
+                    value = this.lowerNode(data.value().get()).get();
+                } else {
+                    // TODO
+                    // value = this.context.allocate(???);
+                    throw new RuntimeException("not yet implemented!");
+                }
                 this.variables().variables.put(data.name(), value);
                 this.variables().lastUpdates.put(data.name(), value.version);
                 return Optional.empty();
@@ -373,7 +378,7 @@ public class Lowerer {
                         this.block().add(new Ir.Instr(
                             Ir.Instr.Type.WRITE_ARRAY,
                             List.of(accessed, index, value),
-                            null, 
+                            new Ir.Instr.ArrayAccess(data.left().source), 
                             Optional.empty()
                         ));
                     } break;
@@ -391,9 +396,9 @@ public class Lowerer {
                             );
                             this.block().add(new Ir.Instr(
                                 Ir.Instr.Type.COPY,
-                                List.of(accessed.clone(), value),
+                                List.of(value),
                                 null, 
-                                Optional.empty()
+                                Optional.of(accessed.clone())
                             ));
                         } else {
                             this.block().add(new Ir.Instr(
@@ -435,7 +440,7 @@ public class Lowerer {
                 this.block().add(new Ir.Instr(
                     Ir.Instr.Type.CALL_CLOSURE,
                     arguments,
-                    null,
+                    new Ir.Instr.CallClosure(node.source),
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
@@ -450,7 +455,9 @@ public class Lowerer {
                 this.block().add(new Ir.Instr(
                     Ir.Instr.Type.CALL_PROCEDURE,
                     arguments,
-                    new Ir.Instr.CallProcedure(data.path(), data.variant()),
+                    new Ir.Instr.CallProcedure(
+                        data.path(), data.variant(), node.source
+                    ),
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
@@ -478,7 +485,7 @@ public class Lowerer {
                 this.block().add(new Ir.Instr(
                     Ir.Instr.Type.CALL_CLOSURE,
                     arguments,
-                    null,
+                    new Ir.Instr.CallClosure(node.source),
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
@@ -523,7 +530,7 @@ public class Lowerer {
                 this.block().add(new Ir.Instr(
                     Ir.Instr.Type.LOAD_REPEAT_ARRAY,
                     List.of(value, size),
-                    null,
+                    new Ir.Instr.LoadRepeatArray(node.source),
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
@@ -548,7 +555,7 @@ public class Lowerer {
                 this.block().add(new Ir.Instr(
                     Ir.Instr.Type.READ_ARRAY,
                     List.of(accessed, index), 
-                    null,
+                    new Ir.Instr.ArrayAccess(node.source),
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
@@ -687,8 +694,9 @@ public class Lowerer {
                 Ir.Variable destRight = dest.clone();
                 rightInstr.add(new Ir.Instr(
                     Ir.Instr.Type.COPY,
-                    List.of(destRight, right),
-                    null, Optional.empty()
+                    List.of(right),
+                    null,
+                    Optional.of(destRight)
                 ));
                 dest.version += 1;
                 Ir.Variable destLeft = dest.clone();
@@ -700,8 +708,9 @@ public class Lowerer {
                         List.of(List.of(
                             new Ir.Instr(
                                 Ir.Instr.Type.COPY,
-                                List.of(destLeft, left),
-                                null, Optional.empty()
+                                List.of(left),
+                                null,
+                                Optional.of(destLeft)
                             )
                         )),
                         rightInstr
@@ -730,8 +739,9 @@ public class Lowerer {
                 Ir.Variable destRight = dest.clone();
                 rightInstr.add(new Ir.Instr(
                     Ir.Instr.Type.COPY,
-                    List.of(destRight, right),
-                    null, Optional.empty()
+                    List.of(right),
+                    null, 
+                    Optional.of(destRight)
                 ));
                 dest.version += 1;
                 Ir.Variable destLeft = dest.clone();
@@ -743,8 +753,9 @@ public class Lowerer {
                         List.of(List.of(
                             new Ir.Instr(
                                 Ir.Instr.Type.COPY,
-                                List.of(destLeft, left),
-                                null, Optional.empty()
+                                List.of(left),
+                                null,
+                                Optional.of(destLeft)
                             )
                         )),
                         rightInstr

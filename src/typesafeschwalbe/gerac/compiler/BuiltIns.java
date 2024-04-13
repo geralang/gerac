@@ -13,8 +13,8 @@ public class BuiltIns {
 
     private BuiltIns() {}
 
-    public static final String BUILTIN_FILE_NAME = "<builtin>";
-    public static final String BUILTIN_CORE_FILE_NAME = "<builtin>/core.gera";
+    public static final String BUILTIN_FILE_NAME = "<built-in>";
+    public static final String BUILTIN_CORE_FILE_NAME = "<built-in>/core.gera";
 
     public static void addParsedFiles(Map<String, String> files) {
         files.put(BUILTIN_CORE_FILE_NAME, """
@@ -42,7 +42,7 @@ public class BuiltIns {
     }
 
     public static void addUnparsedFiles(Map<String, String> files) {
-        files.put(BUILTIN_FILE_NAME, "<builtin>");
+        files.put(BUILTIN_FILE_NAME, "<built-in>");
     }
 
     public static void addSymbols(Symbols symbols) {

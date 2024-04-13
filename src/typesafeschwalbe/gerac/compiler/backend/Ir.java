@@ -2,12 +2,11 @@ package typesafeschwalbe.gerac.compiler.backend;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
+import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
@@ -53,14 +52,14 @@ public class Ir {
 
     public static class Context {
 
-        private final List<Variable> argumentVars;
-        private final List<DataType> variableTypes;
-        private final Set<Integer> captured;
+        public final List<Variable> argumentVars;
+        public final List<DataType> variableTypes;
+        public final Map<Integer, String> capturedNames;
 
         public Context() {
             this.argumentVars = new ArrayList<>();
             this.variableTypes = new ArrayList<>();
-            this.captured = new HashSet<>();
+            this.capturedNames = new HashMap<>();
         }
 
         public Variable allocate(DataType variableType) {
@@ -76,8 +75,8 @@ public class Ir {
             return variable;
         }
 
-        public void markCaptured(Variable variable) {
-            this.captured.add(variable.index);
+        public void markCaptured(Variable variable, String captureName) {
+            this.capturedNames.put(variable.index, captureName);
         } 
 
     }
@@ -112,6 +111,7 @@ public class Ir {
         public static record LoadFloat(double value) {}
         public static record LoadString(String value) {}
         public static record LoadObject(List<String> memberNames) {}
+        public static record LoadRepeatArray(Source source) {}
         public static record LoadVariant(String variantName) {}
         public static record LoadClosure(
             // values = capture values
@@ -123,6 +123,7 @@ public class Ir {
         public static record LoadExtVariable(Namespace path) {}
 
         public static record ObjectAccess(String memberName) {}
+        public static record ArrayAccess(Source source) {}
         public static record CaptureAccess(String captureName) {}
 
         public static record BranchOnValue(
@@ -137,7 +138,12 @@ public class Ir {
             List<Instr> elseBody
         ) {}
 
-        public static record CallProcedure(Namespace path, int variant) {}
+        public static record CallProcedure(
+            Namespace path, int variant, Source source
+        ) {}
+        public static record CallClosure(
+            Source source
+        ) {}
 
         public enum Type {
             LOAD_UNIT,          // = null            | [] -> res
@@ -147,7 +153,7 @@ public class Ir {
             LOAD_STRING,        // LoadString        | [] -> res
             LOAD_OBJECT,        // LoadObject        | [values...] -> res
             LOAD_FIXED_ARRAY,   // = null            | [values...] -> res
-            LOAD_REPEAT_ARRAY,  // = null            | [value, size] -> res
+            LOAD_REPEAT_ARRAY,  // LoadRepeatArray   | [value, size] -> res
             LOAD_VARIANT,       // LoadVariant       | [value] -> res
             LOAD_CLOSURE,       // LoadClosure       | [capture_vals...] -> res
             LOAD_EMPTY_CLOSURE, // = null            | [] -> res
@@ -156,12 +162,12 @@ public class Ir {
 
             READ_OBJECT,        // ObjectAccess      | [accessed] -> res
             WRITE_OBJECT,       // ObjectAccess      | [accessed, value]
-            READ_ARRAY,         // = null            | [accessed, index] -> res
-            WRITE_ARRAY,        // = null            | [accessed, index, value]
+            READ_ARRAY,         // ArrayAccess       | [accessed, index] -> res
+            WRITE_ARRAY,        // ArrayAccess       | [accessed, index, value]
             READ_CAPTURE,       // CaptureAccess     | [] -> res
             WRITE_CAPTURE,      // CaptureAccess     | [value]
             
-            COPY,               // = null            | [dest, value]
+            COPY,               // = null            | [value] -> dest
             
             ADD,                // = null            | [a, b] -> res
             SUBTRACT,           // = null            | [a, b] -> res

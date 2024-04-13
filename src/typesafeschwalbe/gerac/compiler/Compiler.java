@@ -11,6 +11,7 @@ import typesafeschwalbe.gerac.compiler.frontend.SourceParser;
 import typesafeschwalbe.gerac.compiler.frontend.TypeChecker;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.ExternalMappingsParser;
+import typesafeschwalbe.gerac.compiler.backend.CodeGen;
 import typesafeschwalbe.gerac.compiler.backend.Lowerer;
 
 public class Compiler {
@@ -80,7 +81,10 @@ public class Compiler {
         if(loweringError.isPresent()) {
             return Result.ofError(loweringError.get());
         }
-        return Result.ofValue("");
+        CodeGen codeGen = target.codeGen
+            .create(files, symbols, lowerer.staticValues, maxCallDepth);
+        String output = codeGen.generate(mainPath);
+        return Result.ofValue(output);
     }
 
 }
