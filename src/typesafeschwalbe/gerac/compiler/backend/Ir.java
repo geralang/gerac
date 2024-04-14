@@ -381,6 +381,8 @@ public class Ir {
         public static record ArrayAccess(Source source) {}
         public static record CaptureAccess(String captureName) {}
 
+        public static record Division(Source source) {}
+
         public static record BranchOnValue(
             List<StaticValue> branchValues,
             List<List<Instr>> branchBodies,
@@ -427,8 +429,8 @@ public class Ir {
             ADD,                // = null            | [a, b] -> res
             SUBTRACT,           // = null            | [a, b] -> res
             MULTIPLY,           // = null            | [a, b] -> res
-            DIVIDE,             // = null            | [a, b] -> res
-            MODULO,             // = null            | [a, b] -> res
+            DIVIDE,             // Division          | [a, b] -> res
+            MODULO,             // Division          | [a, b] -> res
             NEGATE,             // = null            | [v] -> res
             LESS_THAN,          // = null            | [a, b] -> res
             GREATER_THAN,       // = null            | [a, b] -> res

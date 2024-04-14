@@ -1,6 +1,7 @@
 
 package typesafeschwalbe.gerac.compiler.backend;
 
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,7 @@ import java.util.Optional;
 import typesafeschwalbe.gerac.compiler.BuiltIns;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
+import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
 public class JsCodeGen implements CodeGen {
@@ -43,7 +45,7 @@ public class JsCodeGen implements CodeGen {
             };
             const object_hashes = new WeakMap();
             return (data) => {
-                if(typeof data === "object") {
+                if(typeof data === "object" && !data.GERA___HASH_VALS) {
                     if(!object_hashes.has(data)) {
                         const h = random_int();
                         object_hashes.set(data, h);
@@ -80,7 +82,7 @@ public class JsCodeGen implements CodeGen {
             while(true) {
                 const si = gera___stack.trace[i];
                 if(i < 0) { break; }
-                err += `${i} ${si.name} at ${si.file}:${si.line}` + '\\n';
+                err += ` ${i} ${si.name} at ${si.file}:${si.line}` + '\\n';
                 if(i === 0) { break; }
                 i -= 1;
             }
@@ -96,12 +98,11 @@ public class JsCodeGen implements CodeGen {
         }
         
         function gera___verify_size(size, file, line) {
-            if(size >= 0) {
+            if(size >= 0n) {
                 return size;
             }
             gera___stack.push("<array-init>", file, line);
             gera___panic(`the value ${size} is not a valid array size`);
-            return -1;
         }
 
         function gera___verify_index(index, length, file, line) {
@@ -115,11 +116,10 @@ public class JsCodeGen implements CodeGen {
                 `the index ${index} is out of bounds`
                     + ` for an array of length ${length}`
             );
-            return -1;
         }
         
         function gera___verify_integer_divisor(d, file, line) {
-            if(d != 0n) { return; }
+            if(d != 0n) { return d; }
             gera___stack.push("<division>", file, line);
             gera___panic("integer division by zero");
         }
@@ -137,19 +137,234 @@ public class JsCodeGen implements CodeGen {
         }
         
         function gera___strlen(s) {
-            let length = 0;
-            for(let i = 0; i < s.length; length += 1) {
+            let length = 0n;
+            for(let i = 0; i < s.length; length += 1n) {
                 const code = s.codePointAt(i);
                 i += code > 0xFFFF? 2 : 1;
             }
             return length;
         }    
         """;
+    
+    @FunctionalInterface
+    private static interface BuiltInProcedure {
+        void emit(
+            List<Ir.Variable> args, List<DataType> argt,
+            Ir.Variable dest, StringBuilder out
+        );
+    }
+
+    private void addBuiltins() {
+        this.builtIns.put(
+            new Namespace(List.of("core", "addr_eq")),
+            (args, argt, dest, out) -> {
+                this.emitVariable(dest, out);
+                out.append(" = ");
+                this.emitVariable(args.get(0), out);
+                out.append(" === ");
+                this.emitVariable(args.get(1), out);
+                out.append(";\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "tag_eq")),
+            (args, argt, dest, out) -> {
+                this.emitVariable(dest, out);
+                out.append(" = ");
+                this.emitVariable(args.get(0), out);
+                out.append(".tag === ");
+                this.emitVariable(args.get(1), out);
+                out.append(".tag;\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "length")),
+            (args, argt, dest, out) -> {
+                this.emitVariable(dest, out);
+                out.append(" = ");
+                if(argt.get(0).isType(DataType.Type.ARRAY)) {
+                    out.append("BigInt(");
+                    this.emitVariable(args.get(0), out);
+                    out.append(".length)");
+                } else {
+                    out.append("gera___strlen(");
+                    this.emitVariable(args.get(0), out);
+                    out.append(")");
+                }
+                out.append(";\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "exhaust")),
+            (args, argt, dest, out) -> {
+                out.append("while(");
+                this.emitVariable(args.get(0), out);
+                out.append("().tag == ");
+                out.append("next".hashCode());
+                out.append(") {}\n");
+                this.emitVariable(dest, out);
+                out.append(" = undefined;\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "panic")),
+            (args, argt, dest, out) -> {
+                this.emitVariable(dest, out);
+                out.append(" = ");
+                out.append("gera___panic(");
+                this.emitVariable(args.get(0), out);
+                out.append(");\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "as_str")),
+            (args, argt, dest, out) -> {
+                switch(argt.get(0).exactType()) {
+                    case UNIT: {
+                        this.emitVariable(dest, out);
+                        out.append(" = \"unit\";\n");
+                    } break;
+                    case BOOLEAN: {
+                        this.emitVariable(dest, out);
+                        out.append(" = ");
+                        this.emitVariable(args.get(0), out);
+                        out.append("? \"true\" : \"false\";\n");
+                    } break;
+                    case INTEGER: {
+                        this.emitVariable(dest, out);
+                        out.append(" = ");
+                        this.emitVariable(args.get(0), out);
+                        out.append(".toString();\n");
+                    } break;
+                    case FLOAT: {
+                        this.emitVariable(dest, out);
+                        out.append(" = ");
+                        this.emitVariable(args.get(0), out);
+                        out.append(".toString();\n");
+                    } break;
+                    case STRING: {
+                        this.emitVariable(dest, out);
+                        out.append(" = ");
+                        this.emitVariable(args.get(0), out);
+                        out.append(";\n");
+                    } break;
+                    case ARRAY: {
+                        this.emitVariable(dest, out);
+                        out.append(" = \"<array>\";\n");
+                    } break;
+                    case UNORDERED_OBJECT:
+                    case ORDERED_OBJECT: {
+                        this.emitVariable(dest, out);
+                        out.append(" = \"<object>\";\n");
+                    } break;
+                    case CLOSURE: {
+                        this.emitVariable(dest, out);
+                        out.append(" = \"<closure>\";\n");
+                    } break;
+                    case UNION: {
+                        DataType.Union union = argt.get(0).getValue();
+                        out.append("switch(");
+                        this.emitVariable(args.get(0), out);
+                        out.append(".tag) {\n");
+                        for(String variant: union.variants().keySet()) {
+                            out.append("case ");
+                            out.append(variant.hashCode());
+                            out.append(": ");
+                            this.emitVariable(dest, out);
+                            out.append(" = \"#");
+                            out.append(variant);
+                            out.append(" <...>\"; break;\n");
+                        }
+                        out.append("}\n");
+                    } break;
+                    default: {
+                        throw new RuntimeException("unhandled type!");
+                    }
+                }
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "as_int")),
+            (args, argt, dest, out) -> {
+                this.emitVariable(dest, out);
+                out.append(" = ");
+                switch(argt.get(0).exactType()) {
+                    case INTEGER: {
+                        this.emitVariable(args.get(0), out);
+                    } break;
+                    case FLOAT: {
+                        out.append("BigInt(Math.floor(");
+                        this.emitVariable(args.get(0), out);
+                        out.append("))");
+                    } break;
+                    default: {
+                        throw new RuntimeException(
+                            "should not be encountered!"
+                        );
+                    }
+                }
+                out.append(";\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "as_flt")),
+            (args, argt, dest, out) -> {
+                this.emitVariable(dest, out);
+                out.append(" = ");
+                switch(argt.get(0).exactType()) {
+                    case INTEGER: {
+                        out.append("Number(");
+                        this.emitVariable(args.get(0), out);
+                        out.append(")");
+                    } break;
+                    case FLOAT: {
+                        this.emitVariable(args.get(0), out);
+                    } break;
+                    default: {
+                        throw new RuntimeException(
+                            "should not be encountered!"
+                        );
+                    }
+                }
+                out.append(";\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "substring")),
+            (args, argt, dest, out) -> {
+                // TODO: REWRITE THE SUBSTRING JS IMPL
+                //       TO HANDLE INDICES CORRECRTLY AND CALL IT HERE
+                throw new RuntimeException("not yet implemented!");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "concat")),
+            (args, argt, dest, out) -> {
+                this.emitVariable(dest, out);
+                out.append(" = ");
+                this.emitVariable(args.get(0), out);
+                out.append(" + ");
+                this.emitVariable(args.get(1), out);
+                out.append(";\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "hash")),
+            (args, argt, dest, out) -> {
+                this.emitVariable(dest, out);
+                out.append(" = ");
+                out.append("gera___hash(");
+                this.emitVariable(args.get(0), out);
+                out.append(");\n");
+            }
+        );
+    }
 
     private final Map<String, String> sourceFiles;
     private final Symbols symbols;
     private final Ir.StaticValues staticValues;
     private final long maxCallDepth;
+    private final Map<Namespace, BuiltInProcedure> builtIns;
 
     private final List<Ir.Context> contextStack;
 
@@ -161,7 +376,9 @@ public class JsCodeGen implements CodeGen {
         this.symbols = symbols;
         this.staticValues = staticValues;
         this.maxCallDepth = maxCallDepth;
+        this.builtIns = new HashMap<>();
         this.contextStack = new LinkedList<>();
+        this.addBuiltins();
     }
 
     private void enterContext(Ir.Context context) {
@@ -208,7 +425,7 @@ public class JsCodeGen implements CodeGen {
     private void emitStaticValues(StringBuilder out) {
         int valueC = this.staticValues.values.size();
         for(int valueI = 0; valueI < valueC; valueI += 1) {
-            out.append("const GERA_STATIC_VALUE_");
+            out.append("let GERA_STATIC_VALUE_");
             out.append(valueI);
             out.append(" = ");
             this.emitDeclValueDirect(this.staticValues.values.get(valueI), out);
@@ -254,7 +471,7 @@ public class JsCodeGen implements CodeGen {
         } else if(v instanceof Ir.StaticValue.Closure) {
             out.append("() => {}");
         } else if(v instanceof Ir.StaticValue.Union) {
-            out.append("{ tag: ");
+            out.append("{ GERA___HASH_VALS: true, tag: ");
             out.append(v.<Ir.StaticValue.Union>getValue().variant.hashCode());
             out.append(", value: null }");
         } else {
@@ -537,7 +754,7 @@ public class JsCodeGen implements CodeGen {
             case LOAD_VARIANT: {
                 Ir.Instr.LoadVariant data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
-                out.append(" = { tag: ");
+                out.append(" = { GERA___HASH_VALS: true, tag: ");
                 out.append(data.variantName().hashCode());
                 out.append(", value: ");
                 this.emitVariable(instr.arguments.get(0), out);
@@ -673,19 +890,43 @@ public class JsCodeGen implements CodeGen {
                 out.append(";\n");
             } break;
             case DIVIDE: {
+                Ir.Instr.Division data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
                 this.emitVariable(instr.arguments.get(0), out);
                 out.append(" / ");
-                this.emitVariable(instr.arguments.get(1), out);
+                Ir.Context ctx = this.contextStack
+                    .get(this.contextStack.size() - 1);
+                boolean isInteger = ctx.variableTypes
+                    .get(instr.arguments.get(1).index).exactType()
+                    == DataType.Type.INTEGER;
+                if(isInteger) {
+                    this.emitIntDivisorVerify(
+                        instr.arguments.get(1), data.source(), out
+                    );
+                } else {
+                    this.emitVariable(instr.arguments.get(1), out);
+                }
                 out.append(";\n");
             } break;
             case MODULO: {
+                Ir.Instr.Division data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
                 this.emitVariable(instr.arguments.get(0), out);
                 out.append(" % ");
-                this.emitVariable(instr.arguments.get(1), out);
+                Ir.Context ctx = this.contextStack
+                    .get(this.contextStack.size() - 1);
+                boolean isInteger = ctx.variableTypes
+                    .get(instr.arguments.get(1).index).exactType()
+                    == DataType.Type.INTEGER;
+                if(isInteger) {
+                    this.emitIntDivisorVerify(
+                        instr.arguments.get(1), data.source(), out
+                    );
+                } else {
+                    this.emitVariable(instr.arguments.get(1), out);
+                }
                 out.append(";\n");
             } break;
             case NEGATE: {
@@ -809,22 +1050,34 @@ public class JsCodeGen implements CodeGen {
             case CALL_PROCEDURE: {
                 Ir.Instr.CallProcedure data = instr.getValue();
                 this.emitStackTracePush(data.path(), data.source(), out);
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
                 Symbols.Symbol symbol = this.symbols.get(data.path()).get();
-                if(symbol.externalName.isPresent()) {
-                    out.append(symbol.externalName.get());
-                } else {
-                    this.emitVariant(data.path(), data.variant(), out);
-                }
-                out.append("(");
-                for(int argI = 0; argI < instr.arguments.size(); argI += 1) {
-                    if(argI > 0) {
-                        out.append(", ");
+                boolean isExternal = symbol.externalName.isPresent();
+                boolean hasBody = symbol.<Symbols.Symbol.Procedure>getValue()
+                    .body().isPresent();
+                if(isExternal || hasBody) {
+                    this.emitVariable(instr.dest.get(), out);
+                    out.append(" = ");
+                    if(isExternal) {
+                        out.append(symbol.externalName.get());
+                    } else if(hasBody) {
+                        this.emitVariant(data.path(), data.variant(), out);
                     }
-                    this.emitVariable(instr.arguments.get(argI), out);
+                    out.append("(");
+                    for(int argI = 0; argI < instr.arguments.size(); argI += 1) {
+                        if(argI > 0) {
+                            out.append(", ");
+                        }
+                        this.emitVariable(instr.arguments.get(argI), out);
+                    }
+                    out.append(");\n");
+                } else {
+                    Ir.Context ctx = this.contextStack
+                        .get(this.contextStack.size() - 1);
+                    List<DataType> argt = instr.arguments.stream()
+                        .map(a -> ctx.variableTypes.get(a.index)).toList();
+                    this.builtIns.get(data.path())
+                        .emit(instr.arguments, argt, instr.dest.get(), out);
                 }
-                out.append(");\n");
                 this.emitStackTracePop(out);
             } break;
             case CALL_CLOSURE: {
@@ -878,6 +1131,19 @@ public class JsCodeGen implements CodeGen {
         out.append(", ");
         this.emitVariable(accessed, out);
         out.append(".length, ");
+        this.emitStringLiteral(source.file, out);
+        out.append(", ");
+        out.append(source.computeLine(this.sourceFiles));
+        out.append(")");
+    }
+
+    private void emitIntDivisorVerify(
+        Ir.Variable divisor, 
+        Source source, StringBuilder out
+    ) {
+        out.append("gera___verify_integer_divisor(");
+        this.emitVariable(divisor, out);
+        out.append(", ");
         this.emitStringLiteral(source.file, out);
         out.append(", ");
         out.append(source.computeLine(this.sourceFiles));

@@ -704,12 +704,19 @@ public class Lowerer {
                 Ir.Variable right = this.lowerNode(data.right()).get();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
                 Ir.Instr.Type t;
+                Object v = null;
                 switch(node.type) {
                     case ADD: t = Ir.Instr.Type.ADD; break;
                     case SUBTRACT: t = Ir.Instr.Type.SUBTRACT; break;
                     case MULTIPLY: t = Ir.Instr.Type.MULTIPLY; break;
-                    case DIVIDE: t = Ir.Instr.Type.DIVIDE; break;
-                    case MODULO: t = Ir.Instr.Type.MODULO; break;
+                    case DIVIDE:
+                        t = Ir.Instr.Type.DIVIDE;
+                        v = new Ir.Instr.Division(node.source);
+                        break;
+                    case MODULO: 
+                        t = Ir.Instr.Type.MODULO;
+                        v = new Ir.Instr.Division(node.source);
+                        break;
                     case LESS_THAN: t = Ir.Instr.Type.LESS_THAN; break;
                     case GREATER_THAN: t = Ir.Instr.Type.GREATER_THAN; break;
                     case LESS_THAN_EQUAL:
@@ -721,7 +728,7 @@ public class Lowerer {
                     default: throw new RuntimeException("unhandled type!");
                 }
                 this.block().add(new Ir.Instr(
-                    t, List.of(left, right), null, Optional.of(dest)
+                    t, List.of(left, right), v, Optional.of(dest)
                 ));
                 return Optional.of(dest);
             }

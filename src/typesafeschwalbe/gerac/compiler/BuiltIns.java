@@ -124,8 +124,8 @@ public class BuiltIns {
                 new Symbols.Symbol.Procedure(
                     List.of("iter"),
                     Optional.of((args, tc) -> {
-                        boolean isClosure = args.get(0)
-                            .isType(DataType.Type.CLOSURE);
+                        boolean isClosure = args.get(0).exactType()
+                            == DataType.Type.CLOSURE;
                         if(!isClosure) { return false; }
                         DataType.Closure argData = args.get(0).getValue();
                         for(DataType.ClosureContext cc: argData.bodies()) {
@@ -137,13 +137,13 @@ public class BuiltIns {
                             args.get(0), List.of(), 
                             new Source(BUILTIN_FILE_NAME, 0, 0)    
                         );
-                        boolean returnsUnion = returnType
-                            .isType(DataType.Type.UNION);
+                        boolean returnsUnion = returnType.exactType()
+                            == DataType.Type.UNION;
                         if(!returnsUnion) { return false; }
                         DataType.Union returnData = returnType.getValue();
                         for(String variant: returnData.variants().keySet()) {
-                            boolean isValid = variant == "next"
-                                || variant == "end";
+                            boolean isValid = variant.equals("next")
+                                || variant.equals("end");
                             if(!isValid) { return false; }
                         }
                         return true;

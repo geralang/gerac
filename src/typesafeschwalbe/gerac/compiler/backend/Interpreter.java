@@ -38,20 +38,7 @@ public class Interpreter {
         Value eval(List<Value> args, Source src) throws ErrorException;
     }
 
-    private final Map<String, String> sourceFiles;
-    private final Symbols symbols;
-    private List<Map<String, Optional<Value>>> stack;
-    private final List<CallTraceEntry> callTrace;
-    private Optional<Value> returnedValue;
-    private final Map<Namespace, BuiltInProcedure> builtIns;
-
-    public Interpreter(Map<String, String> sourceFiles, Symbols symbols) {
-        this.sourceFiles = sourceFiles;
-        this.symbols = symbols;
-        this.stack = new LinkedList<>();
-        this.callTrace = new LinkedList<>();
-        this.returnedValue = Optional.empty();
-        this.builtIns = new HashMap<>();
+    private void addBuiltins() {
         this.builtIns.put(
             new Namespace(List.of("core", "addr_eq")),
             (args, src) -> {
@@ -228,6 +215,23 @@ public class Interpreter {
                 args.get(0).hashCode()
             )
         );
+    }
+
+    private final Map<String, String> sourceFiles;
+    private final Symbols symbols;
+    private List<Map<String, Optional<Value>>> stack;
+    private final List<CallTraceEntry> callTrace;
+    private Optional<Value> returnedValue;
+    private final Map<Namespace, BuiltInProcedure> builtIns;
+
+    public Interpreter(Map<String, String> sourceFiles, Symbols symbols) {
+        this.sourceFiles = sourceFiles;
+        this.symbols = symbols;
+        this.stack = new LinkedList<>();
+        this.callTrace = new LinkedList<>();
+        this.returnedValue = Optional.empty();
+        this.builtIns = new HashMap<>();
+        this.addBuiltins();
     }
 
     private void enterFrame() {
