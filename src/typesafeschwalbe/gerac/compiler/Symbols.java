@@ -42,19 +42,15 @@ public class Symbols {
     }
 
     public static class Symbol {
-        
-        public static record LoweredProcedure(
-            List<DataType> argumentTypes,
-            Ir.Context context,
-            List<Ir.Instr> body
-        ) {}
 
         public static record Procedure(
             List<String> argumentNames,
             Optional<ArgTypeChecker> allowedArgumentTypes,
             Optional<List<DataType>> argumentTypes,
             Optional<Function<Source, DataType>> returnType,
-            Optional<List<AstNode>> body
+            Optional<List<AstNode>> body,
+            Optional<Ir.Context> ir_context,
+            Optional<List<Ir.Instr>> ir_body
         ) {}
 
         public static record Variable(
@@ -185,7 +181,8 @@ public class Symbols {
                                 data.argumentNames(),
                                 Optional.empty(),
                                 Optional.empty(), Optional.empty(),
-                                Optional.of(data.body())
+                                Optional.of(data.body()),
+                                Optional.empty(), Optional.empty()
                             ),
                             Optional.empty()
                         )

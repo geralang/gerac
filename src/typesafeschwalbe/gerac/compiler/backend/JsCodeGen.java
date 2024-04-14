@@ -211,19 +211,109 @@ public class JsCodeGen implements CodeGen {
             out.append("const GERA_STATIC_VALUE_");
             out.append(valueI);
             out.append(" = ");
-            this.emitValue(this.staticValues.values.get(valueI), out);
+            this.emitDeclValueDirect(this.staticValues.values.get(valueI), out);
             out.append(";\n");
+        }
+        out.append("\n");
+        for(int valueI = 0; valueI < valueC; valueI += 1) {
+            this.emitValueInitDirect(this.staticValues.values.get(valueI), out);
         }
     }
 
-    private void emitStaticValue(Ir.StaticValue v, StringBuilder out) {
+    private void emitValueRef(Ir.StaticValue v, StringBuilder out) {
         out.append("GERA_STATIC_VALUE_");
-        out.append(v.index);
+        out.append(this.staticValues.getIndexOf(v));
     }
 
-    private void emitValue(Value v, StringBuilder out) {
-        // TODO
-        out.append("undefined /* TODO: implement 'emitValue' */");
+    private void emitDeclValueDirect(Ir.StaticValue v, StringBuilder out) {
+        if(v instanceof Ir.StaticValue.Unit) {
+            out.append("undefined");
+        } else if(v instanceof Ir.StaticValue.Bool) {
+            out.append(
+                v.<Ir.StaticValue.Bool>getValue().value
+                    ? "true"
+                    : "false"
+            );
+        } else if(v instanceof Ir.StaticValue.Int) {
+            out.append(String.valueOf(
+                v.<Ir.StaticValue.Int>getValue().value
+            ));
+            out.append("n");
+        } else if(v instanceof Ir.StaticValue.Float) {
+            out.append(String.valueOf(
+                v.<Ir.StaticValue.Float>getValue().value
+            ));
+        } else if(v instanceof Ir.StaticValue.Str) {
+            this.emitStringLiteral(
+                v.<Ir.StaticValue.Str>getValue().value, out
+            );
+        } else if(v instanceof Ir.StaticValue.Arr) {
+            out.append("[]");
+        } else if(v instanceof Ir.StaticValue.Obj) {
+            out.append("{}");
+        } else if(v instanceof Ir.StaticValue.Closure) {
+            out.append("() => {}");
+        } else if(v instanceof Ir.StaticValue.Union) {
+            out.append("{ tag: ");
+            out.append(v.<Ir.StaticValue.Union>getValue().variant.hashCode());
+            out.append(", value: null }");
+        } else {
+            throw new RuntimeException("unhandled value type!");
+        }
+    }
+
+    private void emitValueInitDirect(Ir.StaticValue v, StringBuilder out) {
+        if(v instanceof Ir.StaticValue.Arr) {
+            Ir.StaticValue.Arr data = v.getValue();
+            this.emitValueRef(v, out);
+            out.append(".push(");
+            for(int valueI = 0; valueI < data.value.size(); valueI += 1) {
+                if(valueI > 0) {
+                    out.append(", ");
+                }
+                this.emitValueRef(data.value.get(valueI), out);
+            }
+            out.append(");\n");
+        } else if(v instanceof Ir.StaticValue.Obj) {
+            Ir.StaticValue.Obj data = v.getValue();
+            for(String member: data.value.keySet()) {
+                this.emitValueRef(v, out);
+                out.append(".");
+                out.append(member);
+                out.append(" = ");
+                this.emitValueRef(data.value.get(member), out);
+                out.append(";\n");
+            }
+        } else if(v instanceof Ir.StaticValue.Closure) {
+            Ir.StaticValue.Closure data = v.getValue();
+            if(!data.isEmpty) {
+                this.emitValueRef(v, out);
+                out.append(" = (function() {\n");
+                out.append("const captured0 = {}\n");
+                for(String capture: data.captureValues.keySet()) {
+                    out.append("captured0.");
+                    out.append(capture);
+                    out.append(" = ");
+                    this.emitValueRef(data.captureValues.get(capture), out);
+                    out.append(";\n");
+                }
+                out.append("return ");
+                this.emitArgListDef(data.argumentTypes.size(), out);
+                out.append(" => {\n");
+                this.enterContext(new Ir.Context());
+                this.enterContext(data.context);
+                this.emitContextInit(out);
+                this.emitInstructions(data.body, out);
+                this.exitContext();
+                this.exitContext();
+                out.append("} })();\n");
+            }
+        } else if(v instanceof Ir.StaticValue.Union) {
+            this.emitValueRef(v, out);
+            out.append(".value = ");
+            this.emitValueRef(v.<Ir.StaticValue.Union>getValue().value, out);
+            out.append(";\n");
+        }
     }
     
     private void emitSymbols(StringBuilder out) {
@@ -241,15 +331,17 @@ public class JsCodeGen implements CodeGen {
                 variantI < symbol.variantCount(); 
                 variantI += 1
             ) {
-                Symbols.Symbol.LoweredProcedure variantData = symbol
+                Symbols.Symbol.Procedure variantData = symbol
                     .getVariant(variantI);
                 out.append("function ");
                 this.emitVariant(path, variantI, out);
-                this.emitArgListDef(variantData.argumentTypes().size(), out);
+                this.emitArgListDef(
+                    variantData.argumentTypes().get().size(), out
+                );
                 out.append(" {\n");
-                this.enterContext(variantData.context());
+                this.enterContext(variantData.ir_context().get());
                 this.emitContextInit(out);
-                this.emitInstructions(variantData.body(), out);
+                this.emitInstructions(variantData.ir_body().get(), out);
                 this.exitContext();
                 out.append("}\n");
                 out.append("\n");
@@ -455,7 +547,7 @@ public class JsCodeGen implements CodeGen {
                 Ir.Instr.LoadClosure data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
-                this.emitArgListDef(data.captureNames().size(), out);
+                this.emitArgListDef(data.argumentTypes().size(), out);
                 out.append(" => {\n");
                 this.enterContext(data.context());
                 this.emitContextInit(out);
@@ -471,7 +563,7 @@ public class JsCodeGen implements CodeGen {
                 Ir.Instr.LoadStaticValue data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
-                this.emitStaticValue(data.value(), out);
+                this.emitValueRef(data.value(), out);
                 out.append(";\n");
             } break;
             case LOAD_EXT_VARIABLE: {
@@ -637,19 +729,19 @@ public class JsCodeGen implements CodeGen {
             } break;
             case EQUALS: {
                 this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
+                out.append(" = gera___eq(");
                 this.emitVariable(instr.arguments.get(0), out);
-                out.append(" === ");
+                out.append(", ");
                 this.emitVariable(instr.arguments.get(1), out);
-                out.append(";\n");
+                out.append(");\n");
             } break;
             case NOT_EQUALS: {
                 this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
+                out.append(" = !gera___eq(");
                 this.emitVariable(instr.arguments.get(0), out);
-                out.append(" != ");
+                out.append(", ");
                 this.emitVariable(instr.arguments.get(1), out);
-                out.append(";\n");
+                out.append(");\n");
             } break;
             case NOT: {
                 this.emitVariable(instr.dest.get(), out);
@@ -670,7 +762,7 @@ public class JsCodeGen implements CodeGen {
                     branchI += 1
                 ) {
                     out.append("case ");
-                    this.emitStaticValue(
+                    this.emitValueRef(
                         data.branchValues().get(branchI), out
                     );
                     out.append(":\n");

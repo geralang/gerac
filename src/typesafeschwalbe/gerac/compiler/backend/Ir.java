@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
@@ -14,38 +15,292 @@ public class Ir {
     
     public static class StaticValues {
 
-        public final List<Value> values;
-        public final Map<Value, Integer> valueIndices;
+        private final Lowerer lowerer;
+        public final List<StaticValue> values;
+        public final Map<StaticValue, Integer> valueIndices;
 
-        public StaticValues() {
+        public StaticValues(Lowerer lowerer) {
+            this.lowerer = lowerer;
             this.values = new ArrayList<>();
             this.valueIndices = new HashMap<>();
         }
 
-        public StaticValue add(Value value) {
-            Integer existingIndex = this.valueIndices.get(value);
+        public StaticValue add(Value value) throws ErrorException {
+            StaticValue staticValue = this.asStatic(value);
+            Integer existingIndex = this.valueIndices.get(staticValue);
             if(existingIndex != null) {
-                return new StaticValue(existingIndex);
+                return this.values.get(existingIndex);
             }
             int index = this.values.size();
-            this.values.add(value);
-            this.valueIndices.put(value, index);
-            return new StaticValue(index);
+            this.values.add(staticValue);
+            this.valueIndices.put(staticValue, index);
+            return staticValue;
+        }
+
+        public int getIndexOf(StaticValue value) {
+            return this.valueIndices.get(value);
+        }
+
+        private StaticValue asStatic(Value v) throws ErrorException {
+            if(v instanceof Value.Unit) {
+                return StaticValue.UNIT;
+            } else if(v instanceof Value.Bool) {
+                return new StaticValue.Bool(
+                    v.<Value.Bool>getValue().value
+                );
+            } else if(v instanceof Value.Int) {
+                return new StaticValue.Int(
+                    v.<Value.Int>getValue().value
+                );
+            } else if(v instanceof Value.Float) {
+                return new StaticValue.Float(
+                    v.<Value.Float>getValue().value
+                );
+            } else if(v instanceof Value.Str) {
+                return new StaticValue.Str(
+                    v.<Value.Str>getValue().value
+                );
+            } else if(v instanceof Value.Arr) {
+                List<StaticValue> elements = new ArrayList<>();
+                for(Value e: v.<Value.Arr>getValue().value) {
+                    elements.add(this.add(e));
+                }
+                return new StaticValue.Arr(v, elements);
+            } else if(v instanceof Value.Obj) {
+                Value.Obj data = v.getValue();
+                Map<String, StaticValue> members = new HashMap<>();
+                for(String memberName: data.value.keySet()) {
+                    members.put(
+                        memberName, this.add(data.value.get(memberName))
+                    );
+                }
+                return new StaticValue.Obj(v, members);
+            } else if(v instanceof Value.Closure) {
+                return this.lowerer.lowerClosureValue(v.getValue());
+            } else if(v instanceof Value.Union) {
+                return new StaticValue.Union(
+                    v.<Value.Union>getValue().variant,
+                    this.add(v.<Value.Union>getValue().value)
+                );
+            }
+            throw new RuntimeException("unhandled value type!");
         }
 
     }
 
     public static class StaticValue {
 
-        public final int index;
+        private StaticValue() {}
 
-        private StaticValue(int index) {
-            this.index = index;
+        @SuppressWarnings("unchecked")
+        public <T extends StaticValue> T getValue() {
+            try {
+                return (T) this;
+            } catch(ClassCastException e) {
+                throw new RuntimeException("Value has invalid type!");
+            }
         }
+    
+        public static class Unit extends StaticValue {
+            private Unit() {}
+    
+            @Override
+            public boolean equals(Object otherRaw) {
+                return otherRaw instanceof Unit;
+            }
+    
+            @Override
+            public int hashCode() {
+                return 0;
+            }
+        }
+        public static final Unit UNIT = new Unit();
+    
+        public static class Bool extends StaticValue {
+            public final boolean value;
+    
+            public Bool(boolean value) {
+                this.value = value;
+            }
+    
+            @Override
+            public boolean equals(Object otherRaw) {
+                if(!(otherRaw instanceof Bool)) { return false; }
+                Bool other = (Bool) otherRaw;
+                return this.value == other.value;
+            }
+    
+            @Override
+            public int hashCode() {
+                return Boolean.hashCode(this.value);
+            }
+        }
+    
+        public static class Int extends StaticValue {
+            public final long value;
+    
+            public Int(long value) {
+                this.value = value;
+            }
+    
+            @Override
+            public boolean equals(Object otherRaw) {
+                if(!(otherRaw instanceof Int)) { return false; }
+                Int other = (Int) otherRaw;
+                return this.value == other.value;
+            }
+    
+            @Override
+            public int hashCode() {
+                return Long.hashCode(this.value);
+            }
+        }
+    
+        public static class Float extends StaticValue {
+            public final double value;
+    
+            public Float(double value) {
+                this.value = value;
+            }
+    
+            @Override
+            public boolean equals(Object otherRaw) {
+                if(!(otherRaw instanceof Float)) { return false; }
+                Float other = (Float) otherRaw;
+                return this.value == other.value;
+            }
+    
+            @Override
+            public int hashCode() {
+                return Double.hashCode(this.value);
+            }
+        }
+    
+        public static class Str extends StaticValue {
+            public final String value;
+    
+            public Str(String value) {
+                this.value = value;
+            }
+    
+            @Override
+            public boolean equals(Object otherRaw) {
+                if(!(otherRaw instanceof Str)) { return false; }
+                Str other = (Str) otherRaw;
+                return this.value.equals(other.value);
+            }
+    
+            @Override
+            public int hashCode() {
+                return this.value.hashCode();
+            }
+        }
+    
+        public static class Arr extends StaticValue {
+            private final Object ptr;
+            public final List<StaticValue> value;
+    
+            public Arr(Object ptr, List<StaticValue> value) {
+                this.ptr = ptr;
+                this.value = value;
+            }
+    
+            @Override
+            public boolean equals(Object otherRaw) {
+                if(!(otherRaw instanceof Arr)) { return false; }
+                Arr other = (Arr) otherRaw;
+                return this.ptr == other.ptr;
+            }
 
-        @Override
-        public String toString() {
-            return "{value}";
+            @Override
+            public int hashCode() {
+                return this.ptr.hashCode();
+            }
+        }
+    
+        public static class Obj extends StaticValue {
+            private final Object ptr;
+            public final Map<String, StaticValue> value;
+    
+            public Obj(Object ptr, Map<String, StaticValue> value) {
+                this.ptr = ptr;
+                this.value = value;
+            }
+    
+            @Override
+            public boolean equals(Object otherRaw) {
+                if(!(otherRaw instanceof Obj)) { return false; }
+                Obj other = (Obj) otherRaw;
+                return this.ptr == other.ptr;
+            }
+
+            @Override
+            public int hashCode() {
+                return this.ptr.hashCode();
+            }
+        }
+    
+        public static class Closure extends StaticValue {
+            private final Object ptr;
+            public final boolean isEmpty;
+            public final Map<String, Ir.StaticValue> captureValues;
+            public final List<DataType> argumentTypes;
+            public final Ir.Context context;
+            public final List<Ir.Instr> body;
+    
+            public Closure(
+                Object ptr,
+                boolean isEmpty,
+                Map<String, Ir.StaticValue> captureValues,
+                List<DataType> argumentTypes,
+                Ir.Context context,
+                List<Ir.Instr> body
+            ) {
+                this.ptr = ptr;
+                this.isEmpty = isEmpty;
+                this.captureValues = captureValues;
+                this.argumentTypes = argumentTypes;
+                this.context = context;
+                this.body = body;
+            }
+    
+            @Override
+            public boolean equals(Object otherRaw) {
+                if(!(otherRaw instanceof Closure)) { return false; }
+                Closure other = (Closure) otherRaw;
+                return this.ptr == other.ptr;
+            }
+
+            @Override
+            public int hashCode() {
+                return this.ptr.hashCode();
+            }
+        }
+    
+        public static class Union extends StaticValue {
+            public final String variant;
+            public final StaticValue value;
+    
+            public Union(String variant, StaticValue value) {
+                this.variant = variant;
+                this.value = value;
+            }
+    
+            @Override
+            public boolean equals(Object otherRaw) {
+                if(!(otherRaw instanceof Union)) { return false; }
+                Union other = (Union) otherRaw;
+                return this.variant.equals(other.variant)
+                    && this.value.equals(other.value);
+            }
+    
+            @Override
+            public int hashCode() {
+                int hash = 7;
+                hash = 29 * hash + this.variant.hashCode();
+                hash = 29 * hash + this.value.hashCode();
+                return hash;
+            }
         }
 
     }

@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
+import typesafeschwalbe.gerac.compiler.frontend.DataType;
 
 public abstract class Value {
 
@@ -146,17 +147,23 @@ public abstract class Value {
     }
 
     public static class Closure extends Value {
+        public final Optional<Map<String, DataType>> captureTypes;
         public final List<Map<String, Optional<Value>>> environment;
         public final List<String> argumentNames;
+        public final Optional<List<DataType>> argumentTypes;
         public final List<AstNode> body;
 
         public Closure(
+            Optional<Map<String, DataType>> captureTypes,
             List<Map<String, Optional<Value>>> environment,
             List<String> argumentNames,
+            Optional<List<DataType>> argumentTypes,
             List<AstNode> body
         ) {
+            this.captureTypes = captureTypes;
             this.environment = environment;
             this.argumentNames = argumentNames;
+            this.argumentTypes = argumentTypes;
             this.body = body;
         }
 

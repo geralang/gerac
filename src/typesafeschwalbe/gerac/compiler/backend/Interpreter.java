@@ -347,8 +347,10 @@ public class Interpreter {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
                 return new Value.Closure(
+                    data.captures(),
                     new ArrayList<>(this.stack),
                     data.argumentNames(),
+                    data.argumentTypes(),
                     data.body().get()
                 );
             }

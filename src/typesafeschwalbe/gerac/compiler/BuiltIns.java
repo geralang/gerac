@@ -64,7 +64,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.BOOLEAN, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -88,7 +88,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.BOOLEAN, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -110,7 +110,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.INTEGER, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -152,7 +152,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.UNIT, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -172,7 +172,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.PANIC, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -190,7 +190,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.STRING, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -212,7 +212,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.INTEGER, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -234,7 +234,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.FLOAT, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -260,7 +260,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.STRING, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -284,7 +284,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.STRING, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )
@@ -302,7 +302,7 @@ public class BuiltIns {
                     Optional.of(
                         src -> new DataType(DataType.Type.INTEGER, src)
                     ),
-                    Optional.empty()
+                    Optional.empty(), Optional.empty(), Optional.empty()
                 ),
                 Optional.empty()
             )

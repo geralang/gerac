@@ -158,7 +158,8 @@ public class SourceParser extends Parser {
                         return List.of(new AstNode(
                             AstNode.Type.VARIABLE,
                             new AstNode.Variable(
-                                isPublic, isMutable, name, Optional.empty()
+                                isPublic, isMutable, name, Optional.empty(),
+                                Optional.empty()
                             ),
                             new Source(start.source, nameToken.source)
                         ));
@@ -168,7 +169,8 @@ public class SourceParser extends Parser {
                     return List.of(new AstNode(
                         AstNode.Type.VARIABLE,
                         new AstNode.Variable(
-                            isPublic, isMutable, name, Optional.of(value)
+                            isPublic, isMutable, name, Optional.of(value),
+                            Optional.empty()
                         ),
                         new Source(start.source, value.source)
                     ));

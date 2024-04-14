@@ -101,7 +101,7 @@ public class ExternalMappingsParser extends Parser {
                                 returnType.exactType(), returnType.getValue(),
                                 src
                             )),
-                            Optional.empty()
+                            Optional.empty(), Optional.empty(), Optional.empty()
                         ),
                         Optional.of(externalName)
                     )

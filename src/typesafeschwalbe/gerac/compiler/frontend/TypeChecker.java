@@ -14,6 +14,7 @@ import typesafeschwalbe.gerac.compiler.BuiltIns;
 import typesafeschwalbe.gerac.compiler.Color;
 import typesafeschwalbe.gerac.compiler.Error;
 import typesafeschwalbe.gerac.compiler.ErrorException;
+import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.frontend.DataType.ClosureContext;
@@ -166,9 +167,10 @@ public class TypeChecker {
         = new Namespace(List.of());
 
     static class CheckedBlock {
-        private final Map<String, Optional<DataType>> variableTypes;
+        private final Map<String, Ref<Optional<DataType>>> variableTypes;
         private final Map<String, Boolean> variablesMutable;
         private final Map<String, DataType> initializes;
+        private final Map<String, Source> initSource;
         private final Map<String, DataType> captures;
         private boolean returns;
 
@@ -176,6 +178,7 @@ public class TypeChecker {
             this.variableTypes = new HashMap<>();
             this.variablesMutable = new HashMap<>();
             this.initializes = new HashMap<>();
+            this.initSource = new HashMap<>();
             this.captures = new HashMap<>();
             this.returns = false;
         }
@@ -184,6 +187,7 @@ public class TypeChecker {
             this.variableTypes = new HashMap<>(src.variableTypes);
             this.variablesMutable = new HashMap<>(src.variablesMutable);
             this.initializes = new HashMap<>(src.initializes);
+            this.initSource = new HashMap<>(src.initSource);
             this.captures = new HashMap<>(src.captures);
             this.returns = src.returns;
         }
@@ -227,7 +231,7 @@ public class TypeChecker {
             Symbols.Symbol.Type.PROCEDURE, true, src, new Namespace[0],
             new Symbols.Symbol.Procedure(
                 List.of(), Optional.empty(), Optional.empty(), Optional.empty(), 
-                Optional.empty()
+                Optional.empty(), Optional.empty(), Optional.empty()
             ),
             Optional.empty()
         );
@@ -353,7 +357,8 @@ public class TypeChecker {
                         new Symbols.Symbol.Procedure(
                             data.argumentNames(),
                             Optional.empty(), Optional.of(argTypes),
-                            data.returnType(), Optional.empty()
+                            data.returnType(), Optional.empty(),
+                            Optional.empty(), Optional.empty()
                         )
                     );
                 }
@@ -375,7 +380,8 @@ public class TypeChecker {
             for(int argI = 0; argI < argumentTypes.size(); argI += 1) {
                 String argumentName = data.argumentNames().get(argI);
                 this.currentBlock().variableTypes.put(
-                    argumentName, Optional.of(argumentTypes.get(argI))
+                    argumentName,
+                    new Ref<>(Optional.of(argumentTypes.get(argI)))
                 );
                 this.currentBlock().variablesMutable.put(argumentName, false);
             }
@@ -403,7 +409,8 @@ public class TypeChecker {
                 Optional.empty(),
                 Optional.of(argumentTypes),
                 checkedSymbol.returnType.map(t -> src -> t),
-                Optional.of(bodyTyped)
+                Optional.of(bodyTyped),
+                Optional.empty(), Optional.empty()
             ));
             DataType returnType = checkedSymbol.returnType.isPresent()
                 ? checkedSymbol.returnType.get()
@@ -476,6 +483,7 @@ public class TypeChecker {
             typedValue.resultType, Optional.of(typedValue),
             Optional.empty()
         ));
+        this.exitSymbol();
         return typedValue.resultType.get();
     }
 
@@ -509,30 +517,46 @@ public class TypeChecker {
         return currentSymbol.blocks.remove(currentSymbol.blocks.size() - 1);
     }
 
-    private void handleBranches(List<CheckedBlock> branches) {
+    private void handleBranches(
+        List<CheckedBlock> branches
+    ) throws ErrorException {
         CheckedBlock currentBlock = this.currentBlock();
         Map<String, DataType> initialized = null;
+        Map<String, Source> initSource = null;
         Map<String, DataType> captures = new HashMap<>();
-        boolean returns = false;
+        boolean alwaysReturns = branches.size() > 0;
         for(int branchI = 0; branchI < branches.size(); branchI += 1) {
             CheckedBlock branch = branches.get(branchI);
             captures.putAll(branch.captures);
             if(branchI == 0) {
                 initialized = new HashMap<>(branch.initializes);
-                returns = branch.returns;
+                initSource = new HashMap<>(branch.initSource);
             } else {
-                initialized.keySet().retainAll(branch.initializes.keySet());
-                returns &= branch.returns;
+                for(String initName: initialized.keySet()) {
+                    if(!branch.initializes.containsKey(initName)) {
+                        initialized.remove(initName);
+                        continue;
+                    }
+                    initialized.put(initName, this.unify(
+                        initialized.get(initName),
+                        branch.initializes.get(initName),
+                        branch.initSource.get(initName)
+                    ));
+                    initSource.put(initName, branch.initSource.get(initName));
+                }
             }
+            alwaysReturns &= branch.returns;
         }
         for(String initializedName: initialized.keySet()) {
             DataType initializedType = initialized.get(initializedName);
             if(currentBlock.variableTypes.containsKey(initializedName)) {
-                currentBlock.variableTypes.put(
-                    initializedName, Optional.of(initializedType)
-                );
+                currentBlock.variableTypes.get(initializedName)
+                    .set(Optional.of(initializedType));
             } else {
                 currentBlock.initializes.put(initializedName, initializedType);
+                currentBlock.initSource.put(
+                    initializedName, initSource.get(initializedName)
+                );
             }
         }
         for(String captureName: captures.keySet()) {
@@ -542,7 +566,7 @@ public class TypeChecker {
                 );
             }
         }
-        currentBlock.returns |= returns;
+        currentBlock.returns |= alwaysReturns;
     }
 
     private List<AstNode> typeNodes(
@@ -589,31 +613,32 @@ public class TypeChecker {
             case VARIABLE: {
                 AstNode.Variable data = node.getValue();
                 Optional<AstNode> valueTyped;
+                Ref<Optional<DataType>> valueType;
                 if(data.value().isPresent()) {
                     AstNode valueTypedD = this.typeNode(
                         data.value().get()
                     );
-                    this.currentBlock().variableTypes.put(
-                        data.name(), Optional.of(valueTypedD.resultType.get())
+                    valueType = new Ref<>(
+                        Optional.of(valueTypedD.resultType.get())
                     );
-                    this.currentBlock().variablesMutable.put(
-                        data.name(), data.isMutable()
-                    );
+                    this.currentBlock().variableTypes
+                        .put(data.name(), valueType);
+                    this.currentBlock().variablesMutable
+                        .put(data.name(), data.isMutable());
                     valueTyped = Optional.of(valueTypedD);
                 } else {
-                    this.currentBlock().variableTypes.put(
-                        data.name(), Optional.empty()
-                    );
-                    this.currentBlock().variablesMutable.put(
-                        data.name(), data.isMutable()
-                    );
+                    valueType = new Ref<>(Optional.empty());
+                    this.currentBlock().variableTypes
+                        .put(data.name(), valueType);
+                    this.currentBlock().variablesMutable
+                        .put(data.name(), data.isMutable());
                     valueTyped = Optional.empty();
                 }
                 return new AstNode(
                     node.type,
                     new AstNode.Variable(
                         data.isPublic(), data.isMutable(), data.name(),
-                        valueTyped
+                        valueTyped, Optional.of(valueType)
                     ), 
                     node.source
                 );
@@ -734,7 +759,8 @@ public class TypeChecker {
                         DataType branchVariableType = variantTypes
                             .get(branchVariantName);
                         this.currentBlock().variableTypes.put(
-                            branchVariableName, Optional.of(branchVariableType)
+                            branchVariableName, 
+                            new Ref<>(Optional.of(branchVariableType))
                         );
                         this.currentBlock().variablesMutable.put(
                             branchVariableName, false
@@ -766,7 +792,8 @@ public class TypeChecker {
                     node.type,
                     new AstNode.CaseVariant(
                         valueTyped, data.branchVariants(), 
-                        data.branchVariableNames(), branchBodiesTyped,
+                        data.branchVariableNames(), 
+                        branchBodiesTyped,
                         elseBodyTyped
                     ),
                     node.source
@@ -1272,7 +1299,7 @@ public class TypeChecker {
                         boolean mutable = cBlock.variablesMutable
                             .get(variableName);
                         Optional<DataType> initialized = cBlock.variableTypes
-                            .get(variableName);
+                            .get(variableName).get();
                         if(variableType.isPresent()
                                 && initialized.isPresent()) {
                             variableType = Optional.of(this.unify(
@@ -1295,9 +1322,9 @@ public class TypeChecker {
                                 )
                             ));
                         }
-                        boolean isInitializing = assignedType.isPresent() 
-                            && !wasInitialized;
-                        if(!isInitializing && !mutable) {
+                        boolean isReAssigning = assignedType.isPresent() 
+                            && wasInitialized;
+                        if(isReAssigning && !mutable) {
                             throw new ErrorException(new Error(
                                 "Mutation of immutable variable",
                                 Error.Marking.error(
@@ -1311,12 +1338,14 @@ public class TypeChecker {
                         }
                         if(assignedType.isPresent() && !wasInitialized) {
                             if(cBlock == this.currentBlock()) {
-                                this.currentBlock().variableTypes.put(
-                                    variableName, variableType
-                                );
+                                this.currentBlock().variableTypes
+                                    .get(variableName).set(variableType);
                             } else {
                                 this.currentBlock().initializes.put(
                                     variableName, variableType.get()
+                                );
+                                this.currentBlock().initSource.put(
+                                    variableName, node.source
                                 );
                             }
                         }
@@ -1370,9 +1399,12 @@ public class TypeChecker {
                                 ),
                                 symbolData.argumentNames().stream()
                                     .map(argumentName -> new AstNode(
-                                        AstNode.Type.VARIABLE_ACCESS,
-                                        new AstNode.VariableAccess(
-                                            argumentName
+                                        AstNode.Type.MODULE_ACCESS,
+                                        new AstNode.ModuleAccess(
+                                            new Namespace(
+                                                List.of(argumentName)
+                                            ),
+                                            Optional.empty()   
                                         ),
                                         node.source
                                     )).toList()
@@ -1462,11 +1494,21 @@ public class TypeChecker {
                     valueTyped.resultType.get()
                 );
             }
+            case VARIABLE_ACCESS: {
+                AstNode.VariableAccess data = node.getValue();
+                return this.typeNode(new AstNode(
+                    AstNode.Type.MODULE_ACCESS,
+                    new AstNode.ModuleAccess(
+                        new Namespace(List.of(data.variableName())),
+                        Optional.empty()
+                    ),
+                    node.source
+                ));
+            }
             case PROCEDURE:
             case TARGET:
             case USE:
-            case MODULE_DECLARATION:
-            case VARIABLE_ACCESS: {
+            case MODULE_DECLARATION: {
                 throw new RuntimeException("should not be encountered!");
             }
             default: {
@@ -1528,9 +1570,8 @@ public class TypeChecker {
                 for(int argI = 0; argI < argTypes.size(); argI += 1) {
                     String argName = nodeData.argumentNames().get(argI);
                     DataType argType = argTypes.get(argI);
-                    this.currentBlock().variableTypes.put(
-                        argName, Optional.of(argType)
-                    );
+                    this.currentBlock().variableTypes
+                        .put(argName, new Ref<>(Optional.of(argType)));
                     this.currentBlock().variablesMutable.put(argName, false);
                 }
                 List<AstNode> typedBody = this.typeNodes(nodeData.body().get());

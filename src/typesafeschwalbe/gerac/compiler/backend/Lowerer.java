@@ -46,7 +46,7 @@ public class Lowerer {
     ) {
         this.symbols = symbols;
         this.interpreter = new Interpreter(sourceFiles, symbols);
-        this.staticValues = new Ir.StaticValues();
+        this.staticValues = new Ir.StaticValues(this);
         this.blockStack = new LinkedList<>();
         this.variableStack = new LinkedList<>();
     }
@@ -89,9 +89,13 @@ public class Lowerer {
                 }
                 symbol.setVariant(
                     variantI,
-                    new Symbols.Symbol.LoweredProcedure(
-                        variant.argumentTypes().get(),
-                        this.context, body
+                    new Symbols.Symbol.Procedure(
+                        variant.argumentNames(),
+                        variant.allowedArgumentTypes(),
+                        variant.argumentTypes(),
+                        variant.returnType(),
+                        variant.body(),
+                        Optional.of(context), Optional.of(body)
                     )
                 );
             }
@@ -123,6 +127,63 @@ public class Lowerer {
         return block;
     }
 
+    StaticValue.Closure lowerClosureValue(
+        Value.Closure v
+    ) throws ErrorException {
+        boolean isEmpty = v.captureTypes.isEmpty();
+        Map<String, Ir.StaticValue> captureValues = null;
+        List<DataType> argumentTypes = null;
+        Ir.Context context = null;
+        List<Ir.Instr> body = null;
+        if(!isEmpty) {
+            captureValues = new HashMap<>();
+            for(String capture: v.captureTypes.get().keySet()) {
+                Value captureValue = null;
+                for(
+                    int frameI = v.environment.size() - 1; 
+                    frameI >= 0; 
+                    frameI -= 1
+                ) {
+                    Map<String, Optional<Value>> frame = v.environment
+                        .get(frameI);
+                    if(!frame.containsKey(capture)) { continue; }
+                    captureValue = frame.get(capture).get();
+                    break;
+                }
+                if(captureValue == null) {
+                    throw new RuntimeException("capture value should exist!");
+                }
+                captureValues.put(capture, this.staticValues.add(captureValue));
+            }
+            argumentTypes = v.argumentTypes.get();
+            Ir.Context prevContext = this.context;
+            List<BlockVariables> prevVars = this.variableStack;
+            this.context = new Ir.Context();
+            this.variableStack = new LinkedList<>();
+            this.enterBlock();
+            for(
+                int argI = 0; 
+                argI < v.argumentNames.size(); 
+                argI += 1
+            ) {
+                String argName = v.argumentNames.get(argI);
+                DataType argType = v.argumentTypes.get().get(argI);
+                Ir.Variable variable = this.context
+                    .allocateArgument(argType);
+                this.variables().variables.put(argName, variable);
+                this.variables().lastUpdates.put(argName, variable.version);
+            }
+            this.lowerNodes(v.body);
+            body = this.exitBlock();
+            context = this.context;
+            this.context = prevContext;
+            this.variableStack = prevVars;
+        }
+        return new StaticValue.Closure(
+            v, isEmpty, captureValues, argumentTypes, context, body
+        );
+    }
+
     private void addPhi(
         List<BlockVariables> branchVariables
     ) {
@@ -137,7 +198,6 @@ public class Lowerer {
                 Integer bVersion = branch.lastUpdates.get(name);
                 versions.add(bVersion != null? bVersion : ogVersion);
             }
-            System.out.println(versions);
             List<Ir.Variable> options = versions.stream()
                 .map(v -> new Ir.Variable(variable.index, v)).toList();
             variable.version += 1;
@@ -234,9 +294,8 @@ public class Lowerer {
                 if(data.value().isPresent()) {
                     value = this.lowerNode(data.value().get()).get();
                 } else {
-                    // TODO
-                    // value = this.context.allocate(???);
-                    throw new RuntimeException("not yet implemented!");
+                    value = this.context
+                        .allocate(data.valueType().get().get().get());
                 }
                 this.variables().variables.put(data.name(), value);
                 this.variables().lastUpdates.put(data.name(), value.version);
@@ -477,6 +536,7 @@ public class Lowerer {
                     Optional.of(called)
                 ));
                 List<Ir.Variable> arguments = new ArrayList<>();
+                arguments.add(called);
                 arguments.add(accessed);
                 for(AstNode argument: data.arguments()) {
                     arguments.add(this.lowerNode(argument).get());
@@ -783,13 +843,11 @@ public class Lowerer {
                         Value value = this.interpreter.evaluateNode(
                             variant.valueNode().get()
                         );
-                        symbol.setVariant(
-                            data.variant().get(), 
-                            new Symbols.Symbol.Variable(
-                                variant.valueType(), variant.valueNode(), 
-                                Optional.of(value)
-                            )
+                        variant = new Symbols.Symbol.Variable(
+                            variant.valueType(), variant.valueNode(), 
+                            Optional.of(value)
                         );
+                        symbol.setVariant(data.variant().get(), variant);
                     }
                     Value value = variant.value().get();
                     Ir.StaticValue staticValue = this.staticValues.add(value);

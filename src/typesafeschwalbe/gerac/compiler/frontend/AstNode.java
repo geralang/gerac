@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 
 public class AstNode {
@@ -28,7 +29,8 @@ public class AstNode {
         boolean isPublic,
         boolean isMutable,
         String name,
-        Optional<AstNode> value
+        Optional<AstNode> value,
+        Optional<Ref<Optional<DataType>>> valueType
     ) {}
 
     public static record CaseBranching(
