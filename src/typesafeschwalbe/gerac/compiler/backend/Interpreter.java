@@ -167,7 +167,7 @@ public class Interpreter {
                 if(start < 0) {
                     start_idx = start + srcLength;
                 }
-                if(start_idx < 0 || start_idx >= srcLength) {
+                if(start_idx < 0 || start_idx > srcLength) {
                     this.panic(
                         "the start index " + start + " is out of bounds"
                             + " for a string of length " + srcLength,

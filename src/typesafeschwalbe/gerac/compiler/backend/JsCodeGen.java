@@ -124,13 +124,34 @@ public class JsCodeGen implements CodeGen {
             gera___panic("integer division by zero");
         }
         
-        function gera___substring(s, start, end) {
+        function gera___substring(s, s_start_idx, s_end_idx) {
+            const s_length = BigInt(s.length);
+            let start_idx = s_start_idx;
+            if(start_idx < 0) {
+                start_idx += s_length;
+            }
+            if(start_idx < 0 || start_idx > s_length) {
+                gera___panic(
+                    `the start index ${s_start_idx} is out of bounds`
+                        + ` for a string of length ${s_length}`
+                );
+            }
+            let end_idx = s_end_idx;
+            if(end_idx < 0) {
+                end_idx += s_length;
+            }
+            if(end_idx < 0 || end_idx > s_length) {
+                gera___panic(
+                    `the end index ${s_end_idx} is out of bounds`
+                        + ` for a string of length ${s_length}`
+                );
+            }
             let start_offset = 0;
-            for(let i = 0; i < start; i += 1) {
+            for(let i = 0n; i < start_idx; i += 1n) {
                 start_offset += s.codePointAt(start_offset) > 0xFFFF? 2 : 1;
             }
             let end_offset = start_offset;
-            for(let c = start; c < end; c += 1) {
+            for(let c = start_idx; c < end_idx; c += 1n) {
                 end_offset += s.codePointAt(end_offset) > 0xFFFF? 2 : 1;
             }
             return s.substring(start_offset, end_offset);
@@ -332,9 +353,14 @@ public class JsCodeGen implements CodeGen {
         this.builtIns.put(
             new Namespace(List.of("core", "substring")),
             (args, argt, dest, out) -> {
-                // TODO: REWRITE THE SUBSTRING JS IMPL
-                //       TO HANDLE INDICES CORRECRTLY AND CALL IT HERE
-                throw new RuntimeException("not yet implemented!");
+                this.emitVariable(dest, out);
+                out.append(" = gera___substring(");
+                this.emitVariable(args.get(0), out);
+                out.append(", ");
+                this.emitVariable(args.get(1), out);
+                out.append(", ");
+                this.emitVariable(args.get(2), out);
+                out.append(");\n");
             }
         );
         this.builtIns.put(
