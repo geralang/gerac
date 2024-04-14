@@ -794,6 +794,16 @@ public class SourceParser extends Parser {
                 }
                 case BRACKET_OPEN: {
                     this.next();
+                    if(this.current.type == Token.Type.BRACKET_CLOSE) {
+                        Token end = this.current;
+                        this.next();
+                        previous = Optional.of(new AstNode(
+                            AstNode.Type.ARRAY_LITERAL,
+                            new AstNode.ArrayLiteral(List.of()),
+                            new Source(start.source, end.source)
+                        ));
+                        continue;
+                    }
                     AstNode value = this.parseExpression();
                     this.expect(
                         Token.Type.COMMA, Token.Type.SEMICOLON, 
