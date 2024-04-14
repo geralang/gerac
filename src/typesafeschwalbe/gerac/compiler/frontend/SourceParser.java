@@ -732,7 +732,8 @@ public class SourceParser extends Parser {
                         AstNode.Type.CLOSURE,
                         new AstNode.Closure(
                             argumentNames, Optional.empty(), Optional.empty(),
-                            Optional.empty(), Optional.of(body)
+                            Optional.empty(), Optional.empty(), 
+                            Optional.of(body)
                         ),
                         new Source(start.source, endSource)
                     ));

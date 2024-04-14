@@ -595,6 +595,7 @@ public class TypeChecker {
                     node.type, 
                     new AstNode.Closure(
                         data.argumentNames(), 
+                        Optional.of(this.currentSymbol().symbol),
                         Optional.empty(), Optional.empty(),
                         Optional.empty(),
                         data.body()
@@ -1415,8 +1416,9 @@ public class TypeChecker {
                             AstNode.Type.CLOSURE,
                             new AstNode.Closure(
                                 symbolData.argumentNames(),
-                                Optional.empty(), Optional.empty(),
+                                Optional.of(this.currentSymbol().symbol),
                                 Optional.empty(),
+                                Optional.empty(), Optional.empty(),
                                 Optional.of(List.of(new AstNode(
                                     AstNode.Type.RETURN,
                                     new AstNode.MonoOp(closureValue),
@@ -1563,7 +1565,7 @@ public class TypeChecker {
                 this.enterSymbol(
                     CLOSURE_CHECKING_PATH,
                     argTypes,
-                    this.currentSymbol().symbol
+                    nodeData.parentSymbol().get()
                 );
                 this.currentSymbol().blocks.addAll(context.context());
                 this.enterBlock();
@@ -1593,7 +1595,8 @@ public class TypeChecker {
                 contextCaptures = Optional.of(block.captures);
                 if(nodeData.returnType().isPresent()) {
                     contextReturnType = this.unify(
-                        contextReturnType, nodeData.returnType().get(), usageSource
+                        contextReturnType, nodeData.returnType().get(),
+                        usageSource
                     );
                 } 
             } else {
@@ -1607,7 +1610,8 @@ public class TypeChecker {
                 contextCaptures = Optional.empty();
             }
             context.node().setValue(new AstNode.Closure(
-                nodeData.argumentNames(), Optional.of(argTypes),
+                nodeData.argumentNames(), nodeData.parentSymbol(),
+                Optional.of(argTypes),
                 Optional.of(contextReturnType),
                 contextCaptures,
                 contextTypedBody
@@ -1713,9 +1717,70 @@ public class TypeChecker {
             case CLOSURE: {
                 DataType.Closure dataA = a.getValue();
                 DataType.Closure dataB = b.getValue();
-                List<DataType.ClosureContext> contexts
-                    = new ArrayList<>(dataA.bodies());
-                contexts.addAll(dataB.bodies());
+                List<DataType.ClosureContext> contexts = new ArrayList<>();
+                boolean aUnchecked = false;
+                for(DataType.ClosureContext context: dataA.bodies()) {
+                    AstNode.Closure data = context.node().getValue();
+                    if(data.argumentTypes().isEmpty()) {
+                        aUnchecked = true;
+                    }
+                    contexts.add(context);
+                }
+                boolean bUnchecked = false;
+                for(DataType.ClosureContext context: dataB.bodies()) {
+                    AstNode.Closure data = context.node().getValue();
+                    if(data.argumentTypes().isEmpty()) {
+                        bUnchecked = true;
+                    }
+                    contexts.add(context);
+                }
+                if(aUnchecked || bUnchecked) {
+                    List<DataType> paramTypes = null;
+                    Source previousContextSource = null;
+                    for(DataType.ClosureContext context: contexts) {
+                        AstNode.Closure data = context.node().getValue();
+                        if(data.argumentTypes().isEmpty()) { continue; }
+                        if(paramTypes == null) {
+                            paramTypes = data.argumentTypes().get();
+                            previousContextSource = context.node().source;
+                        } else {
+                            int contextArgC = data.argumentTypes().get().size();
+                            if(contextArgC != paramTypes.size()) {
+                                throw new ErrorException(
+                                    TypeChecker.makeIncompatibleError(
+                                        source, 
+                                        context.node().source,
+                                        "a closure with " + contextArgC
+                                            + " argument"
+                                            + (contextArgC == 1? "" : "s"),
+                                        previousContextSource,
+                                        "a closure with " + paramTypes.size()
+                                            + " argument"
+                                            + (paramTypes.size() == 1? "" : "s")
+                                    )
+                                );
+                            }
+                            for(
+                                int argI = 0; 
+                                argI < paramTypes.size(); 
+                                argI += 1
+                            ) {
+                                DataType argType = this.unify(
+                                    paramTypes.get(argI),
+                                    data.argumentTypes().get().get(argI),
+                                    source
+                                );
+                                paramTypes.set(argI, argType);
+                            }
+                        }
+                    }
+                    if(paramTypes != null && aUnchecked) {
+                        this.checkClosure(a, paramTypes, source);
+                    }
+                    if(paramTypes != null && bUnchecked) {
+                        this.checkClosure(b, paramTypes, source);
+                    }
+                }
                 value = new DataType.Closure(contexts);
             } break;
             case UNION: {

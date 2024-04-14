@@ -3,6 +3,7 @@ package typesafeschwalbe.gerac.compiler;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -67,7 +68,7 @@ public class Symbols {
         public final Type type;
         public final boolean isPublic;
         public final Source source;
-        private final Namespace[] usages;
+        public final Namespace[] usages;
         private Object value;
         private final List<Object> variants;
         public final Optional<String> externalName;
@@ -236,7 +237,7 @@ public class Symbols {
         Namespace path, Symbol inSymbol, Source accessSource
     ) {
         String firstPathElement = path.elements().get(0);
-        List<Namespace> validExpansions = new ArrayList<>();
+        Set<Namespace> validExpansions = new HashSet<>();
         for(Namespace usage: inSymbol.usages) {
             String lastUsageElement = usage.elements()
                 .get(usage.elements().size() - 1);
@@ -256,7 +257,7 @@ public class Symbols {
             }
             validExpansions.add(fullPath);
         }
-        return validExpansions;
+        return new ArrayList<>(validExpansions);
     }
 
     public Optional<Symbol> get(Namespace path) {

@@ -7,6 +7,7 @@ import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
+import typesafeschwalbe.gerac.compiler.Symbols;
 
 public class AstNode {
 
@@ -19,6 +20,7 @@ public class AstNode {
 
     public static record Closure(
         List<String> argumentNames,
+        Optional<Symbols.Symbol> parentSymbol,
         Optional<List<DataType>> argumentTypes,
         Optional<DataType> returnType,
         Optional<Map<String, DataType>> captures,

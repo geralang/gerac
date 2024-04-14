@@ -177,6 +177,7 @@ public class ExternalMappingsParser extends Parser {
                             AstNode.Type.CLOSURE,
                             new AstNode.Closure(
                                 argNames, 
+                                Optional.empty(),
                                 Optional.of(argTypes), Optional.of(returnType), 
                                 Optional.of(new HashMap<>()), Optional.empty()
                             ),
