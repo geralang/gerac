@@ -16,10 +16,15 @@ import typesafeschwalbe.gerac.compiler.backend.Lowerer;
 
 public class Compiler {
 
+    public static Map<String, String> DEBUG_FILES = null;
+
     public static Result<String> compile(
         Map<String, String> files, Target target, String mainRaw,
         long maxCallDepth
     ) {
+        // DEBUG
+        DEBUG_FILES = files;
+
         Symbols symbols = new Symbols();
         BuiltIns.addParsedFiles(files);
         BuiltIns.addSymbols(symbols);

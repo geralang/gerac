@@ -272,7 +272,7 @@ public class Lowerer {
                     this.variables().variables.put(argName, variable);
                     this.variables().lastUpdates.put(argName, variable.version);
                 }
-                this.lowerNodes(data.body().get());
+                this.lowerNodes(data.body());
                 List<Ir.Instr> body = this.exitBlock();
                 Ir.Context context = this.context;
                 this.context = prevContext;
@@ -396,7 +396,7 @@ public class Lowerer {
                     branchBodies.add(this.exitBlock());
                 }
                 this.enterBlock();
-                this.lowerNodes(data.elseBody().orElse(List.of()));
+                this.lowerNodes(data.elseBody());
                 branches.add(this.variables());
                 List<Ir.Instr> elseBody = this.exitBlock();
                 this.block().add(new Ir.Instr(
@@ -526,7 +526,7 @@ public class Lowerer {
                 Ir.Variable accessed = this.lowerNode(data.called()).get();
                 DataType.UnorderedObject accessedObject = data.called()
                     .resultType.get().getValue(); 
-                DataType calledType = accessedObject.memberTypes()
+                DataType calledType = accessedObject.memberTypes().get()
                     .get(data.memberName());
                 Ir.Variable called = this.context.allocate(calledType);
                 this.block().add(new Ir.Instr(

@@ -24,7 +24,7 @@ public class AstNode {
         Optional<List<DataType>> argumentTypes,
         Optional<DataType> returnType,
         Optional<Map<String, DataType>> captures,
-        Optional<List<AstNode>> body
+        List<AstNode> body
     ) {}
 
     public static record Variable(
@@ -53,7 +53,7 @@ public class AstNode {
         List<String> branchVariants,
         List<Optional<String>> branchVariableNames,
         List<List<AstNode>> branchBodies,
-        Optional<List<AstNode>> elseBody
+        List<AstNode> elseBody
     ) {}
 
     public static record Call(

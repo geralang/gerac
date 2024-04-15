@@ -4,7 +4,9 @@ package typesafeschwalbe.gerac.compiler.frontend;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
+import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 
 public final class DataType {
@@ -21,22 +23,22 @@ public final class DataType {
                 data.memberTypes().get(memberI)
             );
         }
-        return new UnorderedObject(memberTypes);
+        return new UnorderedObject(new Ref<>(memberTypes));
     }
 
     public static class UnknownOriginMarker {}
 
-    public static record ClosureContext(
+    public static record ClosureImpl(
         AstNode node,
         List<TypeChecker.CheckedBlock> context
     ) {}
 
     public static record Array(
-        DataType elementType
+        Ref<Ref<DataType>> elementType
     ) {}
 
     public static record UnorderedObject(
-        Map<String, DataType> memberTypes
+        Ref<Map<String, DataType>> memberTypes
     ) {}
 
     public static record OrderedObject(
@@ -45,7 +47,9 @@ public final class DataType {
     ) {}
 
     public static record Closure(
-        List<ClosureContext> bodies
+        Optional<List<DataType>> argumentTypes,
+        Optional<DataType> returnType,
+        List<ClosureImpl> unchecked
     ) {}
 
     public static record Union(
@@ -130,18 +134,31 @@ public final class DataType {
                 return true;
             }
             case ARRAY: {
-                return this.<Array>getValue().elementType.isConcrete();
+                return this
+                    .<Array>getValue().elementType.get().get().isConcrete();
             }
             case UNORDERED_OBJECT: {
                 UnorderedObject data = this.getValue();
-                for(DataType memberType: data.memberTypes.values()) {
-                    if(!memberType.isConcrete()) {
-                        return false;
-                    }
+                for(DataType memberType: data.memberTypes.get().values()) {
+                    if(!memberType.isConcrete()) { return false; }
                 }
                 return true;
             }
-            case CLOSURE:
+            case ORDERED_OBJECT: {
+                OrderedObject data = this.getValue();
+                for(DataType memberType: data.memberTypes) {
+                    if(!memberType.isConcrete()) { return false; }
+                }
+                return true;
+            }
+            case CLOSURE: {
+                Closure data = this.getValue();
+                if(data.argumentTypes.isEmpty()) { return false; }
+                for(DataType argumentType: data.argumentTypes.get()) {
+                    if(!argumentType.isConcrete()) { return false; }
+                }
+                return data.returnType.get().isConcrete();
+            }
             case UNION: {
                 return false;
             }
@@ -183,6 +200,7 @@ public final class DataType {
                 }
                 return this;
             }
+            case PANIC:
             case UNIT:
             case BOOLEAN:
             case INTEGER:
@@ -192,27 +210,32 @@ public final class DataType {
             }
             case ARRAY: {
                 Array data = this.getValue();
-                DataType elementType = data.elementType()
+                DataType elementType = data.elementType().get().get()
                     .replaceUnknown(replacedOrigin, replacement);
                 return new DataType(
-                    this.type, new Array(elementType), this.source, this.age
+                    this.type, new Array(new Ref<>(new Ref<>(elementType))),
+                    this.source, this.age
                 );
             }
             case UNORDERED_OBJECT: {
                 UnorderedObject data = this.getValue();
                 Map<String, DataType> memberTypes = new HashMap<>();
-                for(String memberName: data.memberTypes().keySet()) {
-                    DataType memberType = data.memberTypes().get(memberName)
+                for(String memberName: data.memberTypes().get().keySet()) {
+                    DataType memberType = data.memberTypes().get()
+                        .get(memberName)
                         .replaceUnknown(replacedOrigin, replacement);
                     memberTypes.put(memberName, memberType);
                 }
                 return new DataType(
                     this.type, 
-                    new UnorderedObject(memberTypes),
+                    new UnorderedObject(new Ref<>(memberTypes)),
                     this.source,
                     this.age
                 );
             }
+            // case ORDERED_OBJECT: {
+            //    ...
+            // }
             case CLOSURE: {
                 return this;
             }

@@ -33,4 +33,13 @@ public class Source {
             .count();
     }
 
+    @Override
+    public String toString() {
+        return "@\"" + this.file + "\"";
+    }
+
+    public String toString(Map<String, String> files) {
+        return "@\"" + this.file + "\":" + this.computeLine(files);
+    }
+
 }

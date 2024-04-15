@@ -324,27 +324,23 @@ public class SourceParser extends Parser {
                         }
                         Source endSource = this.current.source;
                         this.next();
-                        Optional<List<AstNode>> elseBody;
+                        List<AstNode> elseBody;
                         if(this.current.type == Token.Type.KEYWORD_ELSE) {
                             this.next();
                             if(this.current.type == Token.Type.BRACE_OPEN) {
                                 this.next();
-                                elseBody = Optional.of(
-                                    this.parseStatements(LOCALLY_SCOPED)
-                                );
+                                elseBody = this.parseStatements(LOCALLY_SCOPED);
                                 this.expect(Token.Type.BRACE_CLOSE);
                                 endSource = this.current.source;
                                 this.next();
                             } else {
-                                elseBody = Optional.of(this.parseStatement(
-                                        LOCALLY_SCOPED
-                                ));
-                                endSource = elseBody.get().get(
-                                    elseBody.get().size() - 1
+                                elseBody = this.parseStatement(LOCALLY_SCOPED);
+                                endSource = elseBody.get(
+                                    elseBody.size() - 1
                                 ).source;
                             }
                         } else {
-                            elseBody = Optional.empty();
+                            elseBody = List.of();
                         }
                         return List.of(new AstNode(
                             AstNode.Type.CASE_VARIANT,
@@ -733,7 +729,7 @@ public class SourceParser extends Parser {
                         new AstNode.Closure(
                             argumentNames, Optional.empty(), Optional.empty(),
                             Optional.empty(), Optional.empty(), 
-                            Optional.of(body)
+                            body
                         ),
                         new Source(start.source, endSource)
                     ));

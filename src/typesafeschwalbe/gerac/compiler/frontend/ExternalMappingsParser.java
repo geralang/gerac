@@ -9,6 +9,7 @@ import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.Error;
 import typesafeschwalbe.gerac.compiler.ErrorException;
+import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 
@@ -172,19 +173,11 @@ public class ExternalMappingsParser extends Parser {
                 DataType returnType = this.parseType();
                 return new DataType(
                     DataType.Type.CLOSURE,
-                    new DataType.Closure(List.of(new DataType.ClosureContext(
-                        new AstNode(
-                            AstNode.Type.CLOSURE,
-                            new AstNode.Closure(
-                                argNames, 
-                                Optional.empty(),
-                                Optional.of(argTypes), Optional.of(returnType), 
-                                Optional.of(new HashMap<>()), Optional.empty()
-                            ),
-                            new Source(start.source, returnType.source)
-                        ),
-                        List.of()
-                    ))),
+                    new DataType.Closure(
+                        Optional.of(argTypes),
+                        Optional.of(returnType),
+                        new ArrayList<>()
+                    ),
                     new Source(start.source, returnType.source)
                 );
             }
@@ -266,7 +259,7 @@ public class ExternalMappingsParser extends Parser {
                 this.next();
                 return new DataType(
                     DataType.Type.ARRAY,
-                    new DataType.Array(elementType),
+                    new DataType.Array(new Ref<>(new Ref<>(elementType))),
                     new Source(start.source, end.source)
                 );
             }

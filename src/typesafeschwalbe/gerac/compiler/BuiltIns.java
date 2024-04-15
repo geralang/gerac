@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
@@ -127,16 +126,10 @@ public class BuiltIns {
                         boolean isClosure = args.get(0).exactType()
                             == DataType.Type.CLOSURE;
                         if(!isClosure) { return false; }
-                        DataType.Closure argData = args.get(0).getValue();
-                        for(DataType.ClosureContext cc: argData.bodies()) {
-                            int argC = cc.node().<AstNode.Closure>getValue()
-                                .argumentNames().size();
-                            if(argC != 0) { return false; }
-                        }
                         DataType returnType = tc.checkClosure(
                             args.get(0), List.of(), 
                             new Source(BUILTIN_FILE_NAME, 0, 0)    
-                        );
+                        ).<DataType.Closure>getValue().returnType().get();
                         boolean returnsUnion = returnType.exactType()
                             == DataType.Type.UNION;
                         if(!returnsUnion) { return false; }

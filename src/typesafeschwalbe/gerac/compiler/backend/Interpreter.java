@@ -355,7 +355,7 @@ public class Interpreter {
                     new ArrayList<>(this.stack),
                     data.argumentNames(),
                     data.argumentTypes(),
-                    data.body().get()
+                    data.body()
                 );
             }
             case VARIABLE: {
@@ -433,9 +433,9 @@ public class Interpreter {
                     evalElseBody = false;
                     break;
                 }
-                if(evalElseBody && data.elseBody().isPresent()) {
+                if(evalElseBody) {
                     this.enterFrame();
-                    this.evaluateBlock(data.elseBody().get());
+                    this.evaluateBlock(data.elseBody());
                     this.exitFrame();
                 }
                 return Value.UNIT;
