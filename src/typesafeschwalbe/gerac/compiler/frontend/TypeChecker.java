@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import typesafeschwalbe.gerac.compiler.BuiltIns;
 import typesafeschwalbe.gerac.compiler.Color;
@@ -1672,6 +1673,24 @@ public class TypeChecker {
     private DataType unify(
         DataType a, DataType b, Source source
     ) throws ErrorException {
+        return this.unify(a, b, source, new TreeSet<>(
+            (ta, tb) -> Integer.compare(ta.hashCode(), tb.hashCode())
+        ));
+    }
+
+    private static record UnificationEncounter(
+        DataType a, DataType b
+    ) {}
+
+    private DataType unify(
+        DataType a, DataType b, Source source,
+        TreeSet<UnificationEncounter> encountered
+    ) throws ErrorException {
+        UnificationEncounter encounter = new UnificationEncounter(a, b);
+        if(encountered.contains(encounter)) {
+            return a;
+        }
+        encountered.add(encounter);
         if(a.exactType() == DataType.Type.PANIC) {
             return b;
         }
@@ -1683,7 +1702,7 @@ public class TypeChecker {
                     a.source
                 ),
                 b,
-                source
+                source, encountered
             );
         }
         if(b.exactType() == DataType.Type.PANIC) {
@@ -1697,8 +1716,11 @@ public class TypeChecker {
                     DataType.makeUnordered(b.getValue()),
                     b.source
                 ),
-                source
+                source, encountered
             );
+        }
+        if(a == b) {
+            return a;
         }
         if(a.exactType() != b.exactType()) {
             throw new ErrorException(TypeChecker.makeIncompatibleError(
@@ -1722,7 +1744,7 @@ public class TypeChecker {
                 DataType.Array dataB = b.getValue();
                 DataType elementType = this.unify(
                     dataA.elementType().get().get(),
-                    dataB.elementType().get().get(), source
+                    dataB.elementType().get().get(), source, encountered
                 );
                 Ref<DataType> r = new Ref<>(elementType);
                 dataA.elementType().set(r);
@@ -1732,9 +1754,8 @@ public class TypeChecker {
             case UNORDERED_OBJECT: {
                 DataType.UnorderedObject dataA = a.getValue();
                 DataType.UnorderedObject dataB = b.getValue();
-                Set<String> memberNames = new HashSet<>(
-                    dataA.memberTypes().get().keySet()
-                );
+                Set<String> memberNames = new HashSet<>();
+                memberNames.addAll(dataA.memberTypes().get().keySet());
                 memberNames.addAll(dataB.memberTypes().get().keySet());
                 Map<String, DataType> memberTypes = new HashMap<>();
                 for(String memberName: memberNames) {
@@ -1756,7 +1777,7 @@ public class TypeChecker {
                     DataType memberType = this.unify(
                         dataA.memberTypes().get().get(memberName),
                         dataB.memberTypes().get().get(memberName), 
-                        source
+                        source, encountered
                     );
                     memberTypes.put(memberName, memberType);
                 }
@@ -1785,13 +1806,13 @@ public class TypeChecker {
                         argumentTypes.get().add(this.unify(
                             dataAT.argumentTypes().get().get(argI),
                             dataBT.argumentTypes().get().get(argI),
-                            source
+                            source, encountered
                         ));
                     }
                     returnType = Optional.of(this.unify(
                         dataAT.returnType().get(),
                         dataBT.returnType().get(),
-                        source
+                        source, encountered
                     ));
                 } else {
                     unchecked.addAll(dataA.unchecked());
@@ -1827,7 +1848,7 @@ public class TypeChecker {
                     DataType variantType = this.unify(
                         dataA.variants().get(variantName),
                         dataB.variants().get(variantName), 
-                        source
+                        source, encountered
                     );
                     variantTypes.put(variantName, variantType);
                 }
@@ -1841,6 +1862,7 @@ public class TypeChecker {
                 throw new RuntimeException("type not handled!");
             }
         }
+        encountered.remove(encounter);
         if(a.age > b.age) {
             return new DataType(a.exactType(), value, a.source, a.age + 1);
         } else {
