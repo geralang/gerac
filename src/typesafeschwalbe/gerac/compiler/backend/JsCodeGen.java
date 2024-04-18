@@ -10,9 +10,9 @@ import java.util.Optional;
 import typesafeschwalbe.gerac.compiler.BuiltIns;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
-import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
+/*
 public class JsCodeGen implements CodeGen {
 
     private static final String CORE_LIB = """
@@ -1177,3 +1177,4 @@ public class JsCodeGen implements CodeGen {
     }
 
 }
+*/

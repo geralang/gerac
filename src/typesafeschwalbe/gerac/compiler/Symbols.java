@@ -10,12 +10,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
-import typesafeschwalbe.gerac.compiler.backend.Ir;
+// import typesafeschwalbe.gerac.compiler.backend.Ir;
 import typesafeschwalbe.gerac.compiler.backend.Value;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
-import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
-import typesafeschwalbe.gerac.compiler.frontend.TypeChecker;
 
 public class Symbols {
 
@@ -35,27 +33,20 @@ public class Symbols {
         );
     }
 
-    @FunctionalInterface
-    public interface ArgTypeChecker {
-        public boolean isValid(
-            List<DataType> argTypes, TypeChecker typeChecker
-        ) throws ErrorException;
-    }
-
     public static class Symbol {
 
         public static record Procedure(
             List<String> argumentNames,
-            Optional<ArgTypeChecker> allowedArgumentTypes,
-            Optional<List<DataType>> argumentTypes,
-            Optional<Function<Source, DataType>> returnType,
-            Optional<List<AstNode>> body,
-            Optional<Ir.Context> ir_context,
-            Optional<List<Ir.Instr>> ir_body
+            // Optional<ArgTypeChecker> allowedArgumentTypes,
+            Optional<List<Type>> argumentTypes,
+            Optional<Function<Source, Type>> returnType,
+            Optional<List<AstNode>> body
+            // Optional<Ir.Context> ir_context,
+            // Optional<List<Ir.Instr>> ir_body
         ) {}
 
         public static record Variable(
-            Optional<DataType> valueType,
+            Optional<Type> valueType,
             Optional<AstNode> valueNode,
             Optional<Value> value
         ) {}
@@ -180,10 +171,10 @@ public class Symbols {
                             node.source, usages.toArray(Namespace[]::new),
                             new Symbol.Procedure(
                                 data.argumentNames(),
-                                Optional.empty(),
+                                //Optional.empty(),
                                 Optional.empty(), Optional.empty(),
-                                Optional.of(data.body()),
-                                Optional.empty(), Optional.empty()
+                                Optional.of(data.body())
+                                //Optional.empty(), Optional.empty()
                             ),
                             Optional.empty()
                         )

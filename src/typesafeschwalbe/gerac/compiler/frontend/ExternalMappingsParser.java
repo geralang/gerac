@@ -13,6 +13,7 @@ import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 
+/*
 public class ExternalMappingsParser extends Parser {
 
     private Symbols symbols;
@@ -271,3 +272,4 @@ public class ExternalMappingsParser extends Parser {
     }
 
 }
+*/

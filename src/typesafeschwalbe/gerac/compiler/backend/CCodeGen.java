@@ -6,6 +6,7 @@ import java.util.Map;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
+/*
 public class CCodeGen implements CodeGen {
 
     public CCodeGen(
@@ -23,3 +24,4 @@ public class CCodeGen implements CodeGen {
     }
     
 }
+*/

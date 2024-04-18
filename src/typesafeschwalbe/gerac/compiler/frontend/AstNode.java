@@ -8,6 +8,7 @@ import java.util.Optional;
 import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
+import typesafeschwalbe.gerac.compiler.types.TypeValue;
 
 public class AstNode {
 
@@ -21,9 +22,9 @@ public class AstNode {
     public static record Closure(
         List<String> argumentNames,
         Optional<Symbols.Symbol> parentSymbol,
-        Optional<List<DataType>> argumentTypes,
-        Optional<DataType> returnType,
-        Optional<Map<String, DataType>> captures,
+        Optional<List<TypeValue>> argumentTypes,
+        Optional<TypeValue> returnType,
+        Optional<Map<String, TypeValue>> captures,
         List<AstNode> body
     ) {}
 
@@ -32,7 +33,7 @@ public class AstNode {
         boolean isMutable,
         String name,
         Optional<AstNode> value,
-        Optional<Ref<Optional<DataType>>> valueType
+        Optional<Ref<Optional<TypeValue>>> valueType
     ) {}
 
     public static record CaseBranching(
@@ -185,7 +186,7 @@ public class AstNode {
     public final Type type;
     private Object value;
     public final Source source;
-    public Optional<DataType> resultType;
+    public Optional<Type> resultType;
 
     public AstNode(
         Type type, Object value, Source source
@@ -197,7 +198,7 @@ public class AstNode {
     }
 
     public AstNode(
-        Type type, Object value, Source source, DataType resultType
+        Type type, Object value, Source source, Type resultType
     ) {
         this.type = type;
         this.value = value;
@@ -206,7 +207,7 @@ public class AstNode {
     }
 
     public AstNode(
-        Type type, Object value, Source source, Optional<DataType> resultType
+        Type type, Object value, Source source, Optional<Type> resultType
     ) {
         this.type = type;
         this.value = value;

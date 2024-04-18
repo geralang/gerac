@@ -12,11 +12,10 @@ import java.util.Set;
 import typesafeschwalbe.gerac.compiler.Error;
 import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Symbols;
-import typesafeschwalbe.gerac.compiler.backend.Ir.StaticValue;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
-import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
+/*
 public class Lowerer {
     
     private static record BlockVariables(
@@ -179,7 +178,7 @@ public class Lowerer {
             this.context = prevContext;
             this.variableStack = prevVars;
         }
-        return new StaticValue.Closure(
+        return new Ir.StaticValue.Closure(
             v, isEmpty, captureValues, argumentTypes, context, body
         );
     }
@@ -305,7 +304,7 @@ public class Lowerer {
                 AstNode.CaseBranching data = node.getValue();
                 Ir.Variable value = this.lowerNode(data.value()).get();
                 List<BlockVariables> branches = new ArrayList<>();
-                List<StaticValue> branchValues = new ArrayList<>();
+                List<Ir.StaticValue> branchValues = new ArrayList<>();
                 List<List<Ir.Instr>> branchBodies = new ArrayList<>();
                 for(
                     int branchI = 0; 
@@ -752,7 +751,7 @@ public class Lowerer {
                 AstNode.BiOp data = node.getValue();
                 Ir.Variable left = this.lowerNode(data.left()).get();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
-                StaticValue trueValue = this.staticValues.add(
+                Ir.StaticValue trueValue = this.staticValues.add(
                     new Value.Bool(true)
                 );
                 this.enterBlock();
@@ -797,7 +796,7 @@ public class Lowerer {
                 AstNode.BiOp data = node.getValue();
                 Ir.Variable left = this.lowerNode(data.left()).get();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
-                StaticValue falseValue = this.staticValues.add(
+                Ir.StaticValue falseValue = this.staticValues.add(
                     new Value.Bool(false)
                 );
                 this.enterBlock();
@@ -912,3 +911,4 @@ public class Lowerer {
     }   
 
 }
+*/

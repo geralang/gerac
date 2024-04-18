@@ -8,9 +8,9 @@ import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
-import typesafeschwalbe.gerac.compiler.frontend.DataType;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
+/*
 public class Ir {
     
     public static class StaticValues {
@@ -495,3 +495,4 @@ public class Ir {
     }
 
 }
+*/
