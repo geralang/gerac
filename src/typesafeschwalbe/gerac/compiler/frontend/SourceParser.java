@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.Error;
@@ -158,8 +159,7 @@ public class SourceParser extends Parser {
                         return List.of(new AstNode(
                             AstNode.Type.VARIABLE,
                             new AstNode.Variable(
-                                isPublic, isMutable, name, Optional.empty(),
-                                Optional.empty()
+                                isPublic, isMutable, name, Optional.empty()
                             ),
                             new Source(start.source, nameToken.source)
                         ));
@@ -169,8 +169,7 @@ public class SourceParser extends Parser {
                     return List.of(new AstNode(
                         AstNode.Type.VARIABLE,
                         new AstNode.Variable(
-                            isPublic, isMutable, name, Optional.of(value),
-                            Optional.empty()
+                            isPublic, isMutable, name, Optional.of(value)
                         ),
                         new Source(start.source, value.source)
                     ));
@@ -324,23 +323,27 @@ public class SourceParser extends Parser {
                         }
                         Source endSource = this.current.source;
                         this.next();
-                        List<AstNode> elseBody;
+                        Optional<List<AstNode>> elseBody;
                         if(this.current.type == Token.Type.KEYWORD_ELSE) {
                             this.next();
                             if(this.current.type == Token.Type.BRACE_OPEN) {
                                 this.next();
-                                elseBody = this.parseStatements(LOCALLY_SCOPED);
+                                elseBody = Optional.of(
+                                    this.parseStatements(LOCALLY_SCOPED)
+                                );
                                 this.expect(Token.Type.BRACE_CLOSE);
                                 endSource = this.current.source;
                                 this.next();
                             } else {
-                                elseBody = this.parseStatement(LOCALLY_SCOPED);
-                                endSource = elseBody.get(
-                                    elseBody.size() - 1
+                                elseBody = Optional.of(
+                                    this.parseStatement(LOCALLY_SCOPED)
+                                );
+                                endSource = elseBody.get().get(
+                                    elseBody.get().size() - 1
                                 ).source;
                             }
                         } else {
-                            elseBody = List.of();
+                            elseBody = Optional.empty();
                         }
                         return List.of(new AstNode(
                             AstNode.Type.CASE_VARIANT,
@@ -727,9 +730,7 @@ public class SourceParser extends Parser {
                     previous = Optional.of(new AstNode(
                         AstNode.Type.CLOSURE,
                         new AstNode.Closure(
-                            argumentNames, Optional.empty(), Optional.empty(),
-                            Optional.empty(), Optional.empty(), 
-                            body
+                            argumentNames, new HashSet<>(), body
                         ),
                         new Source(start.source, endSource)
                     ));

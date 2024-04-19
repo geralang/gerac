@@ -8,10 +8,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
+// import java.util.function.Function;
 
 // import typesafeschwalbe.gerac.compiler.backend.Ir;
-import typesafeschwalbe.gerac.compiler.backend.Value;
+// import typesafeschwalbe.gerac.compiler.backend.Value;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
@@ -38,17 +38,17 @@ public class Symbols {
         public static record Procedure(
             List<String> argumentNames,
             // Optional<ArgTypeChecker> allowedArgumentTypes,
-            Optional<List<Type>> argumentTypes,
-            Optional<Function<Source, Type>> returnType,
+            // Optional<List<Type>> argumentTypes,
+            // Optional<Function<Source, Type>> returnType,
             Optional<List<AstNode>> body
             // Optional<Ir.Context> ir_context,
             // Optional<List<Ir.Instr>> ir_body
         ) {}
 
         public static record Variable(
-            Optional<Type> valueType,
-            Optional<AstNode> valueNode,
-            Optional<Value> value
+            // Optional<Type> valueType,
+            Optional<AstNode> valueNode
+            // Optional<Value> value
         ) {}
 
         public enum Type {
@@ -172,7 +172,7 @@ public class Symbols {
                             new Symbol.Procedure(
                                 data.argumentNames(),
                                 //Optional.empty(),
-                                Optional.empty(), Optional.empty(),
+                                // Optional.empty(), Optional.empty(),
                                 Optional.of(data.body())
                                 //Optional.empty(), Optional.empty()
                             ),
@@ -198,8 +198,9 @@ public class Symbols {
                             Symbol.Type.VARIABLE, data.isPublic(), 
                             node.source, usages.toArray(Namespace[]::new),
                             new Symbol.Variable(
-                                Optional.empty(), data.value(),
-                                Optional.empty()
+                                // Optional.empty(),
+                                data.value()
+                                // Optional.empty()
                             ),
                             Optional.empty()
                         )

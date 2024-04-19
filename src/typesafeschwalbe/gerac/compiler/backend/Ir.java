@@ -1,14 +1,14 @@
 package typesafeschwalbe.gerac.compiler.backend;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+// import java.util.ArrayList;
+// import java.util.HashMap;
+// import java.util.List;
+// import java.util.Map;
+// import java.util.Optional;
 
-import typesafeschwalbe.gerac.compiler.ErrorException;
-import typesafeschwalbe.gerac.compiler.Source;
-import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+// import typesafeschwalbe.gerac.compiler.ErrorException;
+// import typesafeschwalbe.gerac.compiler.Source;
+// import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
 /*
 public class Ir {

@@ -1,23 +1,24 @@
 
 package typesafeschwalbe.gerac.compiler.backend;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+// import java.util.ArrayList;
+// import java.util.Collections;
+// import java.util.HashMap;
+// import java.util.LinkedList;
+// import java.util.List;
+// import java.util.Map;
+// import java.util.Optional;
 
-import typesafeschwalbe.gerac.compiler.BuiltIns;
-import typesafeschwalbe.gerac.compiler.Color;
-import typesafeschwalbe.gerac.compiler.Error;
-import typesafeschwalbe.gerac.compiler.ErrorException;
-import typesafeschwalbe.gerac.compiler.Source;
-import typesafeschwalbe.gerac.compiler.Symbols;
-import typesafeschwalbe.gerac.compiler.frontend.AstNode;
-import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+// import typesafeschwalbe.gerac.compiler.BuiltIns;
+// import typesafeschwalbe.gerac.compiler.Color;
+// import typesafeschwalbe.gerac.compiler.Error;
+// import typesafeschwalbe.gerac.compiler.ErrorException;
+// import typesafeschwalbe.gerac.compiler.Source;
+// import typesafeschwalbe.gerac.compiler.Symbols;
+// import typesafeschwalbe.gerac.compiler.frontend.AstNode;
+// import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
+/* 
 public class Interpreter {
 
     private static Error makeExternalUsageError(Namespace path, Source source) {
@@ -906,3 +907,4 @@ public class Interpreter {
     }
     
 }
+*/

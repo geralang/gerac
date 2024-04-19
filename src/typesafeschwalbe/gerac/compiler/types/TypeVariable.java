@@ -9,4 +9,9 @@ public class TypeVariable {
         this.id = id;
     }
 
+    @Override
+    public String toString() {
+        return "$" + this.id;
+    }
+
 }

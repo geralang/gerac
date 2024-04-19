@@ -7,7 +7,7 @@ import java.util.List;
 public class TypeContext {
 
     private int nextVarId;
-    private final List<List<TypeConstraint>> constraints;
+    public final List<List<TypeConstraint>> constraints;
 
     public TypeContext() {
         this.nextVarId = 0;
@@ -21,7 +21,7 @@ public class TypeContext {
         return new TypeVariable(id);
     }
 
-    public void addConstraint(TypeVariable v, TypeConstraint c) {
+    public void add(TypeConstraint c, TypeVariable v) {
         this.constraints.get(v.id).add(c);
     }
 

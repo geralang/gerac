@@ -1,16 +1,16 @@
 
 package typesafeschwalbe.gerac.compiler.backend;
 
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+// import java.util.HashMap;
+// import java.util.LinkedList;
+// import java.util.List;
+// import java.util.Map;
+// import java.util.Optional;
 
-import typesafeschwalbe.gerac.compiler.BuiltIns;
-import typesafeschwalbe.gerac.compiler.Source;
-import typesafeschwalbe.gerac.compiler.Symbols;
-import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+// import typesafeschwalbe.gerac.compiler.BuiltIns;
+// import typesafeschwalbe.gerac.compiler.Source;
+// import typesafeschwalbe.gerac.compiler.Symbols;
+// import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
 /*
 public class JsCodeGen implements CodeGen {

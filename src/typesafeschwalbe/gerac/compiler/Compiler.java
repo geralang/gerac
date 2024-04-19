@@ -8,6 +8,8 @@ import java.util.List;
 import typesafeschwalbe.gerac.compiler.frontend.Lexer;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 import typesafeschwalbe.gerac.compiler.frontend.SourceParser;
+import typesafeschwalbe.gerac.compiler.types.ConstraintGenerator;
+import typesafeschwalbe.gerac.compiler.types.TypeConstraint;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 // import typesafeschwalbe.gerac.compiler.frontend.ExternalMappingsParser;
 // import typesafeschwalbe.gerac.compiler.backend.CodeGen;
@@ -75,6 +77,23 @@ public class Compiler {
                 "The main procedure '" + mainRaw + "' has more than 0 arguments"
             ));
         }
+
+        ConstraintGenerator constraintGen = new ConstraintGenerator(symbols);
+        try {
+            ConstraintGenerator.Output output
+                = constraintGen.generate(main.get());
+            List<List<TypeConstraint>> constraints = output.ctx().constraints; 
+            for(int vI = 0; vI < constraints.size(); vI += 1) {
+                System.out.println("Constraints on $" + vI + ":");
+                for(TypeConstraint c: constraints.get(vI)) {
+                    System.out.println(c);
+                }
+                System.out.println();
+            }
+        } catch(ErrorException e) {
+            return Result.ofError(e.error);
+        }
+
         return Result.ofValue("<todo>");
         // TypeChecker typeChecker = new TypeChecker(symbols);
         // Optional<Error> typeCheckError = typeChecker.checkMain(mainPath);

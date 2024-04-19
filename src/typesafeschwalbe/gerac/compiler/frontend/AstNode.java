@@ -4,11 +4,9 @@ package typesafeschwalbe.gerac.compiler.frontend;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
-import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
-import typesafeschwalbe.gerac.compiler.Symbols;
-import typesafeschwalbe.gerac.compiler.types.TypeValue;
 
 public class AstNode {
 
@@ -21,10 +19,7 @@ public class AstNode {
 
     public static record Closure(
         List<String> argumentNames,
-        Optional<Symbols.Symbol> parentSymbol,
-        Optional<List<TypeValue>> argumentTypes,
-        Optional<TypeValue> returnType,
-        Optional<Map<String, TypeValue>> captures,
+        Set<String> capturedNames,
         List<AstNode> body
     ) {}
 
@@ -32,8 +27,7 @@ public class AstNode {
         boolean isPublic,
         boolean isMutable,
         String name,
-        Optional<AstNode> value,
-        Optional<Ref<Optional<TypeValue>>> valueType
+        Optional<AstNode> value
     ) {}
 
     public static record CaseBranching(
@@ -54,7 +48,7 @@ public class AstNode {
         List<String> branchVariants,
         List<Optional<String>> branchVariableNames,
         List<List<AstNode>> branchBodies,
-        List<AstNode> elseBody
+        Optional<List<AstNode>> elseBody
     ) {}
 
     public static record Call(
