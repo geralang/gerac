@@ -4,14 +4,18 @@ package typesafeschwalbe.gerac.compiler.types;
 import java.util.ArrayList;
 import java.util.List;
 
+import typesafeschwalbe.gerac.compiler.DisjointSet;
+
 public class TypeContext {
 
     private int nextVarId;
-    public final List<List<TypeConstraint>> constraints;
+    final List<List<TypeConstraint>> constraints;
+    final DisjointSet<DataType<TypeVariable>> substitutes;
 
     public TypeContext() {
         this.nextVarId = 0;
         this.constraints = new ArrayList<>();
+        this.substitutes = new DisjointSet<>();
     }
 
     public TypeVariable makeVar() {

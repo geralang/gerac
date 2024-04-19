@@ -3,6 +3,7 @@ package typesafeschwalbe.gerac.compiler;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
 
 public class DisjointSet<T> {
 
@@ -51,11 +52,16 @@ public class DisjointSet<T> {
     }
 
     public void union(int idxA, int idxB) {
+        this.union(idxA, idxB, (a, b) -> a);
+    }
+
+    public void union(int idxA, int idxB, BiFunction<T, T, T> f) {
         Entry<T> rootA = this.find(idxA);
         Entry<T> rootB = this.find(idxB);
         if(rootA != rootB) {
-            rootA.parent = rootB;
+            rootB.parent = rootA;
         }
+        rootA.value = f.apply(rootA.value, rootB.value);
     }
 
 }
