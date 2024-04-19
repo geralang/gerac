@@ -22,11 +22,21 @@ public class DisjointSet<T> {
         this.values = new ArrayList<>();
     }
 
+    private void compressPath(int start, Entry<T> root) {
+        Entry<T> current = this.values.get(start);
+        while(current.parent != null) {
+            Entry<T> next = current.parent;
+            current.parent = root;
+            current = next;
+        }
+    }
+
     private Entry<T> find(int idx) {
         Entry<T> current = this.values.get(idx);
         while(current.parent != null) {
             current = current.parent;
         }
+        this.compressPath(idx, current);
         return current;
     }
 
