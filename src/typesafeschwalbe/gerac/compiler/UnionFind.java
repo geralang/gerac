@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiFunction;
 
-public class DisjointSet<T> {
+public class UnionFind<T> {
 
     private static class Entry<T> {
         private T value;
@@ -19,7 +19,7 @@ public class DisjointSet<T> {
 
     private final List<Entry<T>> values;
 
-    public DisjointSet() {
+    public UnionFind() {
         this.values = new ArrayList<>();
     }
 
