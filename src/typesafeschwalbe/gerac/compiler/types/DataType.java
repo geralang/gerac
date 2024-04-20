@@ -60,7 +60,7 @@ public class DataType<T> {
                 case UNORDERED_OBJECT: return "an object";
                 case ORDERED_OBJECT: return "an object";
                 case CLOSURE: return "a closure";
-                case UNION: return "a union";
+                case UNION: return "a union variant";
                 default:
                     throw new RuntimeException("unhandled type!");
             }

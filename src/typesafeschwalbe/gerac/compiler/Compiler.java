@@ -8,7 +8,7 @@ import java.util.List;
 import typesafeschwalbe.gerac.compiler.frontend.Lexer;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 import typesafeschwalbe.gerac.compiler.frontend.SourceParser;
-import typesafeschwalbe.gerac.compiler.types.TypeSolver;
+import typesafeschwalbe.gerac.compiler.types.ConstraintSolver;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 // import typesafeschwalbe.gerac.compiler.frontend.ExternalMappingsParser;
 // import typesafeschwalbe.gerac.compiler.backend.CodeGen;
@@ -76,7 +76,7 @@ public class Compiler {
                 "The main procedure '" + mainRaw + "' has more than 0 arguments"
             ));
         }
-        TypeSolver solver = new TypeSolver();
+        ConstraintSolver solver = new ConstraintSolver();
         List<Error> typeErrors = solver.checkSymbols(symbols);
         if(typeErrors.size() > 0) {
             return Result.ofError(typeErrors);
