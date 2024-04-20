@@ -192,7 +192,9 @@ public class ConstraintGenerator {
                 this.enterFrame(data.argumentNames(), node.source);
                 this.walkBlock(data.body());
                 CallFrame frame = this.frame();
+                Block block = this.block();
                 this.exitFrame();
+                data.capturedNames().addAll(block.captures);
                 this.ctx.add(new TypeConstraint(
                     value, node.source,
                     TypeConstraint.Type.HAS_SIGNATURE,

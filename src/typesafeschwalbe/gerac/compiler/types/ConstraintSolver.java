@@ -10,12 +10,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import typesafeschwalbe.gerac.compiler.Color;
 import typesafeschwalbe.gerac.compiler.Error;
 import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.UnionFind;
+import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.types.ConstraintGenerator.ProcedureUsage;
 
 public class ConstraintSolver {
 
@@ -27,7 +30,7 @@ public class ConstraintSolver {
             "Invalid type",
             Error.Marking.info(
                 deducedSrc,
-                "this has been deduced to be " + deducedStr + " here"
+                "this is " + deducedStr + " here"
             ),
             Error.Marking.error(
                 requiredSrc,
@@ -45,11 +48,11 @@ public class ConstraintSolver {
             "Incompatible types",
             Error.Marking.info(
                 aSource,
-                "this has been deduced to be " + aStr + " here"
+                "this is " + aStr
             ),
             Error.Marking.info(
                 bSource,
-                "this has been deduced to be " + bStr + " here"
+                "this is " + bStr
             ),
             Error.Marking.error(
                 src, 
@@ -73,8 +76,12 @@ public class ConstraintSolver {
 
     private static record Scope(
         Symbols.Symbol symbol,
+        int variant,
         TypeContext ctx,
-        TypeVariable returned
+        List<TypeVariable> arguments,
+        TypeVariable returned,
+        List<ConstraintGenerator.VariableUsage> varUsages,
+        List<ConstraintGenerator.ProcedureUsage> procUsages
     ) {}
 
     private Symbols symbols;
@@ -89,16 +96,18 @@ public class ConstraintSolver {
 
     public List<Error> checkSymbols(Symbols symbols) {
         this.symbols = symbols;
-        this.cGen = new ConstraintGenerator(symbols);
-        this.scopeStack = new LinkedList<>();
         List<Error> errors = new ArrayList<>();
         for(Namespace path: symbols.allSymbolPaths()) {
+            this.cGen = new ConstraintGenerator(symbols);
+            this.scopeStack = new LinkedList<>();
             Symbols.Symbol symbol = symbols.get(path).get();
             try {
                 switch(symbol.type) {
                     case PROCEDURE: {
                         Symbols.Symbol.Procedure data = symbol.getValue();
-                        this.solveProcedure(symbol, data, Optional.empty());
+                        this.solveProcedure(
+                            symbol, data, Optional.empty(), Optional.empty()
+                        );
                     } break;
                     case VARIABLE: {
                         // TODO: solve variable
@@ -117,32 +126,113 @@ public class ConstraintSolver {
         return errors;
     }
 
-    private static record SolvedProcedure(int variant, TypeValue returned) {}
+    private static record SolvedProcedure(
+        int variant,
+        boolean recursive,
+        List<TypeValue> arguments, TypeValue returned,
+        List<TypeVariable> argumentV, TypeVariable returnedV
+    ) {
+        private void unify(
+            Source accessSource,
+            List<TypeVariable> arguments, List<Source> argSources,
+            TypeVariable returned,
+            ConstraintSolver solver
+        ) throws ErrorException {
+            for(int argI = 0; argI < arguments.size(); argI += 1) {
+                TypeVariable argV = this.recursive
+                    ? this.argumentV.get(argI)
+                    : solver.asTypeVariable(this.arguments.get(argI));
+                solver.unifyVars(
+                    argV, arguments.get(argI), argSources.get(argI)
+                );
+            }
+            TypeVariable returnedV = this.recursive
+                ? this.returnedV
+                : solver.asTypeVariable(this.returned);
+            solver.unifyVars(returned, returnedV, accessSource);
+        }
+    }
 
     private SolvedProcedure solveProcedure(
         Symbols.Symbol symbol, Symbols.Symbol.Procedure data,
-        Optional<TypeValue> argumentTypes
+        Optional<List<TypeValue>> argumentTypes,
+        Optional<List<Source>> argumentSources
     ) throws ErrorException {
-        // TODO: stop recursive calls (return existing context return type)
-        // TODO: stop generation of duplicates
+        for(Scope scope: this.scopeStack) {
+            if(scope.symbol != symbol) { continue; }
+            return new SolvedProcedure(
+                scope.variant,
+                true,
+                null, null,
+                scope.arguments, scope.returned
+            );
+        }
+        if(argumentTypes.isPresent()) {
+            for(int varI = 0; varI < symbol.variantCount(); varI += 1) {
+                Symbols.Symbol.Procedure variant = symbol.getVariant(varI);
+                boolean argsMatch = true;
+                for(
+                    int argI = 0; argI < variant.argumentTypes().get().size(); 
+                    argI += 1
+                ) {
+                    TypeValue argA = argumentTypes.get().get(argI);
+                    TypeValue varA = variant.argumentTypes().get().get(argI);
+                    if(!argA.deepEquals(varA)) {
+                        argsMatch = false;
+                        break;
+                    }
+                }
+                if(!argsMatch) { continue; }
+                return new SolvedProcedure(
+                    varI,
+                    false,
+                    variant.argumentTypes().get(), variant.returnType().get(),
+                    null, null
+                );
+            }
+        }
         ConstraintGenerator.Output cOutput = this.cGen
             .generateProc(symbol, data);
+        int variant = symbol.variantCount();
         this.scopeStack.add(new Scope(
-            symbol,
+            symbol, variant,
             cOutput.ctx(),
-            cOutput.returned()
+            cOutput.arguments(), cOutput.returned(),
+            cOutput.varUsages(), cOutput.procUsages()
         ));
-        // TODO: insert argument types if present (get argument type vars
-        //       from cOutput, insert into context with 'asTypeVariable'
-        //       and unify)
+        if(argumentTypes.isPresent()) {
+            for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
+                TypeVariable argV = this
+                    .asTypeVariable(argumentTypes.get().get(argI));
+                this.unifyVars(
+                    argV, cOutput.arguments().get(argI), 
+                    argumentSources.get().get(argI)
+                );
+            }
+        }
         this.solveConstraints(cOutput.ctx().constraints);
-        // TODO: make a copy of the body, doing the already noted
-        //       transformations and looking up usages.
-        // TODO: pop the scope stack
-        // TODO: add the monomorphized body as a new variant to the symbol
-        // TODO: convert the return type to a value and return it together
-        //       with the variant
-        return null;
+        Optional<List<AstNode>> processedBody = Optional.empty();
+        if(data.body().isPresent()) {
+            processedBody = Optional.of(
+                this.processNodes(data.body().get())
+            );
+        }
+        List<TypeValue> rArguments = new ArrayList<>();
+        for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
+            rArguments.add(this.asTypeValue(cOutput.arguments().get(argI)));
+        }
+        TypeValue rReturned = this.asTypeValue(cOutput.returned());
+        this.scopeStack.remove(this.scopeStack.size() - 1);
+        symbol.addVariant(new Symbols.Symbol.Procedure(
+            data.argumentNames(), 
+            Optional.of(rArguments), Optional.of(rReturned), 
+            processedBody
+        ));
+        return new SolvedProcedure(
+            variant, false,
+            rArguments, rReturned,
+            null, null
+        );
     }
 
     private void solveConstraints(
@@ -170,10 +260,12 @@ public class ConstraintSolver {
                     DataType.Type.NUMERIC,
                     DataType.Type.INTEGER, DataType.Type.FLOAT
                 )) {
-                    throw new ErrorException(ConstraintSolver.makeInvalidTypeError(
-                        r.source.get(), r.type.toString(),
-                        c.source, "a number"
-                    ));
+                    throw new ErrorException(
+                        ConstraintSolver.makeInvalidTypeError(
+                            r.source.get(), r.type.toString(),
+                            c.source, "a number"
+                        )
+                    );
                 }
                 this.scope().ctx.substitutes.set(c.target.id, r);
             } break;
@@ -191,13 +283,15 @@ public class ConstraintSolver {
                     );
                 }
                 if(!r.type.isOneOf(data.type())) {
-                    throw new ErrorException(ConstraintSolver.makeInvalidTypeError(
-                        r.source.get(),
-                        r.type.toString(),
-                        c.source,
-                        data.type()
-                            + data.reason().map(rs -> " " + rs).orElse("")
-                    ));
+                    throw new ErrorException(
+                        ConstraintSolver.makeInvalidTypeError(
+                            r.source.get(),
+                            r.type.toString(),
+                            c.source,
+                            data.type()
+                                + data.reason().map(rs -> " " + rs).orElse("")
+                        )
+                    );
                 }
                 this.scope().ctx.substitutes.set(c.target.id, r);
             } break;
@@ -262,23 +356,23 @@ public class ConstraintSolver {
                 );
             } break;
             case LIMIT_MEMBERS: {
-                // // Because of how the constraint generator uses
-                // // this constraint, there is no need for some
-                // // of the following logic.
-                // TypeConstraint.LimitMembers data = c.getValue();
+                // Because of how the constraint generator uses
+                // this constraint, there is no need for some
+                // of the following logic.
+                TypeConstraint.LimitMembers data = c.getValue();
                 DataType<TypeVariable> r = t;
-                // if(r.type == DataType.Type.ANY) {
-                //     Map<String, TypeVariable> members = new HashMap<>();
-                //     for(String member: data.names()) {
-                //         members.put(member, this.scope().ctx.makeVar());
-                //     }
-                //     r = new DataType<>(
-                //         DataType.Type.UNORDERED_OBJECT, 
-                //         new DataType.UnorderedObject<>(members, false), 
-                //         Optional.of(c.source)
-                //     );
-                //     this.scope().ctx.substitutes.set(c.target.id, r);
-                // }
+                if(r.type == DataType.Type.ANY) {
+                    Map<String, TypeVariable> members = new HashMap<>();
+                    for(String member: data.names()) {
+                        members.put(member, this.scope().ctx.makeVar());
+                    }
+                    r = new DataType<>(
+                        DataType.Type.UNORDERED_OBJECT, 
+                        new DataType.UnorderedObject<>(members, false), 
+                        Optional.of(c.source)
+                    );
+                    this.scope().ctx.substitutes.set(c.target.id, r);
+                }
                 // if(r.type != DataType.Type.UNORDERED_OBJECT) {
                 //     throw new ErrorException(TypeSolver.makeInvalidTypeError(
                 //         r.source.get(), r.type.toString(),
@@ -499,11 +593,13 @@ public class ConstraintSolver {
             return a;
         }
         if(a.type != b.type) {
-            throw new ErrorException(ConstraintSolver.makeIncompatibleTypesError(
-                a.source.get(), a.type.toString(), 
-                b.source.get(), b.type.toString(), 
-                src, pathDescription
-            ));
+            throw new ErrorException(
+                ConstraintSolver.makeIncompatibleTypesError(
+                    a.source.get(), a.type.toString(), 
+                    b.source.get(), b.type.toString(), 
+                    src, pathDescription
+                )
+            );
         }
         switch(a.type) {
             case NUMERIC:
@@ -598,8 +694,8 @@ public class ConstraintSolver {
                         dataA.argumentTypes().get(argI), 
                         dataB.argumentTypes().get(argI),
                         src,
-                        ConstraintSolver.displayOrdinal(argI)
-                            + "the closure arguments " + pathD,
+                        "the " + ConstraintSolver.displayOrdinal(argI)
+                            + " closure arguments" + pathD,
                         encountered
                     ));
                 }
@@ -611,7 +707,7 @@ public class ConstraintSolver {
                             dataA.returnType(), 
                             dataB.returnType(), 
                             src,
-                            "the closure return types" + pathD,
+                            "the closure return value" + pathD,
                             encountered
                         )
                     ),
@@ -689,12 +785,16 @@ public class ConstraintSolver {
         if(mapped != null) {
             return mapped; 
         }
-        DataType<TypeVariable> t = this.scope().ctx.substitutes.get(tvarr);
-        TypeValue r = TypeValue.upgrade(t.map(
-            (ct, ctvar) -> this.asTypeValue(ctvar, done)
-        ));
-        done.put(tvarr, r);
-        return r;
+        TypeValue t = new TypeValue(
+            DataType.Type.ANY, null, null
+        );
+        done.put(tvarr, t);
+        DataType<TypeValue> tv = this.scope().ctx.substitutes.get(tvarr)
+            .map((ct, ctvar) -> this.asTypeValue(ctvar, done));
+        t.type = tv.type;
+        t.setValue(tv.getValue());
+        t.source = tv.source;
+        return t;
     }
 
     private TypeVariable asTypeVariable(DataType<TypeValue> tval) {
@@ -708,12 +808,400 @@ public class ConstraintSolver {
         if(mapped != null) {
             return mapped;
         }
+        TypeVariable r = this.scope().ctx.makeVar();
+        done.put(tval, r);
         DataType<TypeVariable> rt = tval.map(
             (ct, ctval) -> this.asTypeVariable(ct, done)
         );
-        TypeVariable r = this.scope().ctx.makeVar();
         this.scope().ctx.substitutes.set(r.id, rt);
-        done.put(tval, r);
         return r;
     }
+
+    private List<AstNode> processNodes(
+        List<AstNode> nodes
+    ) throws ErrorException {
+        List<AstNode> r = new ArrayList<>(nodes.size());
+        for(AstNode node: nodes) {
+            r.add(this.processNode(node));
+        }
+        return r;
+    } 
+
+    private static record ProcCall(Namespace path, int variant) {}
+
+    private ProcCall resolveProcCall(
+        ProcedureUsage p, List<Source> argSources
+    ) throws ErrorException {
+        List<Namespace> fullPaths = this.symbols.allowedPathExpansions(
+            p.shortPath(), this.scope().symbol, p.node().source
+        );
+        if(fullPaths.size() == 0) {
+            fullPaths.add(p.shortPath());
+        }
+        List<TypeValue> arguments = p.arguments()
+            .stream().map(a -> this.asTypeValue(a)).toList();
+        List<Error> errors = new ArrayList<>();
+        for(int pathI = fullPaths.size() - 1; pathI >= 0; pathI -= 1) {
+            Namespace fullPath = fullPaths.get(pathI);
+            Symbols.Symbol symbol = this.symbols.get(fullPath).get();
+            if(symbol.type != Symbols.Symbol.Type.PROCEDURE) {
+                continue;
+            }
+            Symbols.Symbol.Procedure symbolData = symbol.getValue();
+            if(arguments.size() != symbolData.argumentNames().size()) {
+                int eArgC = symbolData.argumentNames().size();
+                int gArgC = arguments.size();
+                errors.add(new Error(
+                    "Invalid argument count",
+                    Error.Marking.info(
+                        symbol.source,
+                        "'" + fullPath + "' accepts "
+                            + eArgC + " argument"
+                            + (eArgC == 1? "" : "s")
+                    ),
+                    Error.Marking.error(
+                        p.node().source,
+                        "here " + gArgC + " argument"
+                            + (gArgC == 1? " is" : "s are")
+                            + " provided"
+                    )
+                ));
+                continue;
+            }
+            SolvedProcedure solved;
+            List<Scope> prevScopeStack = new LinkedList<>(this.scopeStack);
+            try {
+                solved = this.solveProcedure(
+                    symbol, symbolData, 
+                    Optional.of(arguments), Optional.of(argSources)
+                );
+            } catch(ErrorException e) {
+                this.scopeStack = prevScopeStack;
+                errors.add(e.error);
+                continue;
+            }
+            solved.unify(
+                p.node().source, p.arguments(), argSources, p.returned(), this
+            );
+            return new ProcCall(fullPath, solved.variant);
+        }
+        if(errors.size() == 0) {
+            throw new RuntimeException(
+                "should've been found by constraint gen!"
+            );
+        }
+        if(errors.size() == 1) {
+            throw new ErrorException(errors.get(0));
+        }
+        throw new ErrorException(new Error(
+            "No valid candidates for procedure call",
+            colored -> {
+                String errorNoteColor = colored
+                    ? Color.from(Color.GRAY) : "";
+                String errorProcedureColor = colored
+                    ? Color.from(Color.GREEN, Color.BOLD) : "";
+                StringBuilder info = new StringBuilder();
+                info.append(errorNoteColor);
+                info.append("considered candidates (specify the full path");
+                info.append(" to get a specific error)\n");
+                for(Namespace candidate: fullPaths) {
+                    info.append(errorNoteColor);
+                    info.append(" - ");
+                    info.append(errorProcedureColor);
+                    info.append(candidate);
+                    info.append("\n");
+                }
+                return info.toString();
+            },
+            Error.Marking.error(
+                p.node().source, "path could not be expanded"
+            )
+        ));
+    }
+
+    private AstNode processNode(AstNode node) throws ErrorException {
+        switch(node.type) {
+            case CLOSURE: {
+                AstNode.Closure data = node.getValue();
+                return new AstNode(
+                    node.type,
+                    new AstNode.Closure(
+                        data.argumentNames(),
+                        data.capturedNames(),
+                        this.processNodes(data.body())
+                    ),
+                    node.source
+                );
+            }
+            case VARIABLE: {
+                AstNode.Variable data = node.getValue();
+                return new AstNode(
+                    node.type,
+                    new AstNode.Variable(
+                        data.isPublic(), data.isMutable(), data.name(), 
+                        data.value().isPresent()
+                            ? Optional.of(this.processNode(data.value().get()))
+                            : Optional.empty()
+                    ),
+                    node.source
+                );
+            }
+            case CASE_BRANCHING: {
+                AstNode.CaseBranching data = node.getValue();
+                List<List<AstNode>> branchBodies = new ArrayList<>();
+                for(List<AstNode> branchBody: data.branchBodies()) {
+                    branchBodies.add(this.processNodes(branchBody));
+                }
+                return new AstNode(
+                    node.type,
+                    new AstNode.CaseBranching(
+                        this.processNode(data.value()),
+                        this.processNodes(data.branchValues()),
+                        branchBodies, 
+                        this.processNodes(data.elseBody())
+                    ),
+                    node.source
+                );
+            }
+            case CASE_CONDITIONAL: {
+                AstNode.CaseConditional data = node.getValue();
+                return new AstNode(
+                    node.type,
+                    new AstNode.CaseConditional(
+                        this.processNode(data.condition()),
+                        this.processNodes(data.ifBody()),
+                        this.processNodes(data.elseBody())
+                    ),
+                    node.source
+                );
+            }
+            case CASE_VARIANT: {
+                AstNode.CaseVariant data = node.getValue();
+                List<List<AstNode>> branchBodies = new ArrayList<>();
+                for(List<AstNode> branchBody: data.branchBodies()) {
+                    branchBodies.add(this.processNodes(branchBody));
+                }
+                return new AstNode(
+                    node.type,
+                    new AstNode.CaseVariant(
+                        this.processNode(data.value()),
+                        data.branchVariants(), data.branchVariableNames(),
+                        branchBodies,
+                        data.elseBody().isPresent()
+                            ? Optional.of(
+                                this.processNodes(data.elseBody().get())
+                            )
+                            : Optional.empty()
+                    ),
+                    node.source
+                );
+            }
+            case CALL: {
+                AstNode.Call data = node.getValue();
+                for(
+                    ConstraintGenerator.ProcedureUsage procUsage
+                        : this.scope().procUsages
+                ) {
+                    if(procUsage.node() != node) { continue; }
+                    ProcCall call = this.resolveProcCall(
+                        procUsage, 
+                        data.arguments().stream().map(a -> a.source).toList()
+                    );
+                    return new AstNode(
+                        AstNode.Type.PROCEDURE_CALL,
+                        new AstNode.ProcedureCall(
+                            call.path, call.variant,
+                            this.processNodes(data.arguments())
+                        ),
+                        node.source
+                    );
+                }
+                return new AstNode(
+                    node.type,
+                    new AstNode.Call(
+                        this.processNode(data.called()),
+                        this.processNodes(data.arguments())
+                    ),
+                    node.source
+                );
+            }
+            case METHOD_CALL: {
+                AstNode.MethodCall data = node.getValue();
+                return new AstNode(
+                    node.type,
+                    new AstNode.MethodCall(
+                        this.processNode(data.called()), data.memberName(), 
+                        this.processNodes(data.arguments())
+                    ),
+                    node.source
+                );
+            }
+            case OBJECT_LITERAL: {
+                AstNode.ObjectLiteral data = node.getValue();
+                Map<String, AstNode> values = new HashMap<>();
+                for(String member: data.values().keySet()) {
+                    values.put(
+                        member, this.processNode(data.values().get(member))
+                    );
+                }
+                return new AstNode(
+                    node.type, new AstNode.ObjectLiteral(values), node.source
+                );
+            }
+            case ARRAY_LITERAL: {
+                AstNode.ArrayLiteral data = node.getValue();
+                return new AstNode(
+                    node.type, 
+                    new AstNode.ArrayLiteral(this.processNodes(data.values())), 
+                    node.source
+                );
+            }
+            case OBJECT_ACCESS: {
+                AstNode.ObjectAccess data = node.getValue();
+                return new AstNode(
+                    node.type,
+                    new AstNode.ObjectAccess(
+                        this.processNode(data.accessed()),
+                        data.memberName()
+                    ),
+                    node.source
+                );
+            }
+            case BOOLEAN_LITERAL:
+            case INTEGER_LITERAL:
+            case FLOAT_LITERAL:
+            case STRING_LITERAL:
+            case UNIT_LITERAL: {
+                return new AstNode(node.type, node.getValue(), node.source);
+            }
+            case ASSIGNMENT:
+            case REPEATING_ARRAY_LITERAL:
+            case ARRAY_ACCESS:
+            case ADD:
+            case SUBTRACT: 
+            case MULTIPLY:
+            case DIVIDE:
+            case MODULO:
+            case LESS_THAN:
+            case GREATER_THAN:
+            case LESS_THAN_EQUAL:
+            case GREATER_THAN_EQUAL:
+            case EQUALS:
+            case NOT_EQUALS:
+            case OR:
+            case AND: {
+                AstNode.BiOp data = node.getValue();
+                return new AstNode(
+                    node.type,
+                    new AstNode.BiOp(
+                        this.processNode(data.left()),
+                        this.processNode(data.right())
+                    ),
+                    node.source
+                );
+            }
+            case RETURN: 
+            case NEGATE:
+            case NOT:
+            case STATIC: {
+                AstNode.MonoOp data = node.getValue();
+                return new AstNode(
+                    node.type,
+                    new AstNode.MonoOp(
+                        this.processNode(data.value())
+                    ),
+                    node.source
+                );
+            }
+            case MODULE_ACCESS: {
+                AstNode.ModuleAccess data = node.getValue();
+                for(
+                    ConstraintGenerator.ProcedureUsage procUsage
+                        : this.scope().procUsages
+                ) {
+                    if(procUsage.node() != node) { continue; }
+                    Symbols.Symbol symbol = this.symbols
+                        .get(procUsage.shortPath()).get();
+                    Symbols.Symbol.Procedure symbolData = symbol.getValue();
+                    List<TypeValue> arguments = procUsage.arguments()
+                        .stream().map(a -> this.asTypeValue(a)).toList();
+                    List<Source> argSources = symbolData.argumentNames()
+                        .stream().map(a -> node.source).toList();
+                    SolvedProcedure solved = this.solveProcedure(
+                        symbol, symbolData, 
+                        Optional.of(arguments), Optional.of(argSources)
+                    );
+                    solved.unify(
+                        node.source, procUsage.arguments(), argSources, 
+                        procUsage.returned(), this
+                    );
+                    // 'std::math::pow' -> '|x, n| std::math::pow(x, n)'
+                    AstNode closureValue = new AstNode(
+                        AstNode.Type.PROCEDURE_CALL,
+                        new AstNode.ProcedureCall(
+                            procUsage.shortPath(), solved.variant,
+                            symbolData.argumentNames().stream().map(a -> 
+                                new AstNode(
+                                    AstNode.Type.VARIABLE_ACCESS,
+                                    new AstNode.VariableAccess(a),
+                                    node.source
+                                )
+                            ).toList()
+                        ),
+                        node.source
+                    );
+                    return new AstNode(
+                        AstNode.Type.CLOSURE,
+                        new AstNode.Closure(
+                            symbolData.argumentNames(), new HashSet<>(),
+                            List.of(new AstNode(
+                                AstNode.Type.RETURN,
+                                new AstNode.MonoOp(closureValue),
+                                node.source
+                            ))    
+                        ),
+                        node.source
+                    );
+                }
+                for(
+                    ConstraintGenerator.VariableUsage varUsage
+                        : this.scope().varUsages()
+                ) {
+                    if(varUsage.node() != node) { continue; }
+                    // TODO
+                    throw new RuntimeException("not yet implemented");
+                }
+                String varName = data.path().elements()
+                    .get(data.path().elements().size() - 1);
+                return new AstNode(
+                    AstNode.Type.VARIABLE_ACCESS,
+                    new AstNode.VariableAccess(varName),
+                    node.source
+                );
+            }
+            case VARIANT_LITERAL: {
+                AstNode.VariantLiteral data = node.getValue();
+                return new AstNode(
+                    node.type,
+                    new AstNode.VariantLiteral(
+                        data.variantName(),
+                        this.processNode(data.value())
+                    ),
+                    node.source
+                );
+            }
+            case PROCEDURE:
+            case PROCEDURE_CALL:
+            case VARIABLE_ACCESS:
+            case TARGET:
+            case USE:
+            case MODULE_DECLARATION: {
+                throw new RuntimeException("should not be encountered!");
+            }
+            default: {
+                throw new RuntimeException("unhandled node type!");
+            }
+        }
+    }
+
 }

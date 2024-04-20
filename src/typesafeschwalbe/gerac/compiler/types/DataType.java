@@ -76,9 +76,9 @@ public class DataType<T> {
         }
     }
 
-    public final Type type;
-    private final Object value;
-    public final Optional<Source> source;
+    public Type type;
+    private Object value;
+    public Optional<Source> source;
 
     public DataType(
         Type type, DataTypeValue<T> value, Optional<Source> source
@@ -91,6 +91,10 @@ public class DataType<T> {
     @SuppressWarnings("unchecked")
     public <V extends DataTypeValue<T>> V getValue() {
         return (V) this.value;
+    }
+
+    void setValue(DataTypeValue<T> value) {
+        this.value = value;
     }
 
     public <R> DataType<R> map(BiFunction<DataType<T>, T, R> f) {

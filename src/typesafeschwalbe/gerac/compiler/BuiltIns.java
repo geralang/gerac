@@ -16,32 +16,32 @@ public class BuiltIns {
     public static final String BUILTIN_CORE_FILE_NAME = "<built-in>/core.gera";
 
     public static void addParsedFiles(Map<String, String> files) {
-        files.put(BUILTIN_CORE_FILE_NAME, """
-            mod core
+        // files.put(BUILTIN_CORE_FILE_NAME, """
+        //     mod core
 
-            pub proc range(start, end) {
-                mut var i = start
-                return || {
-                    case i >= end -> return #end unit
-                    i = i + 1
-                    return #next i - 1
-                }
-            }
+        //     pub proc range(start, end) {
+        //         mut var i = start
+        //         return || {
+        //             case i >= end -> return #end unit
+        //             i = i + 1
+        //             return #next i - 1
+        //         }
+        //     }
 
-            pub proc range_incl(start, end) {
-                mut var i = start
-                return || {
-                    case i > end -> return #end unit
-                    i = i + 1
-                    return #next i - 1
-                }
-            }
-            """
-        );
+        //     pub proc range_incl(start, end) {
+        //         mut var i = start
+        //         return || {
+        //             case i > end -> return #end unit
+        //             i = i + 1
+        //             return #next i - 1
+        //         }
+        //     }
+        //     """
+        // );
     }
 
     public static void addUnparsedFiles(Map<String, String> files) {
-        files.put(BUILTIN_FILE_NAME, "<built-in>");
+        //files.put(BUILTIN_FILE_NAME, "<built-in>");
     }
 
     public static void addSymbols(Symbols symbols) {

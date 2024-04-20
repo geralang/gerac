@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 
+import typesafeschwalbe.gerac.compiler.frontend.Lexer;
+
 public class Error {
 
     public static class Marking {
@@ -118,6 +120,7 @@ public class Error {
             int lineStart = 0;
             List<String> lines = new ArrayList<>();
             List<String> linesMarked = new ArrayList<>();
+            boolean lineHadMarker = false;
             StringBuilder lineMarked = new StringBuilder();
             int markedStartLineIdx = -1;
             int markedStartLineOffset = -1;
@@ -134,11 +137,17 @@ public class Error {
                         ? marked.type.noteColor
                         : "";
                     char marker = marked.type.marker;
+                    boolean displayMarking = isMarked
+                        && c != '\n' && c != '\r'
+                        && (!Lexer.isWhitespace(c) || lineHadMarker);
                     lineMarked.append(
-                        isMarked
-                        ? markingColor + marker
-                        : ' '
+                        displayMarking
+                            ? markingColor + marker
+                            : ' '
                     );
+                    if(displayMarking) {
+                        lineHadMarker = true;
+                    }
                     if(markedStartLineIdx == -1 && isMarked) {
                         markedStartLineIdx = lineIdx;
                         markedStartLineOffset = (int) marked.location.startOffset
@@ -155,6 +164,7 @@ public class Error {
                     lines.add(fileContent.substring(lineStart, charIdx));
                     linesMarked.add(lineMarked.toString());
                     lineMarked.delete(0, lineMarked.length());
+                    lineHadMarker = false;
                     lineStart = charIdx + 1;
                     if(c == '\r'
                         && lineStart < fileContent.length()

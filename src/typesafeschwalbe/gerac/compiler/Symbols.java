@@ -14,6 +14,7 @@ import java.util.Set;
 // import typesafeschwalbe.gerac.compiler.backend.Value;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.types.TypeValue;
 
 public class Symbols {
 
@@ -37,9 +38,8 @@ public class Symbols {
 
         public static record Procedure(
             List<String> argumentNames,
-            // Optional<ArgTypeChecker> allowedArgumentTypes,
-            // Optional<List<Type>> argumentTypes,
-            // Optional<Function<Source, Type>> returnType,
+            Optional<List<TypeValue>> argumentTypes,
+            Optional<TypeValue> returnType,
             Optional<List<AstNode>> body
             // Optional<Ir.Context> ir_context,
             // Optional<List<Ir.Instr>> ir_body
@@ -171,8 +171,8 @@ public class Symbols {
                             node.source, usages.toArray(Namespace[]::new),
                             new Symbol.Procedure(
                                 data.argumentNames(),
-                                //Optional.empty(),
-                                // Optional.empty(), Optional.empty(),
+                                Optional.empty(),
+                                Optional.empty(),
                                 Optional.of(data.body())
                                 //Optional.empty(), Optional.empty()
                             ),
