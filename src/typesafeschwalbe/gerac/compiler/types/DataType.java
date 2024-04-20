@@ -1,25 +1,34 @@
 package typesafeschwalbe.gerac.compiler.types;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 public class DataType<T> {
 
+    public interface DataTypeValue<T> {}
+
     public static record Array<T>(
         T elementType
-    ) {}
+    ) implements DataTypeValue<T> {}
+
     public static record UnorderedObject<T>(
         Map<String, T> memberTypes, boolean expandable
-    ) {}
+    ) implements DataTypeValue<T> {}
+
     public static record OrderedObject<T>(
         List<String> memberNames, List<T> memberTypes
-    ) {}
+    ) implements DataTypeValue<T> {}
+
     public static record Closure<T>(
-        List<T> argumentTypes, T returnTypes
-    ) {}
+        List<T> argumentTypes, T returnType
+    ) implements DataTypeValue<T> {}
+
     public static record Union<T>(
         Map<String, T> variantTypes, boolean expandable
-    ) {}
+    ) implements DataTypeValue<T> {}
 
     public enum Type {
         ANY,              // = null
@@ -59,14 +68,82 @@ public class DataType<T> {
     public final Type type;
     private final Object value;
 
-    public DataType(Type type, Object value) {
+    public DataType(Type type, DataTypeValue<T> value) {
         this.type = type;
         this.value = value;
     }
 
     @SuppressWarnings("unchecked")
-    public <V> V getValue() {
+    public <V extends DataTypeValue<T>> V getValue() {
         return (V) this.value;
+    }
+
+    public <R> DataType<R> map(BiFunction<DataType<T>, T, R> f) {
+        switch(this.type) {
+            case ANY:
+            case NUMERIC:
+            case UNIT:
+            case BOOLEAN:
+            case INTEGER:
+            case FLOAT:
+            case STRING: {
+                return new DataType<>(this.type, null);
+            }
+            case ARRAY: {
+                Array<T> data = this.getValue();
+                return new DataType<>(
+                    this.type, 
+                    new Array<>(f.apply(this, data.elementType))
+                );
+            }
+            case UNORDERED_OBJECT: {
+                UnorderedObject<T> data = this.getValue();
+                Map<String, R> memberTypes = new HashMap<>();
+                for(String member: data.memberTypes.keySet()) {
+                    memberTypes.put(
+                        member, f.apply(this, data.memberTypes.get(member))
+                    );
+                }
+                return new DataType<>(
+                    this.type,
+                    new UnorderedObject<>(memberTypes, data.expandable)
+                );
+            }
+            case ORDERED_OBJECT: {
+                OrderedObject<T> data = this.getValue();
+                List<R> memberTypes = data.memberTypes
+                    .stream().map(t -> f.apply(this, t)).toList();
+                return new DataType<>(
+                    this.type,
+                    new OrderedObject<>(data.memberNames, memberTypes)
+                );
+            }
+            case CLOSURE: {
+                Closure<T> data = this.getValue();
+                List<R> argumentTypes = data.argumentTypes
+                    .stream().map(t -> f.apply(this, t)).toList();
+                return new DataType<>(
+                    this.type,
+                    new Closure<>(argumentTypes, f.apply(this, data.returnType))
+                );
+            }
+            case UNION: {
+                Union<T> data = this.getValue();
+                Map<String, R> variantTypes = new HashMap<>();
+                for(String variant: data.variantTypes.keySet()) {
+                    variantTypes.put(
+                        variant, f.apply(this, data.variantTypes.get(variant))
+                    );
+                }
+                return new DataType<>(
+                    this.type,
+                    new Union<>(variantTypes, data.expandable)
+                );
+            }
+            default: {
+                throw new RuntimeException("unhandled type!");
+            }
+        }
     }
 
 }

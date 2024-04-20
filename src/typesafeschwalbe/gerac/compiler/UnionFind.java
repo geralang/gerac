@@ -9,11 +9,11 @@ public class UnionFind<T> {
 
     private static class Entry<T> {
         private T value;
-        private Entry<T> parent;
+        private int parent;
 
         private Entry(T value) {
             this.value = value;
-            this.parent = null;
+            this.parent = -1;
         }
     }
 
@@ -23,22 +23,29 @@ public class UnionFind<T> {
         this.values = new ArrayList<>();
     }
 
-    private void compressPath(int start, Entry<T> root) {
-        Entry<T> current = this.values.get(start);
-        while(current.parent != null) {
-            Entry<T> next = current.parent;
+    private void compressPath(int start, int root) {
+        int currentIdx = start;
+        while(true) {
+            Entry<T> current = this.values.get(currentIdx);
+            if(current.parent == -1) {
+                break;
+            }
+            currentIdx = current.parent;
             current.parent = root;
-            current = next;
         }
     }
 
-    private Entry<T> find(int idx) {
-        Entry<T> current = this.values.get(idx);
-        while(current.parent != null) {
-            current = current.parent;
+    public int find(int idx) {
+        int currentIdx = idx;
+        while(true) {
+            Entry<T> current = this.values.get(currentIdx);
+            if(current.parent == -1) {
+                break;
+            }
+            currentIdx = current.parent;
         }
-        this.compressPath(idx, current);
-        return current;
+        this.compressPath(idx, currentIdx);
+        return currentIdx;
     }
 
     public int add(T value) {
@@ -48,7 +55,13 @@ public class UnionFind<T> {
     }
 
     public T get(int idx) {
-        return this.find(idx).value;
+        Entry<T> entry = this.values.get(this.find(idx));
+        return entry.value;
+    }
+
+    public void set(int idx, T value) {
+        Entry<T> entry = this.values.get(this.find(idx));
+        entry.value = value;
     }
 
     public void union(int idxA, int idxB) {
@@ -56,12 +69,14 @@ public class UnionFind<T> {
     }
 
     public void union(int idxA, int idxB, BiFunction<T, T, T> f) {
-        Entry<T> rootA = this.find(idxA);
-        Entry<T> rootB = this.find(idxB);
+        int rootA = this.find(idxA);
+        int rootB = this.find(idxB);
+        Entry<T> rootEntryA = this.values.get(rootA);
+        Entry<T> rootEntryB = this.values.get(rootB);
         if(rootA != rootB) {
-            rootB.parent = rootA;
+            rootEntryB.parent = rootA;
         }
-        rootA.value = f.apply(rootA.value, rootB.value);
+        rootEntryA.value = f.apply(rootEntryA.value, rootEntryB.value);
     }
 
 }
