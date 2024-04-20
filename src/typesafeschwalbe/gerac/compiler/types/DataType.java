@@ -3,8 +3,10 @@ package typesafeschwalbe.gerac.compiler.types;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiFunction;
-import java.util.function.Function;
+
+import typesafeschwalbe.gerac.compiler.Source;
 
 public class DataType<T> {
 
@@ -63,14 +65,27 @@ public class DataType<T> {
                     throw new RuntimeException("unhandled type!");
             }
         }
+
+        public boolean isOneOf(Type... possibleTypes) {
+            for(Type t: possibleTypes) {
+                if(this == t) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     public final Type type;
     private final Object value;
+    public final Optional<Source> source;
 
-    public DataType(Type type, DataTypeValue<T> value) {
+    public DataType(
+        Type type, DataTypeValue<T> value, Optional<Source> source
+    ) {
         this.type = type;
         this.value = value;
+        this.source = source;
     }
 
     @SuppressWarnings("unchecked")
@@ -87,13 +102,14 @@ public class DataType<T> {
             case INTEGER:
             case FLOAT:
             case STRING: {
-                return new DataType<>(this.type, null);
+                return new DataType<>(this.type, null, this.source);
             }
             case ARRAY: {
                 Array<T> data = this.getValue();
                 return new DataType<>(
                     this.type, 
-                    new Array<>(f.apply(this, data.elementType))
+                    new Array<>(f.apply(this, data.elementType)),
+                    this.source
                 );
             }
             case UNORDERED_OBJECT: {
@@ -106,7 +122,8 @@ public class DataType<T> {
                 }
                 return new DataType<>(
                     this.type,
-                    new UnorderedObject<>(memberTypes, data.expandable)
+                    new UnorderedObject<>(memberTypes, data.expandable),
+                    this.source
                 );
             }
             case ORDERED_OBJECT: {
@@ -115,7 +132,8 @@ public class DataType<T> {
                     .stream().map(t -> f.apply(this, t)).toList();
                 return new DataType<>(
                     this.type,
-                    new OrderedObject<>(data.memberNames, memberTypes)
+                    new OrderedObject<>(data.memberNames, memberTypes),
+                    this.source
                 );
             }
             case CLOSURE: {
@@ -124,7 +142,10 @@ public class DataType<T> {
                     .stream().map(t -> f.apply(this, t)).toList();
                 return new DataType<>(
                     this.type,
-                    new Closure<>(argumentTypes, f.apply(this, data.returnType))
+                    new Closure<>(
+                        argumentTypes, f.apply(this, data.returnType)
+                    ),
+                    this.source
                 );
             }
             case UNION: {
@@ -137,7 +158,8 @@ public class DataType<T> {
                 }
                 return new DataType<>(
                     this.type,
-                    new Union<>(variantTypes, data.expandable)
+                    new Union<>(variantTypes, data.expandable),
+                    this.source
                 );
             }
             default: {

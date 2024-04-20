@@ -3,7 +3,6 @@ package typesafeschwalbe.gerac.compiler;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
 
 public class UnionFind<T> {
 
@@ -65,18 +64,11 @@ public class UnionFind<T> {
     }
 
     public void union(int idxA, int idxB) {
-        this.union(idxA, idxB, (a, b) -> a);
-    }
-
-    public void union(int idxA, int idxB, BiFunction<T, T, T> f) {
         int rootA = this.find(idxA);
         int rootB = this.find(idxB);
-        Entry<T> rootEntryA = this.values.get(rootA);
-        Entry<T> rootEntryB = this.values.get(rootB);
         if(rootA != rootB) {
-            rootEntryB.parent = rootA;
+            this.values.get(rootB).parent = rootA;
         }
-        rootEntryA.value = f.apply(rootEntryA.value, rootEntryB.value);
     }
 
 }
