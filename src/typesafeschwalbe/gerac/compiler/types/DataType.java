@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.BiFunction;
+import java.util.function.Function;
 
 import typesafeschwalbe.gerac.compiler.Source;
 
@@ -93,11 +93,19 @@ public class DataType<T> {
         return (V) this.value;
     }
 
+    @Override
+    public String toString() {
+        if(this.value == null) {
+            return this.type.name();
+        }
+        return this.value.toString();
+    }
+
     void setValue(DataTypeValue<T> value) {
         this.value = value;
     }
 
-    public <R> DataType<R> map(BiFunction<DataType<T>, T, R> f) {
+    public <R> DataType<R> map(Function<T, R> f) {
         switch(this.type) {
             case ANY:
             case NUMERIC:
@@ -112,7 +120,7 @@ public class DataType<T> {
                 Array<T> data = this.getValue();
                 return new DataType<>(
                     this.type, 
-                    new Array<>(f.apply(this, data.elementType)),
+                    new Array<>(f.apply(data.elementType)),
                     this.source
                 );
             }
@@ -121,7 +129,7 @@ public class DataType<T> {
                 Map<String, R> memberTypes = new HashMap<>();
                 for(String member: data.memberTypes.keySet()) {
                     memberTypes.put(
-                        member, f.apply(this, data.memberTypes.get(member))
+                        member, f.apply(data.memberTypes.get(member))
                     );
                 }
                 return new DataType<>(
@@ -133,7 +141,7 @@ public class DataType<T> {
             case ORDERED_OBJECT: {
                 OrderedObject<T> data = this.getValue();
                 List<R> memberTypes = data.memberTypes
-                    .stream().map(t -> f.apply(this, t)).toList();
+                    .stream().map(t -> f.apply(t)).toList();
                 return new DataType<>(
                     this.type,
                     new OrderedObject<>(data.memberNames, memberTypes),
@@ -143,11 +151,11 @@ public class DataType<T> {
             case CLOSURE: {
                 Closure<T> data = this.getValue();
                 List<R> argumentTypes = data.argumentTypes
-                    .stream().map(t -> f.apply(this, t)).toList();
+                    .stream().map(t -> f.apply(t)).toList();
                 return new DataType<>(
                     this.type,
                     new Closure<>(
-                        argumentTypes, f.apply(this, data.returnType)
+                        argumentTypes, f.apply(data.returnType)
                     ),
                     this.source
                 );
@@ -157,7 +165,7 @@ public class DataType<T> {
                 Map<String, R> variantTypes = new HashMap<>();
                 for(String variant: data.variantTypes.keySet()) {
                     variantTypes.put(
-                        variant, f.apply(this, data.variantTypes.get(variant))
+                        variant, f.apply(data.variantTypes.get(variant))
                     );
                 }
                 return new DataType<>(

@@ -77,7 +77,7 @@ public class TypeConstraint {
 
     @Override
     public String toString() {
-        return "<" + this.type + ">" + this.value;
+        return this.target + " -> <" + this.type + ">" + this.value;
     }
 
 }

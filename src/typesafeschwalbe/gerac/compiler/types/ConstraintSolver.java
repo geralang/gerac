@@ -790,7 +790,7 @@ public class ConstraintSolver {
         );
         done.put(tvarr, t);
         DataType<TypeValue> tv = this.scope().ctx.substitutes.get(tvarr)
-            .map((ct, ctvar) -> this.asTypeValue(ctvar, done));
+            .map(ctvar -> this.asTypeValue(ctvar, done));
         t.type = tv.type;
         t.setValue(tv.getValue());
         t.source = tv.source;
@@ -811,7 +811,7 @@ public class ConstraintSolver {
         TypeVariable r = this.scope().ctx.makeVar();
         done.put(tval, r);
         DataType<TypeVariable> rt = tval.map(
-            (ct, ctval) -> this.asTypeVariable(ct, done)
+            ctval -> this.asTypeVariable(ctval, done)
         );
         this.scope().ctx.substitutes.set(r.id, rt);
         return r;
@@ -843,7 +843,11 @@ public class ConstraintSolver {
         List<Error> errors = new ArrayList<>();
         for(int pathI = fullPaths.size() - 1; pathI >= 0; pathI -= 1) {
             Namespace fullPath = fullPaths.get(pathI);
-            Symbols.Symbol symbol = this.symbols.get(fullPath).get();
+            Optional<Symbols.Symbol> foundSymbol = this.symbols.get(fullPath);
+            if(foundSymbol.isEmpty()) {
+                continue; 
+            }
+            Symbols.Symbol symbol = foundSymbol.get();
             if(symbol.type != Symbols.Symbol.Type.PROCEDURE) {
                 continue;
             }
@@ -886,9 +890,13 @@ public class ConstraintSolver {
             return new ProcCall(fullPath, solved.variant);
         }
         if(errors.size() == 0) {
-            throw new RuntimeException(
-                "should've been found by constraint gen!"
-            );
+            throw new ErrorException(new Error(
+                "Access to unknown symbol",
+                Error.Marking.error(
+                    p.node().source,
+                    "'" + p.shortPath() + "' is not a known symbol"
+                )
+            ));
         }
         if(errors.size() == 1) {
             throw new ErrorException(errors.get(0));

@@ -71,4 +71,23 @@ public class UnionFind<T> {
         }
     }
 
+    @Override
+    public String toString() {
+        StringBuilder r = new StringBuilder();
+        r.append("[");
+        for(int i = 0; i < this.values.size(); i += 1) {
+            if(i > 0) { r.append(", "); }
+            int root = this.find(i);
+            if(root == i) {
+                r.append(this.values.get(i).value.toString());
+            } else {
+                r.append(">");
+                r.append(root);
+                r.append("<");
+            }
+        }
+        r.append("]");
+        return r.toString();
+    }
+
 }
