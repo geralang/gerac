@@ -16,9 +16,11 @@ import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.UnionFind;
+import typesafeschwalbe.gerac.compiler.Symbols.BuiltinContext;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 import typesafeschwalbe.gerac.compiler.types.ConstraintGenerator.ProcedureUsage;
+import typesafeschwalbe.gerac.compiler.types.DataType.DataTypeValue;
 
 public class ConstraintSolver {
 
@@ -106,7 +108,8 @@ public class ConstraintSolver {
                     case PROCEDURE: {
                         Symbols.Symbol.Procedure data = symbol.getValue();
                         this.solveProcedure(
-                            symbol, data, Optional.empty(), Optional.empty()
+                            symbol, data,
+                            Optional.empty(), Optional.empty(), Optional.empty()
                         );
                     } break;
                     case VARIABLE: {
@@ -154,6 +157,7 @@ public class ConstraintSolver {
     private SolvedProcedure solveProcedure(
         Symbols.Symbol symbol, Symbols.Symbol.Procedure data,
         Optional<List<TypeValue>> argumentTypes,
+        Optional<Source> usageSource,
         Optional<List<Source>> argumentSources
     ) throws ErrorException {
         for(Scope scope: this.scopeStack) {
@@ -190,26 +194,39 @@ public class ConstraintSolver {
                 );
             }
         }
-        ConstraintGenerator.ProcOutput cOutput = this.cGen
-            .generateProc(symbol, data);
         int variant = symbol.variantCount();
-        this.scopeStack.add(new Scope(
-            symbol, variant,
-            cOutput.ctx(),
-            Optional.of(cOutput.arguments()), cOutput.returned(),
-            cOutput.varUsages(), cOutput.procUsages()
-        ));
+        Scope scope;
+        if(data.builtinContext().isPresent()) {
+            BuiltinContext builtin = data.builtinContext().get()
+                .apply(usageSource.orElse(symbol.source));
+            scope = new Scope(
+                symbol, variant,
+                builtin.ctx(),
+                Optional.of(builtin.arguments()), builtin.returned(),
+                List.of(), List.of()
+            );
+        } else {
+            ConstraintGenerator.ProcOutput cOutput = this.cGen
+            .generateProc(symbol, data);
+            scope = new Scope(
+                symbol, variant,
+                cOutput.ctx(),
+                Optional.of(cOutput.arguments()), cOutput.returned(),
+                cOutput.varUsages(), cOutput.procUsages()
+            );
+        }
+        this.scopeStack.add(scope);
         if(argumentTypes.isPresent()) {
             for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
                 TypeVariable argV = this
                     .asTypeVariable(argumentTypes.get().get(argI));
                 this.unifyVars(
-                    argV, cOutput.arguments().get(argI), 
+                    argV, scope.arguments().get().get(argI), 
                     argumentSources.get().get(argI)
                 );
             }
         }
-        this.solveConstraints(cOutput.ctx().constraints);
+        this.solveConstraints(scope.ctx().constraints);
         Optional<List<AstNode>> processedBody = Optional.empty();
         if(data.body().isPresent()) {
             processedBody = Optional.of(
@@ -218,12 +235,12 @@ public class ConstraintSolver {
         }
         List<TypeValue> rArguments = new ArrayList<>();
         for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
-            rArguments.add(this.asTypeValue(cOutput.arguments().get(argI)));
+            rArguments.add(this.asTypeValue(scope.arguments().get().get(argI)));
         }
-        TypeValue rReturned = this.asTypeValue(cOutput.returned());
+        TypeValue rReturned = this.asTypeValue(scope.returned());
         this.scopeStack.remove(this.scopeStack.size() - 1);
         symbol.addVariant(new Symbols.Symbol.Procedure(
-            data.argumentNames(), 
+            data.argumentNames(), data.builtinContext(),
             Optional.of(rArguments), Optional.of(rReturned), 
             processedBody
         ));
@@ -316,23 +333,77 @@ public class ConstraintSolver {
             case IS_TYPE: {
                 TypeConstraint.IsType data = c.getValue();
                 DataType<TypeVariable> r = t;
-                boolean isAny = r.type == DataType.Type.ANY;
-                boolean convertNumeric = r.type == DataType.Type.NUMERIC
-                    && data.type().isOneOf(
-                        DataType.Type.INTEGER, DataType.Type.FLOAT
-                    );
-                if(isAny || convertNumeric) {
+                if(r.type == DataType.Type.ANY) {
+                    DataType.Type chosenT = data.oneOfTypes().get(0);
+                    DataTypeValue<TypeVariable> value;
+                    switch(chosenT) {
+                        case ANY: case NUMERIC: case UNIT:
+                        case BOOLEAN: case INTEGER: case FLOAT:
+                        case STRING: {
+                            value = null;
+                        } break;
+                        case ARRAY: {
+                            value = new DataType.Array<>(
+                                this.scope().ctx.makeVar()
+                            );
+                        } break;
+                        case UNORDERED_OBJECT: {
+                            value = new DataType.UnorderedObject<>(
+                                new HashMap<>(), true
+                            );
+                        } break;
+                        case ORDERED_OBJECT: {
+                            value = new DataType.OrderedObject<>(
+                                List.of(), List.of()
+                            );
+                        } break;
+                        case CLOSURE: {
+                            throw new RuntimeException(
+                                "PLEASE USE 'HAS_SIGNATURE' INSTEAD DUMBASS"
+                            );
+                        }
+                        case UNION: {
+                            value = new DataType.Union<>(
+                                new HashMap<>(), true
+                            );
+                        } break;
+                        default: {
+                            throw new RuntimeException("unhandled type!");
+                        }
+                    }
                     r = new DataType<>(
-                        data.type(), null, Optional.of(c.source)
+                        chosenT, value, Optional.of(c.source)
                     );
                 }
-                if(!r.type.isOneOf(data.type())) {
+                if(r.type == DataType.Type.NUMERIC) {
+                    if(data.oneOfTypes().contains(DataType.Type.INTEGER)) {
+                        r = new DataType<>(
+                            DataType.Type.INTEGER, null, Optional.of(c.source)
+                        );
+                    } else if(data.oneOfTypes().contains(DataType.Type.FLOAT)) {
+                        r = new DataType<>(
+                            DataType.Type.FLOAT, null, Optional.of(c.source)
+                        );
+                    }
+                }
+                if(!r.type.isOneOf(data.oneOfTypes())) {
+                    StringBuilder options = new StringBuilder();
+                    for(int ti = 0; ti < data.oneOfTypes().size(); ti += 1) {
+                        if(ti > 0) {
+                            if(ti == data.oneOfTypes().size() - 1) {
+                                options.append(" or ");
+                            } else {
+                                options.append(", ");
+                            }        
+                        }
+                        options.append(data.oneOfTypes().get(ti));
+                    }
                     throw new ErrorException(
                         ConstraintSolver.makeInvalidTypeError(
                             r.source.get(),
                             r.type.toString(),
                             c.source,
-                            data.type()
+                            options
                                 + data.reason().map(rs -> " " + rs).orElse("")
                         )
                     );
@@ -920,8 +991,9 @@ public class ConstraintSolver {
             List<Scope> prevScopeStack = new LinkedList<>(this.scopeStack);
             try {
                 solved = this.solveProcedure(
-                    symbol, symbolData, 
-                    Optional.of(arguments), Optional.of(argSources)
+                    symbol, symbolData,
+                    Optional.of(arguments),
+                    Optional.of(p.node().source), Optional.of(argSources)
                 );
             } catch(ErrorException e) {
                 this.scopeStack = prevScopeStack;
@@ -1181,7 +1253,9 @@ public class ConstraintSolver {
                         .stream().map(a -> node.source).toList();
                     SolvedProcedure solved = this.solveProcedure(
                         symbol, symbolData, 
-                        Optional.of(arguments), Optional.of(argSources)
+                        Optional.of(arguments),
+                        Optional.of(node.source),
+                        Optional.of(argSources)
                     );
                     solved.unify(
                         node.source, procUsage.arguments(), argSources, 

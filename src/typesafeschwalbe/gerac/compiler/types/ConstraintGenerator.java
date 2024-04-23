@@ -150,7 +150,7 @@ public class ConstraintGenerator {
                 this.frame().returned, this.frame().source,
                 TypeConstraint.Type.IS_TYPE,
                 new TypeConstraint.IsType(
-                    DataType.Type.UNIT,
+                    List.of(DataType.Type.UNIT),
                     Optional.of(
                         "because the body does not always return a value"
                     )
@@ -279,7 +279,7 @@ public class ConstraintGenerator {
                     condition, data.condition().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.BOOLEAN,
+                        List.of(DataType.Type.BOOLEAN),
                         Optional.of("since it's used as a condition")
                     )
                 ));
@@ -482,7 +482,7 @@ public class ConstraintGenerator {
                     size, data.right().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.INTEGER, 
+                        List.of(DataType.Type.INTEGER), 
                         Optional.of("since it's used as the size for an array")
                     )
                 ));
@@ -513,7 +513,7 @@ public class ConstraintGenerator {
                     index, data.right().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.INTEGER,
+                        List.of(DataType.Type.INTEGER),
                         Optional.of("since it's used to index into an array")
                     )
                 ));
@@ -525,7 +525,7 @@ public class ConstraintGenerator {
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.BOOLEAN, Optional.empty()
+                        List.of(DataType.Type.BOOLEAN), Optional.empty()
                     )
                 ));
                 return Optional.of(value);
@@ -536,7 +536,7 @@ public class ConstraintGenerator {
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.INTEGER, Optional.empty()
+                        List.of(DataType.Type.INTEGER), Optional.empty()
                     )
                 ));
                 return Optional.of(value);
@@ -547,7 +547,7 @@ public class ConstraintGenerator {
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.FLOAT, Optional.empty()
+                        List.of(DataType.Type.FLOAT), Optional.empty()
                     )
                 ));
                 return Optional.of(value);
@@ -558,7 +558,7 @@ public class ConstraintGenerator {
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.STRING, Optional.empty()
+                        List.of(DataType.Type.STRING), Optional.empty()
                     )
                 ));
                 return Optional.of(value);
@@ -569,7 +569,7 @@ public class ConstraintGenerator {
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.UNIT, Optional.empty()
+                        List.of(DataType.Type.UNIT), Optional.empty()
                     )
                 ));
                 return Optional.of(value);
@@ -626,7 +626,7 @@ public class ConstraintGenerator {
                     result, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.BOOLEAN, Optional.empty()
+                        List.of(DataType.Type.BOOLEAN), Optional.empty()
                     )
                 ));
                 return Optional.of(result);
@@ -646,7 +646,7 @@ public class ConstraintGenerator {
                     result, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.BOOLEAN, Optional.empty()
+                        List.of(DataType.Type.BOOLEAN), Optional.empty()
                     )
                 ));
                 return Optional.of(result);
@@ -658,7 +658,7 @@ public class ConstraintGenerator {
                     value, data.value().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.BOOLEAN, Optional.empty()
+                        List.of(DataType.Type.BOOLEAN), Optional.empty()
                     )
                 ));
                 return Optional.of(value);
@@ -672,7 +672,7 @@ public class ConstraintGenerator {
                     left, data.left().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        DataType.Type.BOOLEAN, Optional.empty()
+                        List.of(DataType.Type.BOOLEAN), Optional.empty()
                     )
                 ));
                 this.ctx.add(new TypeConstraint(

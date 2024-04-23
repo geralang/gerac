@@ -67,6 +67,10 @@ public class DataType<T> {
         }
 
         public boolean isOneOf(Type... possibleTypes) {
+            return this.isOneOf(List.of(possibleTypes));
+        }
+
+        public boolean isOneOf(List<Type> possibleTypes) {
             for(Type t: possibleTypes) {
                 if(this == t) {
                     return true;

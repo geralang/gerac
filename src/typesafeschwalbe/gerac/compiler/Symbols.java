@@ -9,12 +9,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 // import java.util.function.Function;
+import java.util.function.Function;
 
 // import typesafeschwalbe.gerac.compiler.backend.Ir;
 // import typesafeschwalbe.gerac.compiler.backend.Value;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.types.TypeContext;
 import typesafeschwalbe.gerac.compiler.types.TypeValue;
+import typesafeschwalbe.gerac.compiler.types.TypeVariable;
 
 public class Symbols {
 
@@ -34,10 +37,17 @@ public class Symbols {
         );
     }
 
+    public static record BuiltinContext(
+        TypeContext ctx,
+        List<TypeVariable> arguments,
+        TypeVariable returned
+    ) {}
+
     public static class Symbol {
 
         public static record Procedure(
             List<String> argumentNames,
+            Optional<Function<Source, BuiltinContext>> builtinContext,
             Optional<List<TypeValue>> argumentTypes,
             Optional<TypeValue> returnType,
             Optional<List<AstNode>> body
@@ -171,6 +181,7 @@ public class Symbols {
                             node.source, usages.toArray(Namespace[]::new),
                             new Symbol.Procedure(
                                 data.argumentNames(),
+                                Optional.empty(),
                                 Optional.empty(),
                                 Optional.empty(),
                                 Optional.of(data.body())

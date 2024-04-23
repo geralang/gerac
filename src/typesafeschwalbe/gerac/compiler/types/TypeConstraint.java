@@ -12,7 +12,7 @@ public class TypeConstraint {
     private interface ConstraintValue {}
 
     public static record IsType(
-        TypeValue.Type type, Optional<String> reason
+        List<TypeValue.Type> oneOfTypes, Optional<String> reason
     ) implements ConstraintValue {}
     
     public static record HasElement(
