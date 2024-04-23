@@ -10,7 +10,7 @@ import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 import typesafeschwalbe.gerac.compiler.frontend.SourceParser;
 import typesafeschwalbe.gerac.compiler.types.ConstraintSolver;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
-// import typesafeschwalbe.gerac.compiler.frontend.ExternalMappingsParser;
+import typesafeschwalbe.gerac.compiler.frontend.ExternalMappingsParser;
 // import typesafeschwalbe.gerac.compiler.backend.CodeGen;
 // import typesafeschwalbe.gerac.compiler.backend.Lowerer;
 
@@ -46,14 +46,14 @@ public class Compiler {
                     return Result.ofError(symbolAddError.get());
                 }
             } else if(fileName.endsWith(".gem")) {
-                // try {
-                //     ExternalMappingsParser fileParser
-                //         = new ExternalMappingsParser(fileLexer, symbols);
-                //     fileParser.parseStatements();
-                // } catch(ErrorException e) {
-                //     BuiltIns.addUnparsedFiles(files);
-                //     return Result.ofError(e.error);
-                // }
+                try {
+                    ExternalMappingsParser fileParser
+                        = new ExternalMappingsParser(fileLexer, symbols);
+                    fileParser.parseStatements();
+                } catch(ErrorException e) {
+                    BuiltIns.addUnparsedFiles(files);
+                    return Result.ofError(e.error);
+                }
             } else {
                 BuiltIns.addUnparsedFiles(files);
                 return Result.ofError(new Error(

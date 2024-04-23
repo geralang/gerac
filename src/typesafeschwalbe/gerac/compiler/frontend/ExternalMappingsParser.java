@@ -1,23 +1,23 @@
 
 package typesafeschwalbe.gerac.compiler.frontend;
 
-// import java.util.ArrayList;
-// import java.util.HashMap;
-// import java.util.List;
-// import java.util.Map;
-// import java.util.Optional;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
-// import typesafeschwalbe.gerac.compiler.Error;
-// import typesafeschwalbe.gerac.compiler.ErrorException;
-// import typesafeschwalbe.gerac.compiler.Ref;
-// import typesafeschwalbe.gerac.compiler.Source;
-// import typesafeschwalbe.gerac.compiler.Symbols;
+import typesafeschwalbe.gerac.compiler.Error;
+import typesafeschwalbe.gerac.compiler.ErrorException;
+import typesafeschwalbe.gerac.compiler.Source;
+import typesafeschwalbe.gerac.compiler.Symbols;
+import typesafeschwalbe.gerac.compiler.types.TypeValue;
 
-/*
+
 public class ExternalMappingsParser extends Parser {
 
     private Symbols symbols;
-    private Map<String, DataType> declaredTypes;
+    private Map<String, TypeValue> declaredTypes;
 
     public ExternalMappingsParser(
         Lexer lexer, Symbols symbols
@@ -43,7 +43,7 @@ public class ExternalMappingsParser extends Parser {
                 this.next();
                 this.expect(Token.Type.EQUALS);
                 this.next();
-                DataType type = this.parseType();
+                TypeValue type = this.parseType();
                 this.declaredTypes.put(name, type);
             } break;
             case "proc": {
@@ -61,10 +61,10 @@ public class ExternalMappingsParser extends Parser {
                 }
                 this.expect(Token.Type.PAREN_OPEN);
                 this.next();
-                List<DataType> argumentTypes = new ArrayList<>();
+                List<TypeValue> argumentTypes = new ArrayList<>();
                 List<String> argumentNames = new ArrayList<>();
                 while(this.current.type != Token.Type.PAREN_CLOSE) {
-                    DataType argumentType = this.parseType();
+                    TypeValue argumentType = this.parseType();
                     argumentTypes.add(argumentType);
                     argumentNames.add("arg" + argumentNames.size());
                     this.expect(Token.Type.PAREN_CLOSE, Token.Type.COMMA);
@@ -74,13 +74,14 @@ public class ExternalMappingsParser extends Parser {
                 }
                 this.next();
                 this.expect(Token.Type.ARROW, Token.Type.EQUALS);
-                DataType returnType;
+                TypeValue returnType;
                 if(this.current.type == Token.Type.ARROW) {
                     this.next();
                     returnType = this.parseType();
                 } else {
-                    returnType = new DataType(
-                        DataType.Type.UNIT, this.current.source
+                    returnType = new TypeValue(
+                        TypeValue.Type.UNIT, null,
+                        Optional.of(this.current.source)
                     );
                 }
                 this.expect(Token.Type.EQUALS);
@@ -99,11 +100,8 @@ public class ExternalMappingsParser extends Parser {
                             argumentNames,
                             Optional.empty(),
                             Optional.of(argumentTypes), 
-                            Optional.of(src -> new DataType(
-                                returnType.exactType(), returnType.getValue(),
-                                src
-                            )),
-                            Optional.empty(), Optional.empty(), Optional.empty()
+                            Optional.of(returnType),
+                            Optional.empty()
                         ),
                         Optional.of(externalName)
                     )
@@ -122,7 +120,7 @@ public class ExternalMappingsParser extends Parser {
                     pathElements.add(this.current.content);
                     this.next();
                 }
-                DataType valueType = this.parseType();
+                TypeValue valueType = this.parseType();
                 this.expect(Token.Type.EQUALS);
                 this.next();
                 this.expect(Token.Type.IDENTIFIER);
@@ -136,8 +134,7 @@ public class ExternalMappingsParser extends Parser {
                         true, new Source(start.source, end.source),
                         new Namespace[0],
                         new Symbols.Symbol.Variable(
-                            Optional.of(valueType), Optional.empty(),
-                            Optional.empty()
+                            Optional.of(valueType), Optional.empty()
                         ),
                         Optional.of(externalName)
                     )
@@ -149,17 +146,17 @@ public class ExternalMappingsParser extends Parser {
         }
     }
 
-    private DataType parseType() throws ErrorException {
+    private TypeValue parseType() throws ErrorException {
         Token start = this.current;
         switch(start.type) {
             case PIPE:
             case DOUBLE_PIPE: {
-                List<DataType> argTypes = new ArrayList<>();
+                List<TypeValue> argTypes = new ArrayList<>();
                 List<String> argNames = new ArrayList<>();
                 if(this.current.type == Token.Type.PIPE) {
                     this.next();
                     while(this.current.type != Token.Type.PIPE) {
-                        DataType argType = this.parseType();
+                        TypeValue argType = this.parseType();
                         argTypes.add(argType);
                         argNames.add("arg" + argNames.size());
                         this.expect(Token.Type.COMMA, Token.Type.PIPE);
@@ -171,15 +168,16 @@ public class ExternalMappingsParser extends Parser {
                 this.next();
                 this.expect(Token.Type.ARROW);
                 this.next();
-                DataType returnType = this.parseType();
-                return new DataType(
-                    DataType.Type.CLOSURE,
-                    new DataType.Closure(
-                        Optional.of(argTypes),
-                        Optional.of(returnType),
-                        new ArrayList<>()
+                TypeValue returnType = this.parseType();
+                return new TypeValue(
+                    TypeValue.Type.CLOSURE,
+                    new TypeValue.Closure<>(
+                        argTypes,
+                        returnType
                     ),
-                    new Source(start.source, returnType.source)
+                    Optional.of(new Source(
+                        start.source, returnType.source.get()
+                    ))
                 );
             }
             case IDENTIFIER:
@@ -187,27 +185,38 @@ public class ExternalMappingsParser extends Parser {
                 switch(start.content) {
                     case "unit": {
                         this.next();
-                        return new DataType(DataType.Type.UNIT, start.source);
+                        return new TypeValue(
+                            TypeValue.Type.UNIT, null,
+                            Optional.of(start.source)
+                        );
                     }
                     case "bool": {
                         this.next();
-                        return new DataType(
-                            DataType.Type.BOOLEAN, start.source
+                        return new TypeValue(
+                            TypeValue.Type.BOOLEAN, null,
+                            Optional.of(start.source)
                         );
                     }
                     case "int": {
                         this.next();
-                        return new DataType(
-                            DataType.Type.INTEGER, start.source
+                        return new TypeValue(
+                            TypeValue.Type.INTEGER, null,
+                            Optional.of(start.source)
                         );
                     }
                     case "float": {
                         this.next();
-                        return new DataType(DataType.Type.FLOAT, start.source);
+                        return new TypeValue(
+                            TypeValue.Type.FLOAT, null,
+                            Optional.of(start.source)
+                        );
                     }
                     case "str": {
                         this.next();
-                        return new DataType(DataType.Type.STRING, start.source);
+                        return new TypeValue(
+                            TypeValue.Type.STRING, null,
+                            Optional.of(start.source)
+                        );
                     }
                     default: {
                         this.next();
@@ -229,7 +238,7 @@ public class ExternalMappingsParser extends Parser {
                 this.next();
                 this.expect(Token.Type.IDENTIFIER);
                 List<String> memberNames = new ArrayList<>();
-                List<DataType> memberTypes = new ArrayList<>();
+                List<TypeValue> memberTypes = new ArrayList<>();
                 while(this.current.type != Token.Type.BRACE_CLOSE) {
                     this.expect(Token.Type.IDENTIFIER);
                     String memberName = this.current.content;
@@ -237,7 +246,7 @@ public class ExternalMappingsParser extends Parser {
                     this.next();
                     this.expect(Token.Type.EQUALS);
                     this.next();
-                    DataType memberType = this.parseType();
+                    TypeValue memberType = this.parseType();
                     memberTypes.add(memberType);
                     this.expect(Token.Type.COMMA, Token.Type.BRACE_CLOSE);
                     if(this.current.type == Token.Type.COMMA) {
@@ -246,22 +255,22 @@ public class ExternalMappingsParser extends Parser {
                 }
                 Token end = this.current;
                 this.next();
-                return new DataType(
-                    DataType.Type.ORDERED_OBJECT,
-                    new DataType.OrderedObject(memberNames, memberTypes),
-                    new Source(start.source, end.source)
+                return new TypeValue(
+                    TypeValue.Type.ORDERED_OBJECT,
+                    new TypeValue.OrderedObject<>(memberNames, memberTypes),
+                    Optional.of(new Source(start.source, end.source))
                 );
             }
             case BRACKET_OPEN: {
                 this.next();
-                DataType elementType = this.parseType();
+                TypeValue elementType = this.parseType();
                 this.expect(Token.Type.BRACKET_CLOSE);
                 Token end = this.current;
                 this.next();
-                return new DataType(
-                    DataType.Type.ARRAY,
-                    new DataType.Array(new Ref<>(new Ref<>(elementType))),
-                    new Source(start.source, end.source)
+                return new TypeValue(
+                    TypeValue.Type.ARRAY,
+                    new TypeValue.Array<>(elementType),
+                    Optional.of(new Source(start.source, end.source))
                 );
             }
             default: {
@@ -272,4 +281,3 @@ public class ExternalMappingsParser extends Parser {
     }
 
 }
-*/

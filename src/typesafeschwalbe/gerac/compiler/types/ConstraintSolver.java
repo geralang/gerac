@@ -207,7 +207,7 @@ public class ConstraintSolver {
             );
         } else {
             ConstraintGenerator.ProcOutput cOutput = this.cGen
-            .generateProc(symbol, data);
+                .generateProc(symbol, data);
             scope = new Scope(
                 symbol, variant,
                 cOutput.ctx(),
@@ -216,6 +216,16 @@ public class ConstraintSolver {
             );
         }
         this.scopeStack.add(scope);
+        if(data.argumentTypes().isPresent()) {
+            for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
+                TypeVariable argV = this
+                    .asTypeVariable(data.argumentTypes().get().get(argI));
+                this.unifyVars(
+                    argV, scope.arguments().get().get(argI), 
+                    data.argumentTypes().get().get(argI).source.get()
+                );
+            }
+        }
         if(argumentTypes.isPresent()) {
             for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
                 TypeVariable argV = this
