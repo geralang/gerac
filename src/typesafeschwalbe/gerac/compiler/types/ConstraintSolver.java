@@ -78,7 +78,7 @@ public class ConstraintSolver {
         Symbols.Symbol symbol,
         int variant,
         TypeContext ctx,
-        List<TypeVariable> arguments,
+        Optional<List<TypeVariable>> arguments,
         TypeVariable returned,
         List<ConstraintGenerator.VariableUsage> varUsages,
         List<ConstraintGenerator.ProcedureUsage> procUsages
@@ -110,10 +110,8 @@ public class ConstraintSolver {
                         );
                     } break;
                     case VARIABLE: {
-                        // TODO: solve variable
-                        if(true) {
-                            throw new RuntimeException("not yet implemented!");
-                        }
+                        Symbols.Symbol.Variable data = symbol.getValue();
+                        this.solveVariable(symbol, data);
                     } break;
                     default: {
                         throw new RuntimeException("unhandled symbol type!");
@@ -164,12 +162,13 @@ public class ConstraintSolver {
                 scope.variant,
                 true,
                 null, null,
-                scope.arguments, scope.returned
+                scope.arguments.get(), scope.returned
             );
         }
         if(argumentTypes.isPresent()) {
             for(int varI = 0; varI < symbol.variantCount(); varI += 1) {
                 Symbols.Symbol.Procedure variant = symbol.getVariant(varI);
+                if(variant == null) { continue; }
                 boolean argsMatch = true;
                 for(
                     int argI = 0; argI < variant.argumentTypes().get().size(); 
@@ -191,13 +190,13 @@ public class ConstraintSolver {
                 );
             }
         }
-        ConstraintGenerator.Output cOutput = this.cGen
+        ConstraintGenerator.ProcOutput cOutput = this.cGen
             .generateProc(symbol, data);
         int variant = symbol.variantCount();
         this.scopeStack.add(new Scope(
             symbol, variant,
             cOutput.ctx(),
-            cOutput.arguments(), cOutput.returned(),
+            Optional.of(cOutput.arguments()), cOutput.returned(),
             cOutput.varUsages(), cOutput.procUsages()
         ));
         if(argumentTypes.isPresent()) {
@@ -233,6 +232,45 @@ public class ConstraintSolver {
             rArguments, rReturned,
             null, null
         );
+    }
+
+    private TypeValue solveVariable(
+        Symbols.Symbol symbol, Symbols.Symbol.Variable data
+    ) throws ErrorException {
+        for(Scope scope: this.scopeStack) {
+            if(scope.symbol != symbol) { continue; }
+            throw new RuntimeException("self-referencing variable!");
+        }
+        if(symbol.variantCount() > 0) {
+            System.out.println(this.scopeStack);
+            return symbol.<Symbols.Symbol.Variable>getVariant(0)
+                .valueType().get();
+        }
+        ConstraintGenerator.VarOutput cOutput = this.cGen
+            .generateVar(symbol, data);
+        this.scopeStack.add(new Scope(
+            symbol, 0,
+            cOutput.ctx(),
+            Optional.empty(), cOutput.value(),
+            cOutput.varUsages(), cOutput.procUsages()
+        ));
+        this.solveConstraints(cOutput.ctx().constraints);
+        Optional<AstNode> processedNode = Optional.empty();
+        TypeValue value;
+        if(data.valueNode().isPresent()) {
+            processedNode = Optional.of(
+                this.processNode(data.valueNode().get())
+            );
+            value = this.asTypeValue(cOutput.value());
+        } else {
+            value = data.valueType().get();
+        }
+        this.scopeStack.remove(this.scopeStack.size() - 1);
+        symbol.addVariant(new Symbols.Symbol.Variable(
+            Optional.of(value),
+            processedNode
+        ));
+        return value;
     }
 
     private void solveConstraints(
@@ -1176,8 +1214,22 @@ public class ConstraintSolver {
                         : this.scope().varUsages()
                 ) {
                     if(varUsage.node() != node) { continue; }
-                    // TODO
-                    throw new RuntimeException("not yet implemented");
+                    Symbols.Symbol symbol = this.symbols
+                        .get(varUsage.fullPath()).get();
+                    Symbols.Symbol.Variable symbolData = symbol.getValue();
+                    TypeValue valueType = this
+                        .solveVariable(symbol, symbolData);
+                    TypeVariable valueTypeVar = this.asTypeVariable(valueType);
+                    this.unifyVars(
+                        varUsage.value(), valueTypeVar, node.source
+                    );
+                    return new AstNode(
+                        AstNode.Type.MODULE_ACCESS,
+                        new AstNode.ModuleAccess(
+                            varUsage.fullPath(), Optional.of(0)
+                        ),
+                        node.source
+                    );
                 }
                 String varName = data.path().elements()
                     .get(data.path().elements().size() - 1);

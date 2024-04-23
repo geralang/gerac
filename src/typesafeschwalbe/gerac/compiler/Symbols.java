@@ -46,7 +46,7 @@ public class Symbols {
         ) {}
 
         public static record Variable(
-            // Optional<Type> valueType,
+            Optional<TypeValue> valueType,
             Optional<AstNode> valueNode
             // Optional<Value> value
         ) {}
@@ -198,7 +198,7 @@ public class Symbols {
                             Symbol.Type.VARIABLE, data.isPublic(), 
                             node.source, usages.toArray(Namespace[]::new),
                             new Symbol.Variable(
-                                // Optional.empty(),
+                                Optional.empty(),
                                 data.value()
                                 // Optional.empty()
                             ),

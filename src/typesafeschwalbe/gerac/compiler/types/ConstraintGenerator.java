@@ -62,31 +62,56 @@ public class ConstraintGenerator {
         this.symbols = symbols;
     }
 
-    public static record Output(
-        TypeContext ctx, 
-        List<TypeVariable> arguments, TypeVariable returned,
-        List<VariableUsage> varUsages, List<ProcedureUsage> procUsages
-    ) {}
-
-    public Output generateProc(
-        Symbols.Symbol s, Symbols.Symbol.Procedure p
-    ) throws ErrorException {
+    private void reset(Symbols.Symbol s) {
         this.inSymbol = s;
         this.ctx = new TypeContext();
         this.stack = new LinkedList<>();
         this.varUsages = new ArrayList<>();
         this.procUsages = new ArrayList<>();
+    }
+
+    public static record ProcOutput(
+        TypeContext ctx, 
+        List<TypeVariable> arguments, TypeVariable returned,
+        List<VariableUsage> varUsages, List<ProcedureUsage> procUsages
+    ) {}
+
+    public ProcOutput generateProc(
+        Symbols.Symbol s, Symbols.Symbol.Procedure p
+    ) throws ErrorException {
+        this.reset(s);
         this.enterFrame(p.argumentNames(), s.source);
         if(p.body().isPresent()) {
             this.walkBlock(p.body().get());
         }
         CallFrame frame = this.frame();
         this.exitFrame();
-        return new Output(
+        return new ProcOutput(
             this.ctx,
             frame.arguments, frame.returned,
             this.varUsages, this.procUsages
         );
+    }
+
+    public static record VarOutput(
+        TypeContext ctx,
+        TypeVariable value,
+        List<VariableUsage> varUsages, List<ProcedureUsage> procUsages
+    ) {}
+
+    public VarOutput generateVar(
+        Symbols.Symbol s, Symbols.Symbol.Variable v
+    ) throws ErrorException {
+        this.reset(s);
+        this.enterFrame(List.of(), s.source);
+        TypeVariable value;
+        if(v.valueNode().isPresent()) {
+            value = this.walkNode(v.valueNode().get()).get();
+        } else {
+            value = this.ctx.makeVar();
+        }
+        this.exitFrame();
+        return new VarOutput(ctx, value, this.varUsages, this.procUsages);
     }
 
     private void enterFrame(List<String> argumentNames, Source source) {
