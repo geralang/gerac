@@ -6,7 +6,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
+import typesafeschwalbe.gerac.compiler.types.TypeValue;
+import typesafeschwalbe.gerac.compiler.types.TypeVariable;
 
 public class AstNode {
 
@@ -19,6 +22,12 @@ public class AstNode {
 
     public static record Closure(
         List<String> argumentNames,
+        List<TypeVariable> argumentTypeVars,
+        Optional<List<TypeValue>> argumentTypes,
+        Ref<Optional<TypeVariable>> returnTypeVar,
+        Optional<TypeValue> returnType,
+        Map<String, TypeVariable> captureTypeVars,
+        Optional<Map<String, TypeValue>> captureTypes,
         Set<String> capturedNames,
         List<AstNode> body
     ) {}
@@ -27,6 +36,8 @@ public class AstNode {
         boolean isPublic,
         boolean isMutable,
         String name,
+        Ref<Optional<TypeVariable>> valueTypeVar,
+        Optional<TypeValue> valueType,
         Optional<AstNode> value
     ) {}
 
@@ -180,7 +191,8 @@ public class AstNode {
     public final Type type;
     private Object value;
     public final Source source;
-    public Optional<Type> resultType;
+    public Optional<TypeVariable> resultTypeVar;
+    public final Optional<TypeValue> resultType;
 
     public AstNode(
         Type type, Object value, Source source
@@ -188,29 +200,37 @@ public class AstNode {
         this.type = type;
         this.value = value;
         this.source = source;
+        this.resultTypeVar = Optional.empty();
         this.resultType = Optional.empty();
     }
 
     public AstNode(
-        Type type, Object value, Source source, Type resultType
+        Type type, Object value, Source source, TypeValue resultType
     ) {
         this.type = type;
         this.value = value;
         this.source = source;
+        this.resultTypeVar = Optional.empty();
         this.resultType = Optional.of(resultType);
     }
 
     public AstNode(
-        Type type, Object value, Source source, Optional<Type> resultType
+        Type type, Object value, Source source,
+        Optional<TypeVariable> resultTypeVar,
+        Optional<TypeValue> resultType
     ) {
         this.type = type;
         this.value = value;
         this.source = source;
+        this.resultTypeVar = resultTypeVar;
         this.resultType = resultType;
     }
 
     public AstNode shallowClone() {
-        return new AstNode(this.type, this.value, this.source, this.resultType);
+        return new AstNode(
+            this.type, this.value, this.source,
+            this.resultTypeVar, this.resultType
+        );
     }
 
     @SuppressWarnings("unchecked")

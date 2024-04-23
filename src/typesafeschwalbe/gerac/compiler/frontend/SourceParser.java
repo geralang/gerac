@@ -10,6 +10,7 @@ import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.Error;
 import typesafeschwalbe.gerac.compiler.ErrorException;
+import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Target;
 
@@ -159,7 +160,9 @@ public class SourceParser extends Parser {
                         return List.of(new AstNode(
                             AstNode.Type.VARIABLE,
                             new AstNode.Variable(
-                                isPublic, isMutable, name, Optional.empty()
+                                isPublic, isMutable, name,
+                                new Ref<>(Optional.empty()), Optional.empty(),
+                                Optional.empty()
                             ),
                             new Source(start.source, nameToken.source)
                         ));
@@ -169,7 +172,9 @@ public class SourceParser extends Parser {
                     return List.of(new AstNode(
                         AstNode.Type.VARIABLE,
                         new AstNode.Variable(
-                            isPublic, isMutable, name, Optional.of(value)
+                            isPublic, isMutable, name,
+                            new Ref<>(Optional.empty()), Optional.empty(),
+                            Optional.of(value)
                         ),
                         new Source(start.source, value.source)
                     ));
@@ -730,7 +735,13 @@ public class SourceParser extends Parser {
                     previous = Optional.of(new AstNode(
                         AstNode.Type.CLOSURE,
                         new AstNode.Closure(
-                            argumentNames, new HashSet<>(), body
+                            argumentNames,
+                            new ArrayList<>(),
+                            Optional.empty(),
+                            new Ref<>(Optional.empty()),
+                            Optional.empty(), 
+                            new HashMap<>(), Optional.empty(),
+                            new HashSet<>(), body
                         ),
                         new Source(start.source, endSource)
                     ));

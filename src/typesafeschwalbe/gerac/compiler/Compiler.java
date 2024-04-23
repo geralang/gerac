@@ -11,20 +11,15 @@ import typesafeschwalbe.gerac.compiler.frontend.SourceParser;
 import typesafeschwalbe.gerac.compiler.types.ConstraintSolver;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.ExternalMappingsParser;
-// import typesafeschwalbe.gerac.compiler.backend.CodeGen;
-// import typesafeschwalbe.gerac.compiler.backend.Lowerer;
+import typesafeschwalbe.gerac.compiler.backend.CodeGen;
+import typesafeschwalbe.gerac.compiler.backend.Lowerer;
 
 public class Compiler {
-
-    public static Map<String, String> DEBUG_FILES = null;
 
     public static Result<String> compile(
         Map<String, String> files, Target target, String mainRaw,
         long maxCallDepth
     ) {
-        // DEBUG
-        DEBUG_FILES = files;
-
         Symbols symbols = new Symbols();
         BuiltIns.addParsedFiles(files);
         BuiltIns.addSymbols(symbols);
@@ -81,21 +76,15 @@ public class Compiler {
         if(typeErrors.size() > 0) {
             return Result.ofError(typeErrors);
         }
-        return Result.ofValue("<todo>");
-        // TypeChecker typeChecker = new TypeChecker(symbols);
-        // Optional<Error> typeCheckError = typeChecker.checkMain(mainPath);
-        // if(typeCheckError.isPresent()) {
-        //     return Result.ofError(typeCheckError.get());
-        // }
-        // Lowerer lowerer = new Lowerer(files, symbols);
-        // Optional<Error> loweringError = lowerer.lowerProcedures();
-        // if(loweringError.isPresent()) {
-        //     return Result.ofError(loweringError.get());
-        // }
-        // CodeGen codeGen = target.codeGen
-        //     .create(files, symbols, lowerer.staticValues, maxCallDepth);
-        // String output = codeGen.generate(mainPath);
-        // return Result.ofValue(output);
+        Lowerer lowerer = new Lowerer(files, symbols);
+        Optional<Error> loweringError = lowerer.lowerProcedures();
+        if(loweringError.isPresent()) {
+            return Result.ofError(loweringError.get());
+        }
+        CodeGen codeGen = target.codeGen
+            .create(files, symbols, lowerer.staticValues, maxCallDepth);
+        String output = codeGen.generate(mainPath);
+        return Result.ofValue(output);
     }
 
 }

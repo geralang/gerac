@@ -1,12 +1,11 @@
 
 package typesafeschwalbe.gerac.compiler.backend;
 
-// import java.util.Map;
+import java.util.Map;
 
-// import typesafeschwalbe.gerac.compiler.Symbols;
-// import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.Symbols;
+import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
-/*
 public class CCodeGen implements CodeGen {
 
     public CCodeGen(
@@ -24,4 +23,3 @@ public class CCodeGen implements CodeGen {
     }
     
 }
-*/

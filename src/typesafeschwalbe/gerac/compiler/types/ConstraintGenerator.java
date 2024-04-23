@@ -210,6 +210,14 @@ public class ConstraintGenerator {
     private Optional<TypeVariable> walkNode(
         AstNode node, boolean assigned
     ) throws ErrorException {
+        Optional<TypeVariable> t = this.walkNodeInternal(node, assigned);
+        node.resultTypeVar = t;
+        return t;
+    }    
+
+    private Optional<TypeVariable> walkNodeInternal(
+        AstNode node, boolean assigned
+    ) throws ErrorException {
         switch(node.type) {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
@@ -220,6 +228,32 @@ public class ConstraintGenerator {
                 Block block = this.block();
                 this.exitFrame();
                 data.capturedNames().addAll(block.captures);
+                for(String capture: block.captures) {
+                    TypeVariable captureVar = null;
+                    for(
+                        int frameI = this.stack.size() - 1; 
+                        frameI >= 0; frameI -= 1
+                    ) {
+                        CallFrame varFrame = this.stack.get(frameI);
+                        for(
+                            int blockI = varFrame.blocks.size() - 1;
+                            blockI >= 0; blockI -= 1
+                        ) {
+                            Block varBlock = varFrame.blocks.get(blockI);
+                            if(!varBlock.variables.containsKey(capture)) {
+                                continue;
+                            }
+                            captureVar = varBlock.variables.get(capture);
+                            break;
+                        }
+                        if(captureVar != null) {
+                            break;
+                        }
+                    }
+                    data.captureTypeVars().put(capture, captureVar);
+                }
+                data.argumentTypeVars().addAll(frame.arguments);
+                data.returnTypeVar().set(Optional.of(frame.returned));
                 this.ctx.add(new TypeConstraint(
                     value, node.source,
                     TypeConstraint.Type.HAS_SIGNATURE,
@@ -234,6 +268,7 @@ public class ConstraintGenerator {
                 TypeVariable value = data.value().isPresent()
                     ? this.walkNode(data.value().get()).get()
                     : this.ctx.makeVar();
+                data.valueTypeVar().set(Optional.of(value));
                 this.block().variables
                     .put(data.name(), value);
                 this.block().initialized

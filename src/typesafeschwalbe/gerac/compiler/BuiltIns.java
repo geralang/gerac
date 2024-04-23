@@ -89,9 +89,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("a", "b"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -132,9 +131,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("a", "b"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -170,9 +168,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("thing"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -222,9 +219,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("iter"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -253,9 +249,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("reason"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -284,9 +279,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("thing"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -322,9 +316,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("thing"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -360,9 +353,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("thing"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -416,9 +408,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("source", "start", "end"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -461,9 +452,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("a", "b"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )
@@ -492,9 +482,8 @@ public class BuiltIns {
                     new Symbols.Symbol.Procedure(
                         List.of("thing"),
                         Optional.of(builtin),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
+                        Optional.empty(), Optional.empty(), Optional.empty(),
+                        Optional.empty(), Optional.empty()
                     ),
                     Optional.empty()
                 )

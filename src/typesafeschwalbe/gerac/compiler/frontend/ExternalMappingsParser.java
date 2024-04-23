@@ -101,7 +101,7 @@ public class ExternalMappingsParser extends Parser {
                             Optional.empty(),
                             Optional.of(argumentTypes), 
                             Optional.of(returnType),
-                            Optional.empty()
+                            Optional.empty(), Optional.empty(), Optional.empty()
                         ),
                         Optional.of(externalName)
                     )
@@ -134,7 +134,8 @@ public class ExternalMappingsParser extends Parser {
                         true, new Source(start.source, end.source),
                         new Namespace[0],
                         new Symbols.Symbol.Variable(
-                            Optional.of(valueType), Optional.empty()
+                            Optional.of(valueType), Optional.empty(),
+                            Optional.empty()
                         ),
                         Optional.of(externalName)
                     )

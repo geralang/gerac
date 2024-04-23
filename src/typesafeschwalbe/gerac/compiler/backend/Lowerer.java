@@ -1,21 +1,21 @@
 package typesafeschwalbe.gerac.compiler.backend;
 
-// import java.util.ArrayList;
-// import java.util.HashMap;
-// import java.util.HashSet;
-// import java.util.LinkedList;
-// import java.util.List;
-// import java.util.Map;
-// import java.util.Optional;
-// import java.util.Set;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
-// import typesafeschwalbe.gerac.compiler.Error;
-// import typesafeschwalbe.gerac.compiler.ErrorException;
-// import typesafeschwalbe.gerac.compiler.Symbols;
-// import typesafeschwalbe.gerac.compiler.frontend.AstNode;
-// import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.Error;
+import typesafeschwalbe.gerac.compiler.ErrorException;
+import typesafeschwalbe.gerac.compiler.Symbols;
+import typesafeschwalbe.gerac.compiler.frontend.AstNode;
+import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.types.TypeValue;
 
-/*
 public class Lowerer {
     
     private static record BlockVariables(
@@ -70,7 +70,7 @@ public class Lowerer {
                     argI += 1
                 ) {
                     String argName = variant.argumentNames().get(argI);
-                    DataType argType = variant.argumentTypes().get().get(argI);
+                    TypeValue argType = variant.argumentTypes().get().get(argI);
                     Ir.Variable variable = this.context
                         .allocateArgument(argType);
                     this.variables().variables.put(argName, variable);
@@ -90,7 +90,7 @@ public class Lowerer {
                     variantI,
                     new Symbols.Symbol.Procedure(
                         variant.argumentNames(),
-                        variant.allowedArgumentTypes(),
+                        Optional.empty(),
                         variant.argumentTypes(),
                         variant.returnType(),
                         variant.body(),
@@ -126,17 +126,17 @@ public class Lowerer {
         return block;
     }
 
-    StaticValue.Closure lowerClosureValue(
+    Ir.StaticValue.Closure lowerClosureValue(
         Value.Closure v
     ) throws ErrorException {
         boolean isEmpty = v.captureTypes.isEmpty();
         Map<String, Ir.StaticValue> captureValues = null;
-        List<DataType> argumentTypes = null;
+        List<TypeValue> argumentTypes = null;
         Ir.Context context = null;
         List<Ir.Instr> body = null;
         if(!isEmpty) {
             captureValues = new HashMap<>();
-            for(String capture: v.captureTypes.get().keySet()) {
+            for(String capture: v.captureTypes.keySet()) {
                 Value captureValue = null;
                 for(
                     int frameI = v.environment.size() - 1; 
@@ -154,7 +154,7 @@ public class Lowerer {
                 }
                 captureValues.put(capture, this.staticValues.add(captureValue));
             }
-            argumentTypes = v.argumentTypes.get();
+            argumentTypes = v.argumentTypes;
             Ir.Context prevContext = this.context;
             List<BlockVariables> prevVars = this.variableStack;
             this.context = new Ir.Context();
@@ -166,7 +166,7 @@ public class Lowerer {
                 argI += 1
             ) {
                 String argName = v.argumentNames.get(argI);
-                DataType argType = v.argumentTypes.get().get(argI);
+                TypeValue argType = v.argumentTypes.get(argI);
                 Ir.Variable variable = this.context
                     .allocateArgument(argType);
                 this.variables().variables.put(argName, variable);
@@ -225,17 +225,9 @@ public class Lowerer {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
-                if(data.captures().isEmpty()) {
-                    this.block().add(new Ir.Instr(
-                        Ir.Instr.Type.LOAD_EMPTY_CLOSURE,
-                        List.of(), null,
-                        Optional.of(dest)
-                    ));
-                    return Optional.of(dest);
-                }
                 List<String> captureNames = new ArrayList<>();
                 List<Ir.Variable> captureValues = new ArrayList<>();
-                for(String captureName: data.captures().get().keySet()) {
+                for(String captureName: data.capturedNames()) {
                     captureNames.add(captureName);
                     if(this.variables().variables.containsKey(captureName)) {
                         Ir.Variable var = this.variables().variables
@@ -244,7 +236,7 @@ public class Lowerer {
                         this.context.markCaptured(var, captureName);
                     } else {
                         Ir.Variable value = this.context
-                            .allocate(data.captures().get().get(captureName));
+                            .allocate(data.captureTypes().get().get(captureName));
                         this.block().add(new Ir.Instr(
                             Ir.Instr.Type.READ_CAPTURE,
                             List.of(), 
@@ -265,7 +257,7 @@ public class Lowerer {
                     argI += 1
                 ) {
                     String argName = data.argumentNames().get(argI);
-                    DataType argType = data.argumentTypes().get().get(argI);
+                    TypeValue argType = data.argumentTypes().get().get(argI);
                     Ir.Variable variable = this.context
                         .allocateArgument(argType);
                     this.variables().variables.put(argName, variable);
@@ -294,7 +286,7 @@ public class Lowerer {
                     value = this.lowerNode(data.value().get()).get();
                 } else {
                     value = this.context
-                        .allocate(data.valueType().get().get().get());
+                        .allocate(data.valueType().get());
                 }
                 this.variables().variables.put(data.name(), value);
                 this.variables().lastUpdates.put(data.name(), value.version);
@@ -364,7 +356,7 @@ public class Lowerer {
             case CASE_VARIANT: {
                 AstNode.CaseVariant data = node.getValue();
                 Ir.Variable value = this.lowerNode(data.value()).get();
-                DataType.Union valueVariants = data.value()
+                TypeValue.Union<TypeValue> valueVariants = data.value()
                     .resultType.get().getValue();
                 List<BlockVariables> branches = new ArrayList<>();
                 List<Optional<Ir.Variable>> branchVariables = new ArrayList<>();
@@ -375,7 +367,7 @@ public class Lowerer {
                     branchI += 1
                 ) {
                     String variantName = data.branchVariants().get(branchI);
-                    DataType variantType = valueVariants.variants()
+                    TypeValue variantType = valueVariants.variantTypes()
                         .get(variantName);
                     this.enterBlock();
                     if(data.branchVariableNames().get(branchI).isPresent()) {
@@ -395,7 +387,9 @@ public class Lowerer {
                     branchBodies.add(this.exitBlock());
                 }
                 this.enterBlock();
-                this.lowerNodes(data.elseBody());
+                if(data.elseBody().isPresent()) {
+                    this.lowerNodes(data.elseBody().get());
+                }
                 branches.add(this.variables());
                 List<Ir.Instr> elseBody = this.exitBlock();
                 this.block().add(new Ir.Instr(
@@ -523,9 +517,9 @@ public class Lowerer {
             case METHOD_CALL: {
                 AstNode.MethodCall data = node.getValue();
                 Ir.Variable accessed = this.lowerNode(data.called()).get();
-                DataType.UnorderedObject accessedObject = data.called()
-                    .resultType.get().getValue(); 
-                DataType calledType = accessedObject.memberTypes().get()
+                TypeValue.UnorderedObject<TypeValue> accessedObject = data
+                    .called().resultType.get().getValue(); 
+                TypeValue calledType = accessedObject.memberTypes()
                     .get(data.memberName());
                 Ir.Variable called = this.context.allocate(calledType);
                 this.block().add(new Ir.Instr(
@@ -911,4 +905,3 @@ public class Lowerer {
     }   
 
 }
-*/

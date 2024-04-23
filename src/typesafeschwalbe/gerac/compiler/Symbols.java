@@ -8,11 +8,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-// import java.util.function.Function;
 import java.util.function.Function;
 
-// import typesafeschwalbe.gerac.compiler.backend.Ir;
-// import typesafeschwalbe.gerac.compiler.backend.Value;
+import typesafeschwalbe.gerac.compiler.backend.Ir;
+import typesafeschwalbe.gerac.compiler.backend.Value;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 import typesafeschwalbe.gerac.compiler.types.TypeContext;
@@ -50,15 +49,15 @@ public class Symbols {
             Optional<Function<Source, BuiltinContext>> builtinContext,
             Optional<List<TypeValue>> argumentTypes,
             Optional<TypeValue> returnType,
-            Optional<List<AstNode>> body
-            // Optional<Ir.Context> ir_context,
-            // Optional<List<Ir.Instr>> ir_body
+            Optional<List<AstNode>> body,
+            Optional<Ir.Context> ir_context,
+            Optional<List<Ir.Instr>> ir_body
         ) {}
 
         public static record Variable(
             Optional<TypeValue> valueType,
-            Optional<AstNode> valueNode
-            // Optional<Value> value
+            Optional<AstNode> valueNode,
+            Optional<Value> value
         ) {}
 
         public enum Type {
@@ -184,8 +183,8 @@ public class Symbols {
                                 Optional.empty(),
                                 Optional.empty(),
                                 Optional.empty(),
-                                Optional.of(data.body())
-                                //Optional.empty(), Optional.empty()
+                                Optional.of(data.body()),
+                                Optional.empty(), Optional.empty()
                             ),
                             Optional.empty()
                         )
@@ -210,8 +209,8 @@ public class Symbols {
                             node.source, usages.toArray(Namespace[]::new),
                             new Symbol.Variable(
                                 Optional.empty(),
-                                data.value()
-                                // Optional.empty()
+                                data.value(),
+                                Optional.empty()
                             ),
                             Optional.empty()
                         )

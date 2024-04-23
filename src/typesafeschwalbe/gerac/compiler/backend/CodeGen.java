@@ -1,12 +1,11 @@
 
 package typesafeschwalbe.gerac.compiler.backend;
 
-// import java.util.Map;
+import java.util.Map;
 
-// import typesafeschwalbe.gerac.compiler.Symbols;
-// import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.Symbols;
+import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
-/*
 public interface CodeGen {
     
     @FunctionalInterface
@@ -20,4 +19,3 @@ public interface CodeGen {
     String generate(Namespace mainPath);
 
 }
-*/

@@ -252,7 +252,8 @@ public class ConstraintSolver {
         symbol.addVariant(new Symbols.Symbol.Procedure(
             data.argumentNames(), data.builtinContext(),
             Optional.of(rArguments), Optional.of(rReturned), 
-            processedBody
+            processedBody,
+            Optional.empty(), Optional.empty()
         ));
         return new SolvedProcedure(
             variant, false,
@@ -301,7 +302,8 @@ public class ConstraintSolver {
         this.scopeStack.remove(this.scopeStack.size() - 1);
         symbol.addVariant(new Symbols.Symbol.Variable(
             Optional.of(value),
-            processedNode
+            processedNode,
+            Optional.empty()
         ));
         return value;
     }
@@ -1054,17 +1056,42 @@ public class ConstraintSolver {
     }
 
     private AstNode processNode(AstNode node) throws ErrorException {
+        TypeValue rType;
+        if(node.resultTypeVar.isPresent()) {
+            rType = this.asTypeValue(node.resultTypeVar.get());
+        } else {
+            rType = new TypeValue(
+                DataType.Type.UNIT, null, Optional.of(node.source)
+            );
+        }
         switch(node.type) {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
+                Map<String, TypeValue> captureTypes = new HashMap<>();
+                for(String capture: data.captureTypeVars().keySet()) {
+                    captureTypes.put(
+                        capture,
+                        this.asTypeValue(
+                            data.captureTypeVars().get(capture)
+                        )
+                    );
+                }
                 return new AstNode(
                     node.type,
                     new AstNode.Closure(
                         data.argumentNames(),
+                        data.argumentTypeVars(),
+                        Optional.of(data.argumentTypeVars().stream().map(
+                            a -> this.asTypeValue(a)
+                        ).toList()),
+                        data.returnTypeVar(),
+                        Optional.of(this.asTypeValue(data.returnTypeVar().get().get())),
+                        data.captureTypeVars(),
+                        Optional.of(captureTypes),
                         data.capturedNames(),
                         this.processNodes(data.body())
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case VARIABLE: {
@@ -1072,12 +1099,16 @@ public class ConstraintSolver {
                 return new AstNode(
                     node.type,
                     new AstNode.Variable(
-                        data.isPublic(), data.isMutable(), data.name(), 
+                        data.isPublic(), data.isMutable(), data.name(),
+                        data.valueTypeVar(),
+                        Optional.of(this.asTypeValue(
+                            data.valueTypeVar().get().get()
+                        )),
                         data.value().isPresent()
                             ? Optional.of(this.processNode(data.value().get()))
                             : Optional.empty()
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case CASE_BRANCHING: {
@@ -1094,7 +1125,7 @@ public class ConstraintSolver {
                         branchBodies, 
                         this.processNodes(data.elseBody())
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case CASE_CONDITIONAL: {
@@ -1106,7 +1137,7 @@ public class ConstraintSolver {
                         this.processNodes(data.ifBody()),
                         this.processNodes(data.elseBody())
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case CASE_VARIANT: {
@@ -1127,7 +1158,7 @@ public class ConstraintSolver {
                             )
                             : Optional.empty()
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case CALL: {
@@ -1147,7 +1178,7 @@ public class ConstraintSolver {
                             call.path, call.variant,
                             this.processNodes(data.arguments())
                         ),
-                        node.source
+                        node.source, rType
                     );
                 }
                 return new AstNode(
@@ -1156,7 +1187,7 @@ public class ConstraintSolver {
                         this.processNode(data.called()),
                         this.processNodes(data.arguments())
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case METHOD_CALL: {
@@ -1167,7 +1198,7 @@ public class ConstraintSolver {
                         this.processNode(data.called()), data.memberName(), 
                         this.processNodes(data.arguments())
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case OBJECT_LITERAL: {
@@ -1179,7 +1210,8 @@ public class ConstraintSolver {
                     );
                 }
                 return new AstNode(
-                    node.type, new AstNode.ObjectLiteral(values), node.source
+                    node.type, new AstNode.ObjectLiteral(values),
+                    node.source, rType
                 );
             }
             case ARRAY_LITERAL: {
@@ -1187,7 +1219,7 @@ public class ConstraintSolver {
                 return new AstNode(
                     node.type, 
                     new AstNode.ArrayLiteral(this.processNodes(data.values())), 
-                    node.source
+                    node.source, rType
                 );
             }
             case OBJECT_ACCESS: {
@@ -1198,7 +1230,7 @@ public class ConstraintSolver {
                         this.processNode(data.accessed()),
                         data.memberName()
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case BOOLEAN_LITERAL:
@@ -1206,7 +1238,9 @@ public class ConstraintSolver {
             case FLOAT_LITERAL:
             case STRING_LITERAL:
             case UNIT_LITERAL: {
-                return new AstNode(node.type, node.getValue(), node.source);
+                return new AstNode(
+                    node.type, node.getValue(), node.source, rType
+                );
             }
             case ASSIGNMENT:
             case REPEATING_ARRAY_LITERAL:
@@ -1231,7 +1265,7 @@ public class ConstraintSolver {
                         this.processNode(data.left()),
                         this.processNode(data.right())
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case RETURN: 
@@ -1244,7 +1278,7 @@ public class ConstraintSolver {
                     new AstNode.MonoOp(
                         this.processNode(data.value())
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case MODULE_ACCESS: {
@@ -1254,6 +1288,9 @@ public class ConstraintSolver {
                         : this.scope().procUsages
                 ) {
                     if(procUsage.node() != node) { continue; }
+                    // TODO! make procedure refs work again
+                    throw new RuntimeException("not yet implemented!");
+                    /* 
                     Symbols.Symbol symbol = this.symbols
                         .get(procUsage.shortPath()).get();
                     Symbols.Symbol.Procedure symbolData = symbol.getValue();
@@ -1296,8 +1333,9 @@ public class ConstraintSolver {
                                 node.source
                             ))    
                         ),
-                        node.source
+                        node.source, rType
                     );
+                    */
                 }
                 for(
                     ConstraintGenerator.VariableUsage varUsage
@@ -1318,7 +1356,7 @@ public class ConstraintSolver {
                         new AstNode.ModuleAccess(
                             varUsage.fullPath(), Optional.of(0)
                         ),
-                        node.source
+                        node.source, rType
                     );
                 }
                 String varName = data.path().elements()
@@ -1326,7 +1364,7 @@ public class ConstraintSolver {
                 return new AstNode(
                     AstNode.Type.VARIABLE_ACCESS,
                     new AstNode.VariableAccess(varName),
-                    node.source
+                    node.source, rType
                 );
             }
             case VARIANT_LITERAL: {
@@ -1337,7 +1375,7 @@ public class ConstraintSolver {
                         data.variantName(),
                         this.processNode(data.value())
                     ),
-                    node.source
+                    node.source, rType
                 );
             }
             case PROCEDURE:

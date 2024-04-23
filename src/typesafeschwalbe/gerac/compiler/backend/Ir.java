@@ -1,16 +1,16 @@
 package typesafeschwalbe.gerac.compiler.backend;
 
-// import java.util.ArrayList;
-// import java.util.HashMap;
-// import java.util.List;
-// import java.util.Map;
-// import java.util.Optional;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
-// import typesafeschwalbe.gerac.compiler.ErrorException;
-// import typesafeschwalbe.gerac.compiler.Source;
-// import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.ErrorException;
+import typesafeschwalbe.gerac.compiler.Source;
+import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.types.TypeValue;
 
-/*
 public class Ir {
     
     public static class StaticValues {
@@ -244,7 +244,7 @@ public class Ir {
             private final Object ptr;
             public final boolean isEmpty;
             public final Map<String, Ir.StaticValue> captureValues;
-            public final List<DataType> argumentTypes;
+            public final List<TypeValue> argumentTypes;
             public final Ir.Context context;
             public final List<Ir.Instr> body;
     
@@ -252,7 +252,7 @@ public class Ir {
                 Object ptr,
                 boolean isEmpty,
                 Map<String, Ir.StaticValue> captureValues,
-                List<DataType> argumentTypes,
+                List<TypeValue> argumentTypes,
                 Ir.Context context,
                 List<Ir.Instr> body
             ) {
@@ -308,7 +308,7 @@ public class Ir {
     public static class Context {
 
         public final List<Variable> argumentVars;
-        public final List<DataType> variableTypes;
+        public final List<TypeValue> variableTypes;
         public final Map<Integer, String> capturedNames;
 
         public Context() {
@@ -317,14 +317,14 @@ public class Ir {
             this.capturedNames = new HashMap<>();
         }
 
-        public Variable allocate(DataType variableType) {
+        public Variable allocate(TypeValue variableType) {
             int index = this.variableTypes.size();
             int version = 0;
             this.variableTypes.add(variableType);
             return new Variable(index, version);
         }
 
-        public Variable allocateArgument(DataType argumentType) {
+        public Variable allocateArgument(TypeValue argumentType) {
             Variable variable = this.allocate(argumentType);
             this.argumentVars.add(variable);
             return variable;
@@ -370,7 +370,7 @@ public class Ir {
         public static record LoadVariant(String variantName) {}
         public static record LoadClosure(
             // values = capture values
-            List<DataType> argumentTypes, DataType returnType,
+            List<TypeValue> argumentTypes, TypeValue returnType,
             List<String> captureNames,
             Context context, List<Instr> body
         ) {}
@@ -495,4 +495,3 @@ public class Ir {
     }
 
 }
-*/

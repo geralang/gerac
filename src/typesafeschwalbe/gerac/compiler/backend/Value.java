@@ -147,17 +147,17 @@ public abstract class Value {
     }
 
     public static class Closure extends Value {
-        public final Optional<Map<String, TypeValue>> captureTypes;
+        public final Map<String, TypeValue> captureTypes;
         public final List<Map<String, Optional<Value>>> environment;
         public final List<String> argumentNames;
-        public final Optional<List<TypeValue>> argumentTypes;
+        public final List<TypeValue> argumentTypes;
         public final List<AstNode> body;
 
         public Closure(
-            Optional<Map<String, TypeValue>> captureTypes,
+            Map<String, TypeValue> captureTypes,
             List<Map<String, Optional<Value>>> environment,
             List<String> argumentNames,
-            Optional<List<TypeValue>> argumentTypes,
+            List<TypeValue> argumentTypes,
             List<AstNode> body
         ) {
             this.captureTypes = captureTypes;
