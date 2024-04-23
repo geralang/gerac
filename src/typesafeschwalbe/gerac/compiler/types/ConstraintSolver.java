@@ -239,7 +239,13 @@ public class ConstraintSolver {
     ) throws ErrorException {
         for(Scope scope: this.scopeStack) {
             if(scope.symbol != symbol) { continue; }
-            throw new RuntimeException("self-referencing variable!");
+            throw new ErrorException(new Error(
+                "Self-referencing global variable",
+                Error.Marking.error(
+                    data.valueNode().get().source,
+                    "references itself"
+                )
+            ));
         }
         if(symbol.variantCount() > 0) {
             System.out.println(this.scopeStack);
