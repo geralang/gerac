@@ -53,7 +53,6 @@ public class BuiltIns {
     }
 
     public static void addSymbols(Symbols symbols) {
-        // TODO: REIMPLEMENT ADDING CORE PROCEDURES
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
                 TypeContext ctx = new TypeContext();

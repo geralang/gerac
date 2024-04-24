@@ -13,6 +13,7 @@ import java.util.Set;
 import typesafeschwalbe.gerac.compiler.Color;
 import typesafeschwalbe.gerac.compiler.Error;
 import typesafeschwalbe.gerac.compiler.ErrorException;
+import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.UnionFind;
@@ -1288,9 +1289,6 @@ public class ConstraintSolver {
                         : this.scope().procUsages
                 ) {
                     if(procUsage.node() != node) { continue; }
-                    // TODO! make procedure refs work again
-                    throw new RuntimeException("not yet implemented!");
-                    /* 
                     Symbols.Symbol symbol = this.symbols
                         .get(procUsage.shortPath()).get();
                     Symbols.Symbol.Procedure symbolData = symbol.getValue();
@@ -1309,33 +1307,46 @@ public class ConstraintSolver {
                         procUsage.returned(), this
                     );
                     // 'std::math::pow' -> '|x, n| std::math::pow(x, n)'
+                    List<AstNode> argNodes = new ArrayList<>();
+                    for(int argI = 0; argI < arguments.size(); argI += 1) {
+                        argNodes.add(new AstNode(
+                            AstNode.Type.VARIABLE_ACCESS,
+                            new AstNode.VariableAccess(
+                                symbolData.argumentNames().get(argI)
+                            ),
+                            node.source,
+                            arguments.get(argI)
+                        ));
+                    }
                     AstNode closureValue = new AstNode(
                         AstNode.Type.PROCEDURE_CALL,
                         new AstNode.ProcedureCall(
                             procUsage.shortPath(), solved.variant,
-                            symbolData.argumentNames().stream().map(a -> 
-                                new AstNode(
-                                    AstNode.Type.VARIABLE_ACCESS,
-                                    new AstNode.VariableAccess(a),
-                                    node.source
-                                )
-                            ).toList()
+                            argNodes
                         ),
-                        node.source
+                        node.source,
+                        solved.returned
                     );
                     return new AstNode(
                         AstNode.Type.CLOSURE,
                         new AstNode.Closure(
-                            symbolData.argumentNames(), new HashSet<>(),
+                            symbolData.argumentNames(),
+                            List.of(), Optional.of(arguments),
+                            new Ref<>(Optional.empty()), Optional.of(solved.returned),
+                            new HashMap<>(), Optional.of(new HashMap<>()),
+                            new HashSet<>(),
                             List.of(new AstNode(
                                 AstNode.Type.RETURN,
                                 new AstNode.MonoOp(closureValue),
-                                node.source
-                            ))    
+                                node.source,
+                                new TypeValue(
+                                    DataType.Type.UNIT, null,
+                                    Optional.of(node.source)
+                                )
+                            ))
                         ),
                         node.source, rType
                     );
-                    */
                 }
                 for(
                     ConstraintGenerator.VariableUsage varUsage
