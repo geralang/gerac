@@ -290,7 +290,7 @@ public class Interpreter {
                     trace.append(errorNoteColor);
                     trace.append(" at ");
                     trace.append(errorFileNameColor);
-                    trace.append(entry.source.file);
+                    trace.append(entry.source.file());
                     trace.append(":");
                     trace.append(entry.source.computeLine(this.sourceFiles));
                     trace.append("\n");
@@ -351,10 +351,10 @@ public class Interpreter {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
                 return new Value.Closure(
-                    data.captureTypes().get(),
+                    data.captures().get().get(),
                     new ArrayList<>(this.stack),
                     data.argumentNames(),
-                    data.argumentTypes().get(),
+                    data.argumentTypes().get().get(),
                     data.body()
                 );
             }

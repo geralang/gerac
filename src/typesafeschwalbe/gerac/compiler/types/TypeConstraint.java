@@ -12,7 +12,7 @@ public class TypeConstraint {
     private interface ConstraintValue {}
 
     public static record IsType(
-        List<TypeValue.Type> oneOfTypes, Optional<String> reason
+        DataType.Type type, Optional<String> reason
     ) implements ConstraintValue {}
     
     public static record HasElement(
@@ -45,6 +45,8 @@ public class TypeConstraint {
 
     public enum Type {
         IS_NUMERIC,     // = null
+        IS_INDEXED,     // = null
+        IS_REFERENCED,  // = null
         IS_TYPE,        // IsType
         HAS_ELEMENT,    // HasElement
         HAS_MEMBER,     // HasMember

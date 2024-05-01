@@ -52,26 +52,28 @@ public class ConstraintGenerator {
     ) {}
 
     private final Symbols symbols;
+    private final TypeContext ctx;
     private Symbols.Symbol inSymbol;
-    private TypeContext ctx;
+    private List<TypeConstraint> constraints;
     private List<CallFrame> stack;
     private List<VariableUsage> varUsages;
     private List<ProcedureUsage> procUsages;
 
-    public ConstraintGenerator(Symbols symbols) {
+    public ConstraintGenerator(Symbols symbols, TypeContext ctx) {
         this.symbols = symbols;
+        this.ctx = ctx;
     }
 
     private void reset(Symbols.Symbol s) {
         this.inSymbol = s;
-        this.ctx = new TypeContext();
+        this.constraints = new LinkedList<>();
         this.stack = new LinkedList<>();
         this.varUsages = new ArrayList<>();
         this.procUsages = new ArrayList<>();
     }
 
     public static record ProcOutput(
-        TypeContext ctx, 
+        TypeContext ctx, List<TypeConstraint> constraints,
         List<TypeVariable> arguments, TypeVariable returned,
         List<VariableUsage> varUsages, List<ProcedureUsage> procUsages
     ) {}
@@ -87,14 +89,14 @@ public class ConstraintGenerator {
         CallFrame frame = this.frame();
         this.exitFrame();
         return new ProcOutput(
-            this.ctx,
+            this.ctx, this.constraints,
             frame.arguments, frame.returned,
             this.varUsages, this.procUsages
         );
     }
 
     public static record VarOutput(
-        TypeContext ctx,
+        TypeContext ctx, List<TypeConstraint> constraints,
         TypeVariable value,
         List<VariableUsage> varUsages, List<ProcedureUsage> procUsages
     ) {}
@@ -111,7 +113,13 @@ public class ConstraintGenerator {
             value = this.ctx.makeVar();
         }
         this.exitFrame();
-        return new VarOutput(ctx, value, this.varUsages, this.procUsages);
+        return new VarOutput(
+            ctx, this.constraints, value, this.varUsages, this.procUsages
+        );
+    }
+
+    private void addConstraint(TypeConstraint c) {
+        this.constraints.add(c);
     }
 
     private void enterFrame(List<String> argumentNames, Source source) {
@@ -146,11 +154,11 @@ public class ConstraintGenerator {
 
     private void exitFrame() {
         if(!this.block().alwaysReturns) {
-            this.ctx.add(new TypeConstraint(
+            this.addConstraint(new TypeConstraint(
                 this.frame().returned, this.frame().source,
                 TypeConstraint.Type.IS_TYPE,
                 new TypeConstraint.IsType(
-                    List.of(DataType.Type.UNIT),
+                    DataType.Type.UNIT,
                     Optional.of(
                         "because the body does not always return a value"
                     )
@@ -211,7 +219,7 @@ public class ConstraintGenerator {
         AstNode node, boolean assigned
     ) throws ErrorException {
         Optional<TypeVariable> t = this.walkNodeInternal(node, assigned);
-        node.resultTypeVar = t;
+        node.resultType = t;
         return t;
     }    
 
@@ -227,7 +235,7 @@ public class ConstraintGenerator {
                 CallFrame frame = this.frame();
                 Block block = this.block();
                 this.exitFrame();
-                data.capturedNames().addAll(block.captures);
+                data.captures().set(Optional.of(new HashMap<>()));
                 for(String capture: block.captures) {
                     TypeVariable captureVar = null;
                     for(
@@ -250,11 +258,12 @@ public class ConstraintGenerator {
                             break;
                         }
                     }
-                    data.captureTypeVars().put(capture, captureVar);
+                    data.captures().get().get().put(capture, captureVar);
                 }
-                data.argumentTypeVars().addAll(frame.arguments);
-                data.returnTypeVar().set(Optional.of(frame.returned));
-                this.ctx.add(new TypeConstraint(
+                data.argumentTypes().set(Optional.of(new ArrayList<>()));
+                data.argumentTypes().get().get().addAll(frame.arguments);
+                data.returnType().set(Optional.of(frame.returned));
+                this.addConstraint(new TypeConstraint(
                     value, node.source,
                     TypeConstraint.Type.HAS_SIGNATURE,
                     new TypeConstraint.HasSignature(
@@ -268,7 +277,7 @@ public class ConstraintGenerator {
                 TypeVariable value = data.value().isPresent()
                     ? this.walkNode(data.value().get()).get()
                     : this.ctx.makeVar();
-                data.valueTypeVar().set(Optional.of(value));
+                data.valueType().set(Optional.of(value));
                 this.block().variables
                     .put(data.name(), value);
                 this.block().initialized
@@ -290,7 +299,7 @@ public class ConstraintGenerator {
                     TypeVariable branchValue = this
                         .walkNode(data.branchValues().get(branchI)).get();
                     this.stack = prevStack;
-                    this.ctx.add(new TypeConstraint(
+                    this.addConstraint(new TypeConstraint(
                         value, data.value().source,
                         TypeConstraint.Type.UNIFY,
                         new TypeConstraint.Unify(branchValue)
@@ -310,11 +319,11 @@ public class ConstraintGenerator {
             case CASE_CONDITIONAL: {
                 AstNode.CaseConditional data = node.getValue();
                 TypeVariable condition = this.walkNode(data.condition()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     condition, data.condition().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.BOOLEAN),
+                        DataType.Type.BOOLEAN,
                         Optional.of("since it's used as a condition")
                     )
                 ));
@@ -342,7 +351,7 @@ public class ConstraintGenerator {
                     Optional<String> branchVarName = data.branchVariableNames()
                         .get(branchI);
                     TypeVariable variantType = this.ctx.makeVar();
-                    this.ctx.add(new TypeConstraint(
+                    this.addConstraint(new TypeConstraint(
                         value, data.value().source,
                         TypeConstraint.Type.HAS_VARIANT,
                         new TypeConstraint.HasVariant(variant, variantType)
@@ -366,7 +375,7 @@ public class ConstraintGenerator {
                     branches.add(this.block());
                     this.exitBlock();
                 } else {                    
-                    this.ctx.add(new TypeConstraint(
+                    this.addConstraint(new TypeConstraint(
                         value, data.value().source,
                         TypeConstraint.Type.LIMIT_VARIANTS,
                         new TypeConstraint.LimitVariants(
@@ -383,7 +392,7 @@ public class ConstraintGenerator {
                 // right is done first before left marks anything as assigned
                 TypeVariable right = this.walkNode(data.right()).get();
                 TypeVariable left = this.walkNode(data.left(), true).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     left, node.source,
                     TypeConstraint.Type.UNIFY,
                     new TypeConstraint.Unify(right)
@@ -393,7 +402,7 @@ public class ConstraintGenerator {
             case RETURN: {
                 AstNode.MonoOp data = node.getValue();
                 TypeVariable value = this.walkNode(data.value()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     value, data.value().source,
                     TypeConstraint.Type.UNIFY,
                     new TypeConstraint.Unify(this.frame().returned)
@@ -418,7 +427,7 @@ public class ConstraintGenerator {
                                 isProcCall = false;
                                 break;
                             }
-                            if(isProcCall) { break; }
+                            if(!isProcCall) { break; }
                         }
                     }
                 }
@@ -435,7 +444,7 @@ public class ConstraintGenerator {
                     );
                 } else {
                     TypeVariable called = this.walkNode(data.called()).get();
-                    this.ctx.add(new TypeConstraint(
+                    this.addConstraint(new TypeConstraint(
                         called, data.called().source,
                         TypeConstraint.Type.HAS_SIGNATURE,
                         new TypeConstraint.HasSignature(arguments, returned)
@@ -447,7 +456,7 @@ public class ConstraintGenerator {
                 AstNode.MethodCall data = node.getValue();
                 TypeVariable accessed = this.walkNode(data.called()).get();
                 TypeVariable called = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     accessed, data.called().source,
                     TypeConstraint.Type.HAS_MEMBER,
                     new TypeConstraint.HasMember(data.memberName(), called)
@@ -458,7 +467,7 @@ public class ConstraintGenerator {
                     arguments.add(this.walkNode(argument).get());
                 }
                 TypeVariable returned = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     called, node.source,
                     TypeConstraint.Type.HAS_SIGNATURE,
                     new TypeConstraint.HasSignature(arguments, returned)
@@ -471,13 +480,13 @@ public class ConstraintGenerator {
                 for(String memberName: data.values().keySet()) {
                     TypeVariable member = this
                         .walkNode(data.values().get(memberName)).get();
-                    this.ctx.add(new TypeConstraint(
+                    this.addConstraint(new TypeConstraint(
                         result, node.source,
                         TypeConstraint.Type.HAS_MEMBER,
                         new TypeConstraint.HasMember(memberName, member)
                     ));
                 }
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     result, node.source,
                     TypeConstraint.Type.LIMIT_MEMBERS,
                     new TypeConstraint.LimitMembers(data.values().keySet())
@@ -489,14 +498,14 @@ public class ConstraintGenerator {
                 TypeVariable element = this.ctx.makeVar();
                 for(AstNode valueNode: data.values()) {
                     TypeVariable value = this.walkNode(valueNode).get();
-                    this.ctx.add(new TypeConstraint(
+                    this.addConstraint(new TypeConstraint(
                         value, node.source,
                         TypeConstraint.Type.UNIFY,
                         new TypeConstraint.Unify(element)
                     ));
                 }
                 TypeVariable result = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     result, node.source,
                     TypeConstraint.Type.HAS_ELEMENT,
                     new TypeConstraint.HasElement(element)
@@ -507,17 +516,17 @@ public class ConstraintGenerator {
                 AstNode.BiOp data = node.getValue();
                 TypeVariable value = this.walkNode(data.left()).get();
                 TypeVariable result = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     result, node.source,
                     TypeConstraint.Type.HAS_ELEMENT,
                     new TypeConstraint.HasElement(value)
                 ));
                 TypeVariable size = this.walkNode(data.right()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     size, data.right().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.INTEGER), 
+                        DataType.Type.INTEGER, 
                         Optional.of("since it's used as the size for an array")
                     )
                 ));
@@ -527,7 +536,7 @@ public class ConstraintGenerator {
                 AstNode.ObjectAccess data = node.getValue();
                 TypeVariable accessed = this.walkNode(data.accessed()).get();
                 TypeVariable member = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     accessed, data.accessed().source,
                     TypeConstraint.Type.HAS_MEMBER,
                     new TypeConstraint.HasMember(data.memberName(), member)
@@ -538,17 +547,17 @@ public class ConstraintGenerator {
                 AstNode.BiOp data = node.getValue();
                 TypeVariable accessed = this.walkNode(data.left()).get();
                 TypeVariable element = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     accessed, data.left().source,
                     TypeConstraint.Type.HAS_ELEMENT,
                     new TypeConstraint.HasElement(element)
                 ));
                 TypeVariable index = this.walkNode(data.right()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     index, data.right().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.INTEGER),
+                        DataType.Type.INTEGER,
                         Optional.of("since it's used to index into an array")
                     )
                 ));
@@ -556,55 +565,55 @@ public class ConstraintGenerator {
             }
             case BOOLEAN_LITERAL: {
                 TypeVariable value = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.BOOLEAN), Optional.empty()
+                        DataType.Type.BOOLEAN, Optional.empty()
                     )
                 ));
                 return Optional.of(value);
             }
             case INTEGER_LITERAL: {
                 TypeVariable value = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.INTEGER), Optional.empty()
+                        DataType.Type.INTEGER, Optional.empty()
                     )
                 ));
                 return Optional.of(value);
             }
             case FLOAT_LITERAL: {
                 TypeVariable value = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.FLOAT), Optional.empty()
+                        DataType.Type.FLOAT, Optional.empty()
                     )
                 ));
                 return Optional.of(value);
             }
             case STRING_LITERAL: {
                 TypeVariable value = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.STRING), Optional.empty()
+                        DataType.Type.STRING, Optional.empty()
                     )
                 ));
                 return Optional.of(value);
             }
             case UNIT_LITERAL: {
                 TypeVariable value = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     value, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.UNIT), Optional.empty()
+                        DataType.Type.UNIT, Optional.empty()
                     )
                 ));
                 return Optional.of(value);
@@ -617,12 +626,12 @@ public class ConstraintGenerator {
                 AstNode.BiOp data = node.getValue();
                 TypeVariable left = this.walkNode(data.left()).get();
                 TypeVariable right = this.walkNode(data.right()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     left, data.left().source,
                     TypeConstraint.Type.IS_NUMERIC,
                     null
                 ));
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     left, node.source,
                     TypeConstraint.Type.UNIFY,
                     new TypeConstraint.Unify(right)
@@ -632,7 +641,7 @@ public class ConstraintGenerator {
             case NEGATE: {
                 AstNode.MonoOp data = node.getValue();
                 TypeVariable value = this.walkNode(data.value()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     value, data.value().source,
                     TypeConstraint.Type.IS_NUMERIC,
                     null
@@ -646,22 +655,22 @@ public class ConstraintGenerator {
                 AstNode.BiOp data = node.getValue();
                 TypeVariable left = this.walkNode(data.left()).get();
                 TypeVariable right = this.walkNode(data.right()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     left, data.left().source,
                     TypeConstraint.Type.IS_NUMERIC,
                     null
                 ));
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     left, node.source,
                     TypeConstraint.Type.UNIFY,
                     new TypeConstraint.Unify(right)
                 ));
                 TypeVariable result = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     result, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.BOOLEAN), Optional.empty()
+                        DataType.Type.BOOLEAN, Optional.empty()
                     )
                 ));
                 return Optional.of(result);
@@ -671,17 +680,17 @@ public class ConstraintGenerator {
                 AstNode.BiOp data = node.getValue();
                 TypeVariable left = this.walkNode(data.left()).get();
                 TypeVariable right = this.walkNode(data.right()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     left, node.source,
                     TypeConstraint.Type.UNIFY,
                     new TypeConstraint.Unify(right)
                 ));
                 TypeVariable result = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     result, node.source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.BOOLEAN), Optional.empty()
+                        DataType.Type.BOOLEAN, Optional.empty()
                     )
                 ));
                 return Optional.of(result);
@@ -689,11 +698,11 @@ public class ConstraintGenerator {
             case NOT: {
                 AstNode.MonoOp data = node.getValue();
                 TypeVariable value = this.walkNode(data.value()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     value, data.value().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.BOOLEAN), Optional.empty()
+                        DataType.Type.BOOLEAN, Optional.empty()
                     )
                 ));
                 return Optional.of(value);
@@ -703,14 +712,14 @@ public class ConstraintGenerator {
                 AstNode.BiOp data = node.getValue();
                 TypeVariable left = this.walkNode(data.left()).get();
                 TypeVariable right = this.walkNode(data.right()).get();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     left, data.left().source,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.BOOLEAN), Optional.empty()
+                        DataType.Type.BOOLEAN, Optional.empty()
                     )
                 ));
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     left, node.source,
                     TypeConstraint.Type.UNIFY,
                     new TypeConstraint.Unify(right)
@@ -813,7 +822,7 @@ public class ConstraintGenerator {
                             node, fullPath, arguments, returns
                         ));
                         TypeVariable result = this.ctx.makeVar();
-                        this.ctx.add(new TypeConstraint(
+                        this.addConstraint(new TypeConstraint(
                             result, node.source,
                             TypeConstraint.Type.HAS_SIGNATURE,
                             new TypeConstraint.HasSignature(arguments, returns)
@@ -828,7 +837,7 @@ public class ConstraintGenerator {
                 AstNode.VariantLiteral data = node.getValue();
                 TypeVariable value = this.walkNode(data.value()).get();
                 TypeVariable variant = this.ctx.makeVar();
-                this.ctx.add(new TypeConstraint(
+                this.addConstraint(new TypeConstraint(
                     variant, node.source,
                     TypeConstraint.Type.HAS_VARIANT,
                     new TypeConstraint.HasVariant(data.variantName(), value)

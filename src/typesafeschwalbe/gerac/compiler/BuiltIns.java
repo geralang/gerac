@@ -1,6 +1,7 @@
 
 package typesafeschwalbe.gerac.compiler;
 
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -12,9 +13,6 @@ import typesafeschwalbe.gerac.compiler.types.DataType;
 import typesafeschwalbe.gerac.compiler.types.TypeConstraint;
 import typesafeschwalbe.gerac.compiler.types.TypeContext;
 import typesafeschwalbe.gerac.compiler.types.TypeVariable;
-
-// import typesafeschwalbe.gerac.compiler.types.TypeValue;
-// import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
 public class BuiltIns {
 
@@ -52,32 +50,28 @@ public class BuiltIns {
         files.put(BUILTIN_FILE_NAME, "<built-in>");
     }
 
-    public static void addSymbols(Symbols symbols) {
+    public static void addSymbols(TypeContext ctx, Symbols symbols) {
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable a = ctx.makeVar();
                 TypeVariable b = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     a, src,
                     TypeConstraint.Type.UNIFY, new TypeConstraint.Unify(b)
                 ));
-                ctx.add(new TypeConstraint(
-                    a, src,
-                    TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.ARRAY, DataType.Type.UNORDERED_OBJECT
-                    ), Optional.empty())
+                constraints.add(new TypeConstraint(
+                    a, src, TypeConstraint.Type.IS_REFERENCED, null
                 ));
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.BOOLEAN
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.BOOLEAN, Optional.empty()
+                    )
                 ));
-                return new Symbols.BuiltinContext(ctx, List.of(a, b), r);
+                return new Symbols.BuiltinContext(constraints, List.of(a, b), r);
             };
             symbols.add(
                 new Namespace(List.of("core", "addr_eq")),
@@ -97,29 +91,29 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable a = ctx.makeVar();
                 TypeVariable b = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     a, src,
                     TypeConstraint.Type.UNIFY, new TypeConstraint.Unify(b)
                 ));
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     a, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.UNION
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.UNION, Optional.empty()
+                    )
                 ));
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.BOOLEAN
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.BOOLEAN, Optional.empty()
+                    )
                 ));
-                return new Symbols.BuiltinContext(ctx, List.of(a, b), r);
+                return new Symbols.BuiltinContext(constraints, List.of(a, b), r);
             };
             symbols.add(
                 new Namespace(List.of("core", "tag_eq")),
@@ -139,24 +133,20 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable thing = ctx.makeVar();
-                ctx.add(new TypeConstraint(
-                    thing, src,
-                    TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.ARRAY, DataType.Type.STRING
-                    ), Optional.empty())
+                constraints.add(new TypeConstraint(
+                    thing, src, TypeConstraint.Type.IS_INDEXED, null
                 ));
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.INTEGER
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.INTEGER, Optional.empty()
+                    )
                 ));
-                return new Symbols.BuiltinContext(ctx, List.of(thing), r);
+                return new Symbols.BuiltinContext(constraints, List.of(thing), r);
             };
             symbols.add(
                 new Namespace(List.of("core", "length")),
@@ -176,38 +166,38 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable iterR = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     iterR, src,
                     TypeConstraint.Type.HAS_VARIANT,
                     new TypeConstraint.HasVariant("next", ctx.makeVar())
                 ));
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     iterR, src,
                     TypeConstraint.Type.HAS_VARIANT,
                     new TypeConstraint.HasVariant("end", ctx.makeVar())
                 ));
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     iterR, src,
                     TypeConstraint.Type.LIMIT_VARIANTS,
                     new TypeConstraint.LimitVariants(Set.of("next", "end"))
                 ));
                 TypeVariable iter = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     iter, src,
                     TypeConstraint.Type.HAS_SIGNATURE,
                     new TypeConstraint.HasSignature(List.of(), iterR)
                 ));
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.UNIT
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.UNIT, Optional.empty()
+                    )
                 ));
-                return new Symbols.BuiltinContext(ctx, List.of(iter), r);
+                return new Symbols.BuiltinContext(constraints, List.of(iter), r);
             };
             symbols.add(
                 new Namespace(List.of("core", "exhaust")),
@@ -227,17 +217,17 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable reason = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     reason, src,
                     TypeConstraint.Type.IS_TYPE,
                     new TypeConstraint.IsType(
-                        List.of(DataType.Type.STRING), Optional.empty()
+                        DataType.Type.STRING, Optional.empty()
                     )
                 ));
                 TypeVariable r = ctx.makeVar();
-                return new Symbols.BuiltinContext(ctx, List.of(reason), r);
+                return new Symbols.BuiltinContext(constraints, List.of(reason), r);
             };
             symbols.add(
                 new Namespace(List.of("core", "panic")),
@@ -257,17 +247,17 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable thing = ctx.makeVar();
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.STRING
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.STRING, Optional.empty()
+                    )
                 ));
-                return new Symbols.BuiltinContext(ctx, List.of(thing), r);
+                return new Symbols.BuiltinContext(constraints, List.of(thing), r);
             };
             symbols.add(
                 new Namespace(List.of("core", "as_str")),
@@ -287,24 +277,20 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable thing = ctx.makeVar();
-                ctx.add(new TypeConstraint(
-                    thing, src,
-                    TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.INTEGER, DataType.Type.FLOAT
-                    ), Optional.empty())
+                constraints.add(new TypeConstraint(
+                    thing, src, TypeConstraint.Type.IS_NUMERIC, null
                 ));
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.INTEGER
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.INTEGER, Optional.empty()
+                    )
                 ));
-                return new Symbols.BuiltinContext(ctx, List.of(thing), r);
+                return new Symbols.BuiltinContext(constraints, List.of(thing), r);
             };
             symbols.add(
                 new Namespace(List.of("core", "as_int")),
@@ -324,24 +310,20 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable thing = ctx.makeVar();
-                ctx.add(new TypeConstraint(
-                    thing, src,
-                    TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.INTEGER, DataType.Type.FLOAT
-                    ), Optional.empty())
+                constraints.add(new TypeConstraint(
+                    thing, src, TypeConstraint.Type.IS_NUMERIC, null
                 ));
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.FLOAT
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.FLOAT, Optional.empty()
+                    )
                 ));
-                return new Symbols.BuiltinContext(ctx, List.of(thing), r);
+                return new Symbols.BuiltinContext(constraints, List.of(thing), r);
             };
             symbols.add(
                 new Namespace(List.of("core", "as_flt")),
@@ -361,41 +343,41 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable source = ctx.makeVar();
                 TypeVariable start = ctx.makeVar();
                 TypeVariable end = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     source, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.STRING
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.STRING, Optional.empty()
+                    )
                 ));
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     start, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.INTEGER
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.INTEGER, Optional.empty()
+                    )
                 ));
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     end, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.INTEGER
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.INTEGER, Optional.empty()
+                    )
                 ));
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.STRING
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.STRING, Optional.empty()
+                    )
                 ));
                 return new Symbols.BuiltinContext(
-                    ctx, List.of(source, start, end), r
+                    constraints, List.of(source, start, end), r
                 );
             };
             symbols.add(
@@ -416,30 +398,30 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable a = ctx.makeVar();
                 TypeVariable b = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     a, src,
                     TypeConstraint.Type.UNIFY, new TypeConstraint.Unify(b)
                 ));
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     a, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.STRING
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.STRING, Optional.empty()
+                    )
                 ));
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.STRING
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.STRING, Optional.empty()
+                    )
                 ));
                 return new Symbols.BuiltinContext(
-                    ctx, List.of(a, b), r
+                    constraints, List.of(a, b), r
                 );
             };
             symbols.add(
@@ -460,17 +442,17 @@ public class BuiltIns {
         }
         {
             Function<Source, Symbols.BuiltinContext> builtin = src -> {
-                TypeContext ctx = new TypeContext();
+                List<TypeConstraint> constraints = new LinkedList<>();
                 TypeVariable thing = ctx.makeVar();
                 TypeVariable r = ctx.makeVar();
-                ctx.add(new TypeConstraint(
+                constraints.add(new TypeConstraint(
                     r, src,
                     TypeConstraint.Type.IS_TYPE,
-                    new TypeConstraint.IsType(List.of(
-                        DataType.Type.INTEGER
-                    ), Optional.empty())
+                    new TypeConstraint.IsType(
+                        DataType.Type.INTEGER, Optional.empty()
+                    )
                 ));
-                return new Symbols.BuiltinContext(ctx, List.of(thing), r);
+                return new Symbols.BuiltinContext(constraints, List.of(thing), r);
             };
             symbols.add(
                 new Namespace(List.of("core", "hash")),

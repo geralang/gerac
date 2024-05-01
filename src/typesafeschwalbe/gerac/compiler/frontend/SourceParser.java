@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Optional;
 
 import typesafeschwalbe.gerac.compiler.Error;
@@ -161,7 +160,7 @@ public class SourceParser extends Parser {
                             AstNode.Type.VARIABLE,
                             new AstNode.Variable(
                                 isPublic, isMutable, name,
-                                new Ref<>(Optional.empty()), Optional.empty(),
+                                new Ref<>(Optional.empty()),
                                 Optional.empty()
                             ),
                             new Source(start.source, nameToken.source)
@@ -173,7 +172,7 @@ public class SourceParser extends Parser {
                         AstNode.Type.VARIABLE,
                         new AstNode.Variable(
                             isPublic, isMutable, name,
-                            new Ref<>(Optional.empty()), Optional.empty(),
+                            new Ref<>(Optional.empty()),
                             Optional.of(value)
                         ),
                         new Source(start.source, value.source)
@@ -736,12 +735,10 @@ public class SourceParser extends Parser {
                         AstNode.Type.CLOSURE,
                         new AstNode.Closure(
                             argumentNames,
-                            new ArrayList<>(),
-                            Optional.empty(),
                             new Ref<>(Optional.empty()),
-                            Optional.empty(), 
-                            new HashMap<>(), Optional.empty(),
-                            new HashSet<>(), body
+                            new Ref<>(Optional.empty()),
+                            new Ref<>(Optional.empty()),
+                            body
                         ),
                         new Source(start.source, endSource)
                     ));

@@ -20,10 +20,6 @@ public class DataType<T> {
         Map<String, T> memberTypes, boolean expandable
     ) implements DataTypeValue<T> {}
 
-    public static record OrderedObject<T>(
-        List<String> memberNames, List<T> memberTypes
-    ) implements DataTypeValue<T> {}
-
     public static record Closure<T>(
         List<T> argumentTypes, T returnType
     ) implements DataTypeValue<T> {}
@@ -35,6 +31,8 @@ public class DataType<T> {
     public enum Type {
         ANY,              // = null
         NUMERIC,          // = null
+        INDEXED,          // = null
+        REFERENCED,       // = null
         UNIT,             // = null
         BOOLEAN,          // = null
         INTEGER,          // = null
@@ -42,7 +40,6 @@ public class DataType<T> {
         STRING,           // = null
         ARRAY,            // Array
         UNORDERED_OBJECT, // UnorderedObject
-        ORDERED_OBJECT,   // OrderedObject
         CLOSURE,          // Closure
         UNION;            // Union
 
@@ -50,7 +47,9 @@ public class DataType<T> {
         public String toString() {
             switch(this) {
                 case ANY: return "any type";
-                case NUMERIC: return "a number";
+                case NUMERIC: return "an integer or a float";
+                case INDEXED: return "a string or an array";
+                case REFERENCED: return "an array or an object";
                 case UNIT: return "the unit value";
                 case BOOLEAN: return "a boolean";
                 case INTEGER: return "an integer";
@@ -58,7 +57,6 @@ public class DataType<T> {
                 case STRING: return "a string";
                 case ARRAY: return "an array";
                 case UNORDERED_OBJECT: return "an object";
-                case ORDERED_OBJECT: return "an object";
                 case CLOSURE: return "a closure";
                 case UNION: return "a union variant";
                 default:
@@ -66,17 +64,35 @@ public class DataType<T> {
             }
         }
 
-        public boolean isOneOf(Type... possibleTypes) {
-            return this.isOneOf(List.of(possibleTypes));
+        // public boolean isOneOf(Type... possibleTypes) {
+        //     return this.isOneOf(List.of(possibleTypes));
+        // }
+
+        // public boolean isOneOf(List<Type> possibleTypes) {
+        //     for(Type t: possibleTypes) {
+        //         if(this == t) {
+        //             return true;
+        //         }
+        //     }
+        //     return false;
+        // }
+
+        public boolean isNumeric() {
+            return this == NUMERIC
+                || this == INTEGER 
+                || this == FLOAT;
         }
 
-        public boolean isOneOf(List<Type> possibleTypes) {
-            for(Type t: possibleTypes) {
-                if(this == t) {
-                    return true;
-                }
-            }
-            return false;
+        public boolean isIndexed() {
+            return this == INDEXED
+                || this == ARRAY 
+                || this == STRING;
+        }
+
+        public boolean isReferenced() {
+            return this == REFERENCED
+                || this == UNORDERED_OBJECT 
+                || this == ARRAY;
         }
     }
 
@@ -113,6 +129,8 @@ public class DataType<T> {
         switch(this.type) {
             case ANY:
             case NUMERIC:
+            case INDEXED:
+            case REFERENCED:
             case UNIT:
             case BOOLEAN:
             case INTEGER:
@@ -139,16 +157,6 @@ public class DataType<T> {
                 return new DataType<>(
                     this.type,
                     new UnorderedObject<>(memberTypes, data.expandable),
-                    this.source
-                );
-            }
-            case ORDERED_OBJECT: {
-                OrderedObject<T> data = this.getValue();
-                List<R> memberTypes = data.memberTypes
-                    .stream().map(t -> f.apply(t)).toList();
-                return new DataType<>(
-                    this.type,
-                    new OrderedObject<>(data.memberNames, memberTypes),
                     this.source
                 );
             }

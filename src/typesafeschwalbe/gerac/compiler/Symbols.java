@@ -14,8 +14,7 @@ import typesafeschwalbe.gerac.compiler.backend.Ir;
 import typesafeschwalbe.gerac.compiler.backend.Value;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
-import typesafeschwalbe.gerac.compiler.types.TypeContext;
-import typesafeschwalbe.gerac.compiler.types.TypeValue;
+import typesafeschwalbe.gerac.compiler.types.TypeConstraint;
 import typesafeschwalbe.gerac.compiler.types.TypeVariable;
 
 public class Symbols {
@@ -37,7 +36,7 @@ public class Symbols {
     }
 
     public static record BuiltinContext(
-        TypeContext ctx,
+        List<TypeConstraint> constraints,
         List<TypeVariable> arguments,
         TypeVariable returned
     ) {}
@@ -47,15 +46,15 @@ public class Symbols {
         public static record Procedure(
             List<String> argumentNames,
             Optional<Function<Source, BuiltinContext>> builtinContext,
-            Optional<List<TypeValue>> argumentTypes,
-            Optional<TypeValue> returnType,
+            Optional<List<TypeVariable>> argumentTypes,
+            Optional<TypeVariable> returnType,
             Optional<List<AstNode>> body,
             Optional<Ir.Context> ir_context,
             Optional<List<Ir.Instr>> ir_body
         ) {}
 
         public static record Variable(
-            Optional<TypeValue> valueType,
+            Optional<TypeVariable> valueType,
             Optional<AstNode> valueNode,
             Optional<Value> value
         ) {}
@@ -230,8 +229,8 @@ public class Symbols {
     public boolean accessAllowed(
         Symbol accessedSymbol, Source accessSource
     ) {
-        boolean fileMatches = accessedSymbol.source.file
-            .equals(accessSource.file);
+        boolean fileMatches = accessedSymbol.source.file()
+            .equals(accessSource.file());
         return accessedSymbol.isPublic || fileMatches;
     }   
 

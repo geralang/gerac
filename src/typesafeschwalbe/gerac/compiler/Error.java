@@ -3,15 +3,21 @@ package typesafeschwalbe.gerac.compiler;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 
 import typesafeschwalbe.gerac.compiler.frontend.Lexer;
 
-public class Error {
+public record Error(
+    String message, 
+    Marking[] markings, 
+    Optional<Function<Boolean, String>> appended
+) {
 
-    public static class Marking {
+    public static record Marking(Type type, Source location, String note) {
 
         private enum Type {
             ERROR(
@@ -38,16 +44,6 @@ public class Error {
             }
         }
 
-        private final Type type;
-        public final Source location;
-        public final String note;
-
-        private Marking(Type type, Source location, String note) {
-            this.type = type;
-            this.location = location;
-            this.note = note;
-        }
-
         public static Marking error(Source location, String note) {
             return new Marking(Type.ERROR, location, note);
         }
@@ -62,23 +58,30 @@ public class Error {
 
     }
 
-
-    public final String message;
-    public final Marking[] markings;
-    public final Optional<Function<Boolean, String>> appended;
-
     public Error(String message, Marking... markings) {
-        this.message = message;
-        this.markings = markings;
-        this.appended = Optional.empty();
+        this(message, markings, Optional.empty());
     }
 
     public Error(
         String message, Function<Boolean, String> appended, Marking... markings
     ) {
-        this.message = message;
-        this.markings = markings;
-        this.appended = Optional.of(appended);
+        this(message, markings, Optional.of(appended));
+    }
+
+    @Override
+    public boolean equals(Object otherRaw) {
+        if(!(otherRaw instanceof Error)) { return false; }
+        Error other = (Error) otherRaw;
+        return this.message.equals(other.message)
+            && Arrays.equals(this.markings, other.markings)
+            && this.appended.equals(other.appended);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+            this.message, Arrays.hashCode(this.markings), this.appended
+        );
     }
 
     public String render(Map<String, String> files, boolean colored) {
@@ -107,7 +110,7 @@ public class Error {
         output.append(this.message);
         output.append("\n");
         for(Marking marked: this.markings) {
-            String fileContent = files.get(marked.location.file);
+            String fileContent = files.get(marked.location.file());
             if(fileContent == null) {
                 throw new IllegalArgumentException(
                     "An error source location refers to a file"
@@ -128,8 +131,8 @@ public class Error {
             while(true) {
                 boolean atEnd = charIdx >= fileContent.length();
                 char c = atEnd? '\0' : fileContent.charAt(charIdx);
-                if(charIdx < marked.location.endOffset) {
-                    boolean isMarked = charIdx >= marked.location.startOffset;
+                if(charIdx < marked.location.endOffset()) {
+                    boolean isMarked = charIdx >= marked.location.startOffset();
                     String markingColor = colored
                         ? marked.type.markingColor 
                         : "";
@@ -150,10 +153,10 @@ public class Error {
                     }
                     if(markedStartLineIdx == -1 && isMarked) {
                         markedStartLineIdx = lineIdx;
-                        markedStartLineOffset = (int) marked.location.startOffset
-                            - lineStart;
+                        markedStartLineOffset 
+                            = (int) marked.location.startOffset() - lineStart;
                     }
-                    if(charIdx + 1 == marked.location.endOffset) {
+                    if(charIdx + 1 == marked.location.endOffset()) {
                         lineMarked.append(" ");
                         lineMarked.append(noteColor);
                         lineMarked.append(marked.note);
@@ -192,7 +195,7 @@ public class Error {
             output.append(separationLineColor);
             output.append("╭─ ");
             output.append(locationColor);
-            output.append(marked.location.file);
+            output.append(marked.location.file());
             output.append(":");
             output.append(markedStartLineIdx + 1);
             output.append(":");

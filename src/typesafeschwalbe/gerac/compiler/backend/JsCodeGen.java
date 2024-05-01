@@ -12,7 +12,8 @@ import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 import typesafeschwalbe.gerac.compiler.types.DataType;
-import typesafeschwalbe.gerac.compiler.types.TypeValue;
+import typesafeschwalbe.gerac.compiler.types.TypeContext;
+import typesafeschwalbe.gerac.compiler.types.TypeVariable;
 
 public class JsCodeGen implements CodeGen {
 
@@ -171,7 +172,7 @@ public class JsCodeGen implements CodeGen {
     @FunctionalInterface
     private static interface BuiltInProcedure {
         void emit(
-            List<Ir.Variable> args, List<TypeValue> argt,
+            TypeContext tctx, List<Ir.Variable> args, List<TypeVariable> argt,
             Ir.Variable dest, StringBuilder out
         );
     }
@@ -179,7 +180,7 @@ public class JsCodeGen implements CodeGen {
     private void addBuiltins() {
         this.builtIns.put(
             new Namespace(List.of("core", "addr_eq")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
                 out.append(" = ");
                 this.emitVariable(args.get(0), out);
@@ -190,7 +191,7 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "tag_eq")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
                 out.append(" = ");
                 this.emitVariable(args.get(0), out);
@@ -201,10 +202,10 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "length")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
                 out.append(" = ");
-                if(argt.get(0).type == DataType.Type.ARRAY) {
+                if(tctx.get(argt.get(0)).type == DataType.Type.ARRAY) {
                     out.append("BigInt(");
                     this.emitVariable(args.get(0), out);
                     out.append(".length)");
@@ -218,7 +219,7 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "exhaust")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 out.append("while(");
                 this.emitVariable(args.get(0), out);
                 out.append("().tag == ");
@@ -230,7 +231,7 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "panic")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
                 out.append(" = ");
                 out.append("gera___panic(");
@@ -240,8 +241,8 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "as_str")),
-            (args, argt, dest, out) -> {
-                switch(argt.get(0).type) {
+            (tctx, args, argt, dest, out) -> {
+                switch(tctx.get(argt.get(0)).type) {
                     case UNIT: {
                         this.emitVariable(dest, out);
                         out.append(" = \"unit\";\n");
@@ -274,8 +275,7 @@ public class JsCodeGen implements CodeGen {
                         this.emitVariable(dest, out);
                         out.append(" = \"<array>\";\n");
                     } break;
-                    case UNORDERED_OBJECT:
-                    case ORDERED_OBJECT: {
+                    case UNORDERED_OBJECT: {
                         this.emitVariable(dest, out);
                         out.append(" = \"<object>\";\n");
                     } break;
@@ -284,8 +284,8 @@ public class JsCodeGen implements CodeGen {
                         out.append(" = \"<closure>\";\n");
                     } break;
                     case UNION: {
-                        TypeValue.Union<TypeValue> union = argt.get(0)
-                            .getValue();
+                        DataType.Union<TypeVariable> union
+                            = tctx.get(argt.get(0)).getValue();
                         out.append("switch(");
                         this.emitVariable(args.get(0), out);
                         out.append(".tag) {\n");
@@ -300,6 +300,15 @@ public class JsCodeGen implements CodeGen {
                         }
                         out.append("}\n");
                     } break;
+                    case ANY:
+                    case NUMERIC:
+                    case INDEXED:
+                    case REFERENCED: {
+                        out.append(
+                            "gera___panic(\"if you read this, that means that"
+                                + " the compiler fucked up real bad :(\");\n"
+                        );
+                    } break;
                     default: {
                         throw new RuntimeException("unhandled type!");
                     }
@@ -308,10 +317,10 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "as_int")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
                 out.append(" = ");
-                switch(argt.get(0).type) {
+                switch(tctx.get(argt.get(0)).type) {
                     case INTEGER: {
                         this.emitVariable(args.get(0), out);
                     } break;
@@ -319,6 +328,13 @@ public class JsCodeGen implements CodeGen {
                         out.append("BigInt(Math.floor(");
                         this.emitVariable(args.get(0), out);
                         out.append("))");
+                    } break;
+                    case ANY:
+                    case NUMERIC: {
+                        out.append(
+                            "gera___panic(\"if you read this, that means that"
+                                + " the compiler fucked up real bad :(\");\n"
+                        );
                     } break;
                     default: {
                         throw new RuntimeException(
@@ -331,10 +347,10 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "as_flt")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
                 out.append(" = ");
-                switch(argt.get(0).type) {
+                switch(tctx.get(argt.get(0)).type) {
                     case INTEGER: {
                         out.append("Number(");
                         this.emitVariable(args.get(0), out);
@@ -342,6 +358,13 @@ public class JsCodeGen implements CodeGen {
                     } break;
                     case FLOAT: {
                         this.emitVariable(args.get(0), out);
+                    } break;
+                    case ANY:
+                    case NUMERIC: {
+                        out.append(
+                            "gera___panic(\"if you read this, that means that"
+                                + " the compiler fucked up real bad :(\");\n"
+                        );
                     } break;
                     default: {
                         throw new RuntimeException(
@@ -354,7 +377,7 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "substring")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
                 out.append(" = gera___substring(");
                 this.emitVariable(args.get(0), out);
@@ -367,7 +390,7 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "concat")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
                 out.append(" = ");
                 this.emitVariable(args.get(0), out);
@@ -378,7 +401,7 @@ public class JsCodeGen implements CodeGen {
         );
         this.builtIns.put(
             new Namespace(List.of("core", "hash")),
-            (args, argt, dest, out) -> {
+            (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
                 out.append(" = ");
                 out.append("gera___hash(");
@@ -390,6 +413,7 @@ public class JsCodeGen implements CodeGen {
 
     private final Map<String, String> sourceFiles;
     private final Symbols symbols;
+    private final TypeContext typeContext;
     private final Ir.StaticValues staticValues;
     private final long maxCallDepth;
     private final Map<Namespace, BuiltInProcedure> builtIns;
@@ -398,10 +422,11 @@ public class JsCodeGen implements CodeGen {
 
     public JsCodeGen(
         Map<String, String> sourceFiles, Symbols symbols, 
-        Ir.StaticValues staticValues, long maxCallDepth
+        TypeContext typeContext, Ir.StaticValues staticValues, long maxCallDepth
     ) {
         this.sourceFiles = sourceFiles;
         this.symbols = symbols;
+        this.typeContext = typeContext;
         this.staticValues = staticValues;
         this.maxCallDepth = maxCallDepth;
         this.builtIns = new HashMap<>();
@@ -647,7 +672,7 @@ public class JsCodeGen implements CodeGen {
         out.append("gera___stack.push(");
         this.emitStringLiteral(path.toString(), out);
         out.append(", ");
-        this.emitStringLiteral(source.file, out);
+        this.emitStringLiteral(source.file(), out);
         out.append(", ");
         out.append(source.computeLine(this.sourceFiles));
         out.append(");\n");
@@ -925,9 +950,9 @@ public class JsCodeGen implements CodeGen {
                 out.append(" / ");
                 Ir.Context ctx = this.contextStack
                     .get(this.contextStack.size() - 1);
-                boolean isInteger = ctx.variableTypes
-                    .get(instr.arguments.get(1).index).type
-                    == DataType.Type.INTEGER;
+                boolean isInteger = this.typeContext
+                    .get(ctx.variableTypes.get(instr.arguments.get(1).index))
+                    .type == DataType.Type.INTEGER;
                 if(isInteger) {
                     this.emitIntDivisorVerify(
                         instr.arguments.get(1), data.source(), out
@@ -945,9 +970,9 @@ public class JsCodeGen implements CodeGen {
                 out.append(" % ");
                 Ir.Context ctx = this.contextStack
                     .get(this.contextStack.size() - 1);
-                boolean isInteger = ctx.variableTypes
-                    .get(instr.arguments.get(1).index).type
-                    == DataType.Type.INTEGER;
+                boolean isInteger = this.typeContext
+                    .get(ctx.variableTypes.get(instr.arguments.get(1).index))
+                    .type == DataType.Type.INTEGER;
                 if(isInteger) {
                     this.emitIntDivisorVerify(
                         instr.arguments.get(1), data.source(), out
@@ -1101,10 +1126,15 @@ public class JsCodeGen implements CodeGen {
                 } else {
                     Ir.Context ctx = this.contextStack
                         .get(this.contextStack.size() - 1);
-                    List<TypeValue> argt = instr.arguments.stream()
-                        .map(a -> ctx.variableTypes.get(a.index)).toList();
-                    this.builtIns.get(data.path())
-                        .emit(instr.arguments, argt, instr.dest.get(), out);
+                    this.builtIns.get(data.path()).emit(
+                        this.typeContext,
+                        instr.arguments, 
+                        instr.arguments.stream()
+                            .map(a -> ctx.variableTypes.get(a.index))
+                            .toList(), 
+                        instr.dest.get(), 
+                        out
+                    );
                 }
                 this.emitStackTracePop(out);
             } break;
@@ -1144,7 +1174,7 @@ public class JsCodeGen implements CodeGen {
         out.append("gera___verify_size(");
         this.emitVariable(size, out);
         out.append(", ");
-        this.emitStringLiteral(source.file, out);
+        this.emitStringLiteral(source.file(), out);
         out.append(", ");
         out.append(source.computeLine(this.sourceFiles));
         out.append(")");
@@ -1159,7 +1189,7 @@ public class JsCodeGen implements CodeGen {
         out.append(", ");
         this.emitVariable(accessed, out);
         out.append(".length, ");
-        this.emitStringLiteral(source.file, out);
+        this.emitStringLiteral(source.file(), out);
         out.append(", ");
         out.append(source.computeLine(this.sourceFiles));
         out.append(")");
@@ -1172,7 +1202,7 @@ public class JsCodeGen implements CodeGen {
         out.append("gera___verify_integer_divisor(");
         this.emitVariable(divisor, out);
         out.append(", ");
-        this.emitStringLiteral(source.file, out);
+        this.emitStringLiteral(source.file(), out);
         out.append(", ");
         out.append(source.computeLine(this.sourceFiles));
         out.append(")");

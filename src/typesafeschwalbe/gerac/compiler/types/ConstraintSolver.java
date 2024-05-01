@@ -17,11 +17,8 @@ import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.UnionFind;
-import typesafeschwalbe.gerac.compiler.Symbols.BuiltinContext;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
-import typesafeschwalbe.gerac.compiler.types.ConstraintGenerator.ProcedureUsage;
-import typesafeschwalbe.gerac.compiler.types.DataType.DataTypeValue;
 
 public class ConstraintSolver {
 
@@ -80,7 +77,6 @@ public class ConstraintSolver {
     private static record Scope(
         Symbols.Symbol symbol,
         int variant,
-        TypeContext ctx,
         Optional<List<TypeVariable>> arguments,
         TypeVariable returned,
         List<ConstraintGenerator.VariableUsage> varUsages,
@@ -88,6 +84,7 @@ public class ConstraintSolver {
     ) {}
 
     private Symbols symbols;
+    private TypeContext ctx;
     private ConstraintGenerator cGen;
     private List<Scope> scopeStack;
 
@@ -97,11 +94,12 @@ public class ConstraintSolver {
         return this.scopeStack.get(this.scopeStack.size() - 1);
     }
 
-    public List<Error> checkSymbols(Symbols symbols) {
+    public List<Error> checkSymbols(Symbols symbols, TypeContext ctx) {
         this.symbols = symbols;
-        List<Error> errors = new ArrayList<>();
+        this.ctx = ctx;
+        Set<Error> errors = new HashSet<>();
         for(Namespace path: symbols.allSymbolPaths()) {
-            this.cGen = new ConstraintGenerator(symbols);
+            this.cGen = new ConstraintGenerator(symbols, ctx);
             this.scopeStack = new LinkedList<>();
             Symbols.Symbol symbol = symbols.get(path).get();
             try {
@@ -125,145 +123,71 @@ public class ConstraintSolver {
                 errors.add(e.error);
             }
         }
-        return errors;
+        return new ArrayList<>(errors);
     }
 
-    private static record SolvedProcedure(
-        int variant,
-        boolean recursive,
-        List<TypeValue> arguments, TypeValue returned,
-        List<TypeVariable> argumentV, TypeVariable returnedV
-    ) {
-        private void unify(
-            Source accessSource,
-            List<TypeVariable> arguments, List<Source> argSources,
-            TypeVariable returned,
-            ConstraintSolver solver
-        ) throws ErrorException {
-            for(int argI = 0; argI < arguments.size(); argI += 1) {
-                TypeVariable argV = this.recursive
-                    ? this.argumentV.get(argI)
-                    : solver.asTypeVariable(this.arguments.get(argI));
-                solver.unifyVars(
-                    argV, arguments.get(argI), argSources.get(argI)
-                );
-            }
-            TypeVariable returnedV = this.recursive
-                ? this.returnedV
-                : solver.asTypeVariable(this.returned);
-            solver.unifyVars(returned, returnedV, accessSource);
-        }
-    }
-
+    private static record SolvedProcedure(int variant, TypeVariable returned) {}
+    
     private SolvedProcedure solveProcedure(
         Symbols.Symbol symbol, Symbols.Symbol.Procedure data,
-        Optional<List<TypeValue>> argumentTypes,
+        Optional<List<TypeVariable>> argumentTypes,
         Optional<Source> usageSource,
         Optional<List<Source>> argumentSources
     ) throws ErrorException {
         for(Scope scope: this.scopeStack) {
             if(scope.symbol != symbol) { continue; }
-            return new SolvedProcedure(
-                scope.variant,
-                true,
-                null, null,
-                scope.arguments.get(), scope.returned
-            );
-        }
-        if(argumentTypes.isPresent()) {
-            for(int varI = 0; varI < symbol.variantCount(); varI += 1) {
-                Symbols.Symbol.Procedure variant = symbol.getVariant(varI);
-                if(variant == null) { continue; }
-                boolean argsMatch = true;
-                for(
-                    int argI = 0; argI < variant.argumentTypes().get().size(); 
-                    argI += 1
-                ) {
-                    TypeValue argA = argumentTypes.get().get(argI);
-                    TypeValue varA = variant.argumentTypes().get().get(argI);
-                    if(!argA.deepEquals(varA)) {
-                        argsMatch = false;
-                        break;
-                    }
-                }
-                if(!argsMatch) { continue; }
-                return new SolvedProcedure(
-                    varI,
-                    false,
-                    variant.argumentTypes().get(), variant.returnType().get(),
-                    null, null
-                );
-            }
+            return new SolvedProcedure(scope.variant, scope.returned);
         }
         int variant = symbol.variantCount();
         Scope scope;
+        List<TypeConstraint> constraints;
         if(data.builtinContext().isPresent()) {
-            BuiltinContext builtin = data.builtinContext().get()
+            Symbols.BuiltinContext builtin = data.builtinContext().get()
                 .apply(usageSource.orElse(symbol.source));
             scope = new Scope(
                 symbol, variant,
-                builtin.ctx(),
                 Optional.of(builtin.arguments()), builtin.returned(),
                 List.of(), List.of()
             );
+            constraints = builtin.constraints();
         } else {
             ConstraintGenerator.ProcOutput cOutput = this.cGen
                 .generateProc(symbol, data);
             scope = new Scope(
                 symbol, variant,
-                cOutput.ctx(),
                 Optional.of(cOutput.arguments()), cOutput.returned(),
                 cOutput.varUsages(), cOutput.procUsages()
             );
+            constraints = cOutput.constraints();
         }
         this.scopeStack.add(scope);
-        if(data.argumentTypes().isPresent()) {
-            for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
-                TypeVariable argV = this
-                    .asTypeVariable(data.argumentTypes().get().get(argI));
-                this.unifyVars(
-                    argV, scope.arguments().get().get(argI), 
-                    data.argumentTypes().get().get(argI).source.get()
-                );
-            }
-        }
         if(argumentTypes.isPresent()) {
             for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
-                TypeVariable argV = this
-                    .asTypeVariable(argumentTypes.get().get(argI));
+                TypeVariable argV = argumentTypes.get().get(argI);
                 this.unifyVars(
                     argV, scope.arguments().get().get(argI), 
                     argumentSources.get().get(argI)
                 );
             }
         }
-        this.solveConstraints(scope.ctx().constraints);
+        this.solveConstraints(constraints);
         Optional<List<AstNode>> processedBody = Optional.empty();
         if(data.body().isPresent()) {
             processedBody = Optional.of(
                 this.processNodes(data.body().get())
             );
         }
-        List<TypeValue> rArguments = new ArrayList<>();
-        for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
-            rArguments.add(this.asTypeValue(scope.arguments().get().get(argI)));
-        }
-        TypeValue rReturned = this.asTypeValue(scope.returned());
         this.scopeStack.remove(this.scopeStack.size() - 1);
         symbol.addVariant(new Symbols.Symbol.Procedure(
             data.argumentNames(), data.builtinContext(),
-            Optional.of(rArguments), Optional.of(rReturned), 
+            Optional.of(scope.arguments.get()), Optional.of(scope.returned), 
             processedBody,
             Optional.empty(), Optional.empty()
         ));
-        return new SolvedProcedure(
-            variant, false,
-            rArguments, rReturned,
-            null, null
-        );
+        return new SolvedProcedure(variant, scope.returned);
     }
 
-    private TypeValue solveVariable(
+    private TypeVariable solveVariable(
         Symbols.Symbol symbol, Symbols.Symbol.Variable data
     ) throws ErrorException {
         for(Scope scope: this.scopeStack) {
@@ -277,7 +201,6 @@ public class ConstraintSolver {
             ));
         }
         if(symbol.variantCount() > 0) {
-            System.out.println(this.scopeStack);
             return symbol.<Symbols.Symbol.Variable>getVariant(0)
                 .valueType().get();
         }
@@ -285,28 +208,27 @@ public class ConstraintSolver {
             .generateVar(symbol, data);
         this.scopeStack.add(new Scope(
             symbol, 0,
-            cOutput.ctx(),
             Optional.empty(), cOutput.value(),
             cOutput.varUsages(), cOutput.procUsages()
         ));
-        this.solveConstraints(cOutput.ctx().constraints);
+        this.solveConstraints(cOutput.constraints());
         Optional<AstNode> processedNode = Optional.empty();
-        TypeValue value;
+        TypeVariable valueType;
         if(data.valueNode().isPresent()) {
             processedNode = Optional.of(
                 this.processNode(data.valueNode().get())
             );
-            value = this.asTypeValue(cOutput.value());
+            valueType = cOutput.value();
         } else {
-            value = data.valueType().get();
+            valueType = data.valueType().get();
         }
         this.scopeStack.remove(this.scopeStack.size() - 1);
         symbol.addVariant(new Symbols.Symbol.Variable(
-            Optional.of(value),
+            Optional.of(valueType),
             processedNode,
             Optional.empty()
         ));
-        return value;
+        return valueType;
     }
 
     private void solveConstraints(
@@ -320,119 +242,130 @@ public class ConstraintSolver {
     private void solveConstraint(
         TypeConstraint c
     ) throws ErrorException {
-        DataType<TypeVariable> t = this.scope().ctx
-            .substitutes.get(c.target.id);
+        DataType<TypeVariable> t = this.ctx.get(c.target);
         switch(c.type) {
             case IS_NUMERIC: {
                 DataType<TypeVariable> r = t;
-                if(r.type.isOneOf(DataType.Type.ANY)) {
+                if(r.type == DataType.Type.ANY) {
                     r = new DataType<>(
                         DataType.Type.NUMERIC, null, Optional.of(c.source)
                     );
                 }
-                if(!r.type.isOneOf(
-                    DataType.Type.NUMERIC,
-                    DataType.Type.INTEGER, DataType.Type.FLOAT
-                )) {
+                if(!r.type.isNumeric()) {
                     throw new ErrorException(
                         ConstraintSolver.makeInvalidTypeError(
                             r.source.get(), r.type.toString(),
-                            c.source, "a number"
+                            c.source, DataType.Type.NUMERIC.toString()
                         )
                     );
                 }
-                this.scope().ctx.substitutes.set(c.target.id, r);
+                this.ctx.set(c.target, r);
+            } break;
+            case IS_INDEXED: {
+                DataType<TypeVariable> r = t;
+                if(r.type == DataType.Type.ANY) {
+                    r = new DataType<>(
+                        DataType.Type.INDEXED, null, Optional.of(c.source)
+                    );
+                }
+                if(!r.type.isIndexed()) {
+                    throw new ErrorException(
+                        ConstraintSolver.makeInvalidTypeError(
+                            r.source.get(), r.type.toString(),
+                            c.source, DataType.Type.INDEXED.toString()
+                        )
+                    );
+                }
+                this.ctx.set(c.target, r);
+            } break;
+            case IS_REFERENCED: {
+                DataType<TypeVariable> r = t;
+                if(r.type == DataType.Type.ANY) {
+                    r = new DataType<>(
+                        DataType.Type.REFERENCED, null, Optional.of(c.source)
+                    );
+                }
+                if(!r.type.isReferenced()) {
+                    throw new ErrorException(
+                        ConstraintSolver.makeInvalidTypeError(
+                            r.source.get(), r.type.toString(),
+                            c.source, DataType.Type.REFERENCED.toString()
+                        )
+                    );
+                }
+                this.ctx.set(c.target, r);
             } break;
             case IS_TYPE: {
                 TypeConstraint.IsType data = c.getValue();
                 DataType<TypeVariable> r = t;
-                if(r.type == DataType.Type.ANY) {
-                    DataType.Type chosenT = data.oneOfTypes().get(0);
-                    DataTypeValue<TypeVariable> value;
-                    switch(chosenT) {
-                        case ANY: case NUMERIC: case UNIT:
-                        case BOOLEAN: case INTEGER: case FLOAT:
+                boolean replace = r.type == DataType.Type.ANY
+                    || (r.type == DataType.Type.NUMERIC
+                        && data.type().isNumeric())
+                    || (r.type == DataType.Type.INDEXED
+                        && data.type().isIndexed())
+                    || (r.type == DataType.Type.REFERENCED
+                        && data.type().isReferenced());
+                if(replace) {
+                    DataType.DataTypeValue<TypeVariable> tval;
+                    switch(data.type()) {
+                        case ANY:
+                        case UNIT:
+                        case BOOLEAN:
+                        case INTEGER:
+                        case FLOAT:
                         case STRING: {
-                            value = null;
-                        } break;
-                        case ARRAY: {
-                            value = new DataType.Array<>(
-                                this.scope().ctx.makeVar()
-                            );
+                            tval = null;
                         } break;
                         case UNORDERED_OBJECT: {
-                            value = new DataType.UnorderedObject<>(
+                            tval = new DataType.UnorderedObject<>(
                                 new HashMap<>(), true
                             );
                         } break;
-                        case ORDERED_OBJECT: {
-                            value = new DataType.OrderedObject<>(
-                                List.of(), List.of()
-                            );
-                        } break;
-                        case CLOSURE: {
-                            throw new RuntimeException(
-                                "PLEASE USE 'HAS_SIGNATURE' INSTEAD DUMBASS"
-                            );
-                        }
                         case UNION: {
-                            value = new DataType.Union<>(
+                            tval = new DataType.Union<>(
                                 new HashMap<>(), true
                             );
                         } break;
-                        default: {
+                        case NUMERIC:
+                        case INDEXED:
+                        case REFERENCED:
+                        case ARRAY:
+                        case CLOSURE:
+                            throw new RuntimeException(
+                                "should not be used with 'IS_TYPE'!"
+                            );
+                        default:
                             throw new RuntimeException("unhandled type!");
-                        }
                     }
                     r = new DataType<>(
-                        chosenT, value, Optional.of(c.source)
+                        data.type(), tval, Optional.of(c.source)
                     );
                 }
-                if(r.type == DataType.Type.NUMERIC) {
-                    if(data.oneOfTypes().contains(DataType.Type.INTEGER)) {
-                        r = new DataType<>(
-                            DataType.Type.INTEGER, null, Optional.of(c.source)
-                        );
-                    } else if(data.oneOfTypes().contains(DataType.Type.FLOAT)) {
-                        r = new DataType<>(
-                            DataType.Type.FLOAT, null, Optional.of(c.source)
-                        );
-                    }
-                }
-                if(!r.type.isOneOf(data.oneOfTypes())) {
-                    StringBuilder options = new StringBuilder();
-                    for(int ti = 0; ti < data.oneOfTypes().size(); ti += 1) {
-                        if(ti > 0) {
-                            if(ti == data.oneOfTypes().size() - 1) {
-                                options.append(" or ");
-                            } else {
-                                options.append(", ");
-                            }        
-                        }
-                        options.append(data.oneOfTypes().get(ti));
-                    }
+                if(r.type != data.type()) {
                     throw new ErrorException(
                         ConstraintSolver.makeInvalidTypeError(
                             r.source.get(),
                             r.type.toString(),
                             c.source,
-                            options
-                                + data.reason().map(rs -> " " + rs).orElse("")
+                            data.type().toString()
                         )
                     );
                 }
-                this.scope().ctx.substitutes.set(c.target.id, r);
+                this.ctx.set(c.target, r);
             } break;
             case HAS_ELEMENT: {
                 TypeConstraint.HasElement data = c.getValue();
                 DataType<TypeVariable> r = t;
-                if(r.type == DataType.Type.ANY) {
+                boolean replace = r.type == DataType.Type.ANY
+                    || r.type == DataType.Type.INDEXED
+                    || r.type == DataType.Type.REFERENCED;
+                if(replace) {
                     r = new DataType<>(
                         DataType.Type.ARRAY, 
                         new DataType.Array<>(data.type()), 
                         Optional.of(c.source)
                     );
-                    this.scope().ctx.substitutes.set(c.target.id, r);
+                    this.ctx.set(c.target, r);
                 }
                 if(r.type != DataType.Type.ARRAY) {
                     throw new ErrorException(ConstraintSolver.makeInvalidTypeError(
@@ -446,7 +379,9 @@ public class ConstraintSolver {
             case HAS_MEMBER: {
                 TypeConstraint.HasMember data = c.getValue();
                 DataType<TypeVariable> r = t;
-                if(r.type == DataType.Type.ANY) {
+                boolean replace = r.type == DataType.Type.ANY
+                    || r.type == DataType.Type.REFERENCED;
+                if(replace) {
                     Map<String, TypeVariable> members = new HashMap<>();
                     members.put(data.name(), data.type());
                     r = new DataType<>(
@@ -454,7 +389,7 @@ public class ConstraintSolver {
                         new DataType.UnorderedObject<>(members, true), 
                         Optional.of(c.source)
                     );
-                    this.scope().ctx.substitutes.set(c.target.id, r);
+                    this.ctx.set(c.target, r);
                 }
                 if(r.type != DataType.Type.UNORDERED_OBJECT) {
                     throw new ErrorException(ConstraintSolver.makeInvalidTypeError(
@@ -489,17 +424,19 @@ public class ConstraintSolver {
                 // of the following logic.
                 TypeConstraint.LimitMembers data = c.getValue();
                 DataType<TypeVariable> r = t;
-                if(r.type == DataType.Type.ANY) {
+                boolean replace = r.type == DataType.Type.ANY
+                    || r.type == DataType.Type.REFERENCED;
+                if(replace) {
                     Map<String, TypeVariable> members = new HashMap<>();
                     for(String member: data.names()) {
-                        members.put(member, this.scope().ctx.makeVar());
+                        members.put(member, this.ctx.makeVar());
                     }
                     r = new DataType<>(
                         DataType.Type.UNORDERED_OBJECT, 
                         new DataType.UnorderedObject<>(members, false), 
                         Optional.of(c.source)
                     );
-                    this.scope().ctx.substitutes.set(c.target.id, r);
+                    this.ctx.set(c.target, r);
                 }
                 // if(r.type != DataType.Type.UNORDERED_OBJECT) {
                 //     throw new ErrorException(TypeSolver.makeInvalidTypeError(
@@ -522,7 +459,7 @@ public class ConstraintSolver {
                     ),
                     r.source
                 );
-                this.scope().ctx.substitutes.set(c.target.id, r);
+                this.ctx.set(c.target, r);
             } break;
             case HAS_SIGNATURE: {
                 TypeConstraint.HasSignature data = c.getValue();
@@ -535,7 +472,7 @@ public class ConstraintSolver {
                         ), 
                         Optional.of(c.source)
                     );
-                    this.scope().ctx.substitutes.set(c.target.id, r);
+                    this.ctx.set(c.target, r);
                 }
                 if(r.type != DataType.Type.CLOSURE) {
                     throw new ErrorException(
@@ -582,7 +519,7 @@ public class ConstraintSolver {
                         new DataType.Union<>(variants, true), 
                         Optional.of(c.source)
                     );
-                    this.scope().ctx.substitutes.set(c.target.id, r);
+                    this.ctx.set(c.target, r);
                 }
                 if(r.type != DataType.Type.UNION) {
                     throw new ErrorException(
@@ -618,14 +555,14 @@ public class ConstraintSolver {
                 if(r.type == DataType.Type.ANY) {
                     Map<String, TypeVariable> variants = new HashMap<>();
                     for(String variant: data.names()) {
-                        variants.put(variant, this.scope().ctx.makeVar());
+                        variants.put(variant, this.ctx.makeVar());
                     }
                     r = new DataType<>(
                         DataType.Type.UNION, 
                         new DataType.Union<>(variants, false), 
                         Optional.of(c.source)
                     );
-                    this.scope().ctx.substitutes.set(c.target.id, r);
+                    this.ctx.set(c.target, r);
                 }
                 if(r.type != DataType.Type.UNION) {
                     throw new ErrorException(
@@ -655,7 +592,7 @@ public class ConstraintSolver {
                     ),
                     r.source
                 );
-                this.scope().ctx.substitutes.set(c.target.id, r);
+                this.ctx.set(c.target, r);
             } break;
             case UNIFY: {
                 TypeConstraint.Unify data = c.getValue();
@@ -675,7 +612,7 @@ public class ConstraintSolver {
         TypeVariable varA, TypeVariable varB, Source src,
         String pathDescription, List<Unification> encountered
     ) throws ErrorException {
-        UnionFind<DataType<TypeVariable>> types = this.scope().ctx.substitutes;
+        UnionFind<DataType<TypeVariable>> types = this.ctx.substitutes;
         int rootA = types.find(varA.id);
         int rootB = types.find(varB.id);
         if(rootA == rootB) {
@@ -704,21 +641,17 @@ public class ConstraintSolver {
     ) throws ErrorException {
         String pathD = (pathDescription.length() > 0? " of " : "")
             + pathDescription;
-        if(a.type == DataType.Type.ANY) {
+        if(a.type == DataType.Type.ANY) { return b; }
+        if(b.type == DataType.Type.ANY) { return a; }
+        if(a.type == DataType.Type.NUMERIC && b.type.isNumeric()) { return b; }
+        if(b.type == DataType.Type.NUMERIC && a.type.isNumeric()) { return a; }
+        if(a.type == DataType.Type.INDEXED && b.type.isIndexed()) { return b; }
+        if(b.type == DataType.Type.INDEXED && a.type.isIndexed()) { return a; }
+        if(a.type == DataType.Type.REFERENCED && b.type.isReferenced()) {
             return b;
         }
-        if(b.type == DataType.Type.ANY) {
-            return a;
-        }
-        if(a.type == DataType.Type.NUMERIC && b.type.isOneOf(
-            DataType.Type.FLOAT, DataType.Type.INTEGER
-        )) {
-            return b;
-        }
-        if(b.type == DataType.Type.NUMERIC && a.type.isOneOf(
-            DataType.Type.FLOAT, DataType.Type.INTEGER
-        )) {
-            return a;
+        if(b.type == DataType.Type.REFERENCED && a.type.isReferenced()) { 
+            return a; 
         }
         if(a.type != b.type) {
             throw new ErrorException(
@@ -731,6 +664,8 @@ public class ConstraintSolver {
         }
         switch(a.type) {
             case NUMERIC:
+            case INDEXED:
+            case REFERENCED:
             case UNIT:
             case BOOLEAN:
             case INTEGER:
@@ -835,7 +770,7 @@ public class ConstraintSolver {
                             dataA.returnType(), 
                             dataB.returnType(), 
                             src,
-                            "the closure return value" + pathD,
+                            "the closure return values" + pathD,
                             encountered
                         )
                     ),
@@ -892,57 +827,13 @@ public class ConstraintSolver {
                     a.source
                 );
             }
-            case ANY:
-            case ORDERED_OBJECT: {
+            case ANY: {
                 throw new RuntimeException("should not be encountered!");
             }
             default: {
                 throw new RuntimeException("unhandled type!");
             }
         }
-    }
-
-    private TypeValue asTypeValue(TypeVariable tvar) {
-        return this.asTypeValue(tvar, new HashMap<>());
-    }
-    private TypeValue asTypeValue(
-        TypeVariable tvar, Map<Integer, TypeValue> done
-    ) {
-        int tvarr = this.scope().ctx.substitutes.find(tvar.id);
-        TypeValue mapped = done.get(tvarr);
-        if(mapped != null) {
-            return mapped; 
-        }
-        TypeValue t = new TypeValue(
-            DataType.Type.ANY, null, null
-        );
-        done.put(tvarr, t);
-        DataType<TypeValue> tv = this.scope().ctx.substitutes.get(tvarr)
-            .map(ctvar -> this.asTypeValue(ctvar, done));
-        t.type = tv.type;
-        t.setValue(tv.getValue());
-        t.source = tv.source;
-        return t;
-    }
-
-    private TypeVariable asTypeVariable(DataType<TypeValue> tval) {
-        return this.asTypeVariable(tval, new HashMap<>());
-    }
-    private TypeVariable asTypeVariable(
-        DataType<TypeValue> tval, 
-        Map<DataType<TypeValue>, TypeVariable> done
-    ) {
-        TypeVariable mapped = done.get(tval);
-        if(mapped != null) {
-            return mapped;
-        }
-        TypeVariable r = this.scope().ctx.makeVar();
-        done.put(tval, r);
-        DataType<TypeVariable> rt = tval.map(
-            ctval -> this.asTypeVariable(ctval, done)
-        );
-        this.scope().ctx.substitutes.set(r.id, rt);
-        return r;
     }
 
     private List<AstNode> processNodes(
@@ -958,7 +849,7 @@ public class ConstraintSolver {
     private static record ProcCall(Namespace path, int variant) {}
 
     private ProcCall resolveProcCall(
-        ProcedureUsage p, List<Source> argSources
+        ConstraintGenerator.ProcedureUsage p, List<Source> argSources
     ) throws ErrorException {
         List<Namespace> fullPaths = this.symbols.allowedPathExpansions(
             p.shortPath(), this.scope().symbol, p.node().source
@@ -966,8 +857,6 @@ public class ConstraintSolver {
         if(fullPaths.size() == 0) {
             fullPaths.add(p.shortPath());
         }
-        List<TypeValue> arguments = p.arguments()
-            .stream().map(a -> this.asTypeValue(a)).toList();
         List<Error> errors = new ArrayList<>();
         for(int pathI = fullPaths.size() - 1; pathI >= 0; pathI -= 1) {
             Namespace fullPath = fullPaths.get(pathI);
@@ -980,9 +869,9 @@ public class ConstraintSolver {
                 continue;
             }
             Symbols.Symbol.Procedure symbolData = symbol.getValue();
-            if(arguments.size() != symbolData.argumentNames().size()) {
+            if(p.arguments().size() != symbolData.argumentNames().size()) {
                 int eArgC = symbolData.argumentNames().size();
-                int gArgC = arguments.size();
+                int gArgC = p.arguments().size();
                 errors.add(new Error(
                     "Invalid argument count",
                     Error.Marking.info(
@@ -1000,12 +889,14 @@ public class ConstraintSolver {
                 ));
                 continue;
             }
+            List<TypeVariable> attemptArgs = p.arguments()
+                .stream().map(this.ctx::copyVar).toList();
             SolvedProcedure solved;
             List<Scope> prevScopeStack = new LinkedList<>(this.scopeStack);
             try {
                 solved = this.solveProcedure(
                     symbol, symbolData,
-                    Optional.of(arguments),
+                    Optional.of(attemptArgs),
                     Optional.of(p.node().source), Optional.of(argSources)
                 );
             } catch(ErrorException e) {
@@ -1013,9 +904,14 @@ public class ConstraintSolver {
                 errors.add(e.error);
                 continue;
             }
-            solved.unify(
-                p.node().source, p.arguments(), argSources, p.returned(), this
-            );
+            for(int argI = 0; argI < attemptArgs.size(); argI += 1) {
+                this.unifyVars(
+                    attemptArgs.get(argI), 
+                    p.arguments().get(argI), 
+                    p.node().source
+                );
+            }
+            this.unifyVars(solved.returned, p.returned(), p.node().source);
             return new ProcCall(fullPath, solved.variant);
         }
         if(errors.size() == 0) {
@@ -1057,42 +953,19 @@ public class ConstraintSolver {
     }
 
     private AstNode processNode(AstNode node) throws ErrorException {
-        TypeValue rType;
-        if(node.resultTypeVar.isPresent()) {
-            rType = this.asTypeValue(node.resultTypeVar.get());
-        } else {
-            rType = new TypeValue(
-                DataType.Type.UNIT, null, Optional.of(node.source)
-            );
-        }
         switch(node.type) {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
-                Map<String, TypeValue> captureTypes = new HashMap<>();
-                for(String capture: data.captureTypeVars().keySet()) {
-                    captureTypes.put(
-                        capture,
-                        this.asTypeValue(
-                            data.captureTypeVars().get(capture)
-                        )
-                    );
-                }
                 return new AstNode(
                     node.type,
                     new AstNode.Closure(
                         data.argumentNames(),
-                        data.argumentTypeVars(),
-                        Optional.of(data.argumentTypeVars().stream().map(
-                            a -> this.asTypeValue(a)
-                        ).toList()),
-                        data.returnTypeVar(),
-                        Optional.of(this.asTypeValue(data.returnTypeVar().get().get())),
-                        data.captureTypeVars(),
-                        Optional.of(captureTypes),
-                        data.capturedNames(),
+                        new Ref<>(data.argumentTypes().get()),
+                        new Ref<>(data.returnType().get()),
+                        new Ref<>(data.captures().get()),
                         this.processNodes(data.body())
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case VARIABLE: {
@@ -1101,15 +974,12 @@ public class ConstraintSolver {
                     node.type,
                     new AstNode.Variable(
                         data.isPublic(), data.isMutable(), data.name(),
-                        data.valueTypeVar(),
-                        Optional.of(this.asTypeValue(
-                            data.valueTypeVar().get().get()
-                        )),
+                        new Ref<>(data.valueType().get()),
                         data.value().isPresent()
                             ? Optional.of(this.processNode(data.value().get()))
                             : Optional.empty()
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case CASE_BRANCHING: {
@@ -1126,7 +996,7 @@ public class ConstraintSolver {
                         branchBodies, 
                         this.processNodes(data.elseBody())
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case CASE_CONDITIONAL: {
@@ -1138,7 +1008,7 @@ public class ConstraintSolver {
                         this.processNodes(data.ifBody()),
                         this.processNodes(data.elseBody())
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case CASE_VARIANT: {
@@ -1159,11 +1029,12 @@ public class ConstraintSolver {
                             )
                             : Optional.empty()
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case CALL: {
                 AstNode.Call data = node.getValue();
+                List<AstNode> arguments = this.processNodes(data.arguments());
                 for(
                     ConstraintGenerator.ProcedureUsage procUsage
                         : this.scope().procUsages
@@ -1177,18 +1048,18 @@ public class ConstraintSolver {
                         AstNode.Type.PROCEDURE_CALL,
                         new AstNode.ProcedureCall(
                             call.path, call.variant,
-                            this.processNodes(data.arguments())
+                            arguments
                         ),
-                        node.source, rType
+                        node.source, node.resultType
                     );
                 }
                 return new AstNode(
                     node.type,
                     new AstNode.Call(
                         this.processNode(data.called()),
-                        this.processNodes(data.arguments())
+                        arguments
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case METHOD_CALL: {
@@ -1199,7 +1070,7 @@ public class ConstraintSolver {
                         this.processNode(data.called()), data.memberName(), 
                         this.processNodes(data.arguments())
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case OBJECT_LITERAL: {
@@ -1212,7 +1083,7 @@ public class ConstraintSolver {
                 }
                 return new AstNode(
                     node.type, new AstNode.ObjectLiteral(values),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case ARRAY_LITERAL: {
@@ -1220,7 +1091,7 @@ public class ConstraintSolver {
                 return new AstNode(
                     node.type, 
                     new AstNode.ArrayLiteral(this.processNodes(data.values())), 
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case OBJECT_ACCESS: {
@@ -1231,7 +1102,7 @@ public class ConstraintSolver {
                         this.processNode(data.accessed()),
                         data.memberName()
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case BOOLEAN_LITERAL:
@@ -1240,7 +1111,7 @@ public class ConstraintSolver {
             case STRING_LITERAL:
             case UNIT_LITERAL: {
                 return new AstNode(
-                    node.type, node.getValue(), node.source, rType
+                    node.type, node.getValue(), node.source, node.resultType
                 );
             }
             case ASSIGNMENT:
@@ -1266,7 +1137,7 @@ public class ConstraintSolver {
                         this.processNode(data.left()),
                         this.processNode(data.right())
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case RETURN: 
@@ -1279,7 +1150,7 @@ public class ConstraintSolver {
                     new AstNode.MonoOp(
                         this.processNode(data.value())
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case MODULE_ACCESS: {
@@ -1292,30 +1163,29 @@ public class ConstraintSolver {
                     Symbols.Symbol symbol = this.symbols
                         .get(procUsage.shortPath()).get();
                     Symbols.Symbol.Procedure symbolData = symbol.getValue();
-                    List<TypeValue> arguments = procUsage.arguments()
-                        .stream().map(a -> this.asTypeValue(a)).toList();
                     List<Source> argSources = symbolData.argumentNames()
                         .stream().map(a -> node.source).toList();
                     SolvedProcedure solved = this.solveProcedure(
                         symbol, symbolData, 
-                        Optional.of(arguments),
+                        Optional.of(procUsage.arguments()),
                         Optional.of(node.source),
                         Optional.of(argSources)
                     );
-                    solved.unify(
-                        node.source, procUsage.arguments(), argSources, 
-                        procUsage.returned(), this
+                    this.unifyVars(
+                        solved.returned, procUsage.returned(),
+                        procUsage.node().source
                     );
                     // 'std::math::pow' -> '|x, n| std::math::pow(x, n)'
                     List<AstNode> argNodes = new ArrayList<>();
-                    for(int argI = 0; argI < arguments.size(); argI += 1) {
+                    int argC = procUsage.arguments().size();
+                    for(int argI = 0; argI < argC; argI += 1) {
                         argNodes.add(new AstNode(
                             AstNode.Type.VARIABLE_ACCESS,
                             new AstNode.VariableAccess(
                                 symbolData.argumentNames().get(argI)
                             ),
                             node.source,
-                            arguments.get(argI)
+                            procUsage.arguments().get(argI)
                         ));
                     }
                     AstNode closureValue = new AstNode(
@@ -1331,21 +1201,20 @@ public class ConstraintSolver {
                         AstNode.Type.CLOSURE,
                         new AstNode.Closure(
                             symbolData.argumentNames(),
-                            List.of(), Optional.of(arguments),
-                            new Ref<>(Optional.empty()), Optional.of(solved.returned),
-                            new HashMap<>(), Optional.of(new HashMap<>()),
-                            new HashSet<>(),
+                            new Ref<>(Optional.of(procUsage.arguments())),
+                            new Ref<>(Optional.of(solved.returned)),
+                            new Ref<>(Optional.of(new HashMap<>())),
                             List.of(new AstNode(
                                 AstNode.Type.RETURN,
                                 new AstNode.MonoOp(closureValue),
                                 node.source,
-                                new TypeValue(
+                                this.ctx.makeVar(new DataType<>(
                                     DataType.Type.UNIT, null,
                                     Optional.of(node.source)
-                                )
+                                ))
                             ))
                         ),
-                        node.source, rType
+                        node.source, node.resultType
                     );
                 }
                 for(
@@ -1356,18 +1225,17 @@ public class ConstraintSolver {
                     Symbols.Symbol symbol = this.symbols
                         .get(varUsage.fullPath()).get();
                     Symbols.Symbol.Variable symbolData = symbol.getValue();
-                    TypeValue valueType = this
+                    TypeVariable valueType = this
                         .solveVariable(symbol, symbolData);
-                    TypeVariable valueTypeVar = this.asTypeVariable(valueType);
                     this.unifyVars(
-                        varUsage.value(), valueTypeVar, node.source
+                        varUsage.value(), valueType, node.source
                     );
                     return new AstNode(
                         AstNode.Type.MODULE_ACCESS,
                         new AstNode.ModuleAccess(
                             varUsage.fullPath(), Optional.of(0)
                         ),
-                        node.source, rType
+                        node.source, node.resultType
                     );
                 }
                 String varName = data.path().elements()
@@ -1375,7 +1243,7 @@ public class ConstraintSolver {
                 return new AstNode(
                     AstNode.Type.VARIABLE_ACCESS,
                     new AstNode.VariableAccess(varName),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case VARIANT_LITERAL: {
@@ -1386,7 +1254,7 @@ public class ConstraintSolver {
                         data.variantName(),
                         this.processNode(data.value())
                     ),
-                    node.source, rType
+                    node.source, node.resultType
                 );
             }
             case PROCEDURE:
