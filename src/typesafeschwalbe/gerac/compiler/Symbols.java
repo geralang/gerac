@@ -70,6 +70,7 @@ public class Symbols {
         public final Namespace[] usages;
         private Object value;
         private final List<Object> variants;
+        private final Map<Integer, Integer> mappedVariants;
         public final Optional<String> externalName;
 
         public Symbol(
@@ -84,6 +85,7 @@ public class Symbols {
             this.usages = usages;
             this.value = value;
             this.variants = new ArrayList<>();
+            this.mappedVariants = new HashMap<>();
             this.externalName = externalName;
         }
 
@@ -100,13 +102,20 @@ public class Symbols {
         }
         @SuppressWarnings("unchecked")
         public <T> T getVariant(int variantIdx) {
-            return (T) this.variants.get(variantIdx);
+            return (T) this.variants.get(this.mappedVariantIdx(variantIdx));
         }
         public void addVariant(Object value) {
             this.variants.add(value);
         }
         public void setVariant(int variantIdx, Object value) {
-            this.variants.set(variantIdx, value);
+            this.variants.set(this.mappedVariantIdx(variantIdx), value);
+        }
+        public void mapVariantIdx(int oldIdx, int newIdx) {
+            this.mappedVariants.put(oldIdx, newIdx);
+        }
+        public int mappedVariantIdx(int idx) {
+            Integer mapped = this.mappedVariants.get(idx);
+            return mapped == null? idx : mapped;
         }
 
     }

@@ -662,6 +662,7 @@ public class ConstraintSolver {
                 )
             );
         }
+        DataType.DataTypeValue<TypeVariable> value;
         switch(a.type) {
             case NUMERIC:
             case INDEXED:
@@ -671,22 +672,18 @@ public class ConstraintSolver {
             case INTEGER:
             case FLOAT:
             case STRING: {
-                return a;
-            }
+                value = null;
+            } break;
             case ARRAY: {
                 DataType.Array<TypeVariable> dataA = a.getValue();
                 DataType.Array<TypeVariable> dataB = b.getValue();
-                return new DataType<>(
-                    a.type,
-                    new DataType.Array<>(this.unifyVars(
-                        dataA.elementType(), dataB.elementType(), 
-                        src,
-                        "the array element types" + pathD,
-                        encountered
-                    )),
-                    a.source
-                );
-            }
+                value = new DataType.Array<>(this.unifyVars(
+                    dataA.elementType(), dataB.elementType(), 
+                    src,
+                    "the array element types" + pathD,
+                    encountered
+                ));
+            } break;
             case UNORDERED_OBJECT: {
                 DataType.UnorderedObject<TypeVariable> dataA = a.getValue();
                 DataType.UnorderedObject<TypeVariable> dataB = b.getValue();
@@ -725,14 +722,10 @@ public class ConstraintSolver {
                         ));
                     }
                 }
-                return new DataType<>(
-                    a.type,
-                    new DataType.UnorderedObject<>(
-                        members, dataA.expandable() && dataB.expandable()
-                    ),
-                    a.source
+                value = new DataType.UnorderedObject<>(
+                    members, dataA.expandable() && dataB.expandable()
                 );
-            }
+            } break;
             case CLOSURE: {
                 DataType.Closure<TypeVariable> dataA = a.getValue();
                 DataType.Closure<TypeVariable> dataB = b.getValue();
@@ -762,21 +755,17 @@ public class ConstraintSolver {
                         encountered
                     ));
                 }
-                return new DataType<>(
-                    a.type,
-                    new DataType.Closure<>(
-                        arguments, 
-                        this.unifyVars(
-                            dataA.returnType(), 
-                            dataB.returnType(), 
-                            src,
-                            "the closure return values" + pathD,
-                            encountered
-                        )
-                    ),
-                    a.source
+                value = new DataType.Closure<>(
+                    arguments, 
+                    this.unifyVars(
+                        dataA.returnType(), 
+                        dataB.returnType(), 
+                        src,
+                        "the closure return values" + pathD,
+                        encountered
+                    )
                 );
-            }
+            } break;
             case UNION: {
                 DataType.Union<TypeVariable> dataA = a.getValue();
                 DataType.Union<TypeVariable> dataB = b.getValue();
@@ -819,14 +808,10 @@ public class ConstraintSolver {
                         ));
                     }
                 }
-                return new DataType<>(
-                    a.type,
-                    new DataType.Union<>(
-                        variants, dataA.expandable() && dataB.expandable()
-                    ),
-                    a.source
+                value = new DataType.Union<>(
+                    variants, dataA.expandable() && dataB.expandable()
                 );
-            }
+            } break;
             case ANY: {
                 throw new RuntimeException("should not be encountered!");
             }
@@ -834,6 +819,9 @@ public class ConstraintSolver {
                 throw new RuntimeException("unhandled type!");
             }
         }
+        return new DataType<>(
+            a.type, value, a.source
+        );
     }
 
     private List<AstNode> processNodes(

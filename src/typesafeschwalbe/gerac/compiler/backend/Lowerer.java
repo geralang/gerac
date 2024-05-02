@@ -66,6 +66,32 @@ public class Lowerer {
                 variantI += 1
             ) {
                 Symbols.Symbol.Procedure variant = symbol.getVariant(variantI);
+                boolean mapped = false;
+                for(int cVarI = 0; cVarI < variantI; cVarI += 1) {
+                    Symbols.Symbol.Procedure cVariant = symbol
+                        .getVariant(cVarI);
+                    boolean equals = true;
+                    for(
+                        int argI = 0; 
+                        argI < variant.argumentTypes().get().size(); argI += 1
+                    ) {
+                        if(this.typeContext.deepEquals(
+                            variant.argumentTypes().get().get(argI),
+                            cVariant.argumentTypes().get().get(argI)
+                        )) { continue; }
+                        equals = false;
+                        break;
+                    }
+                    equals &= this.typeContext.deepEquals(
+                        variant.returnType().get(), cVariant.returnType().get()
+                    );
+                    if(!equals) { continue; }
+                    symbol.setVariant(variantI, null);
+                    symbol.mapVariantIdx(variantI, cVarI);
+                    mapped = true;
+                    break;
+                }
+                if(mapped) { continue; }
                 this.context = new Ir.Context();
                 this.enterBlock();
                 for(

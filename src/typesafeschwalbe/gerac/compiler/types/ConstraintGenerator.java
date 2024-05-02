@@ -25,7 +25,6 @@ public class ConstraintGenerator {
         private final Map<String, Boolean> initialized = new HashMap<>();
         private final Map<String, Boolean> mutable = new HashMap<>();
         private final Set<String> initializes = new HashSet<>();
-        private final Set<String> captures = new HashSet<>();
         private boolean alwaysReturns = false;
 
         private Block() {}
@@ -33,6 +32,7 @@ public class ConstraintGenerator {
 
     private static record CallFrame(
         List<TypeVariable> arguments,
+        Set<String> captures,
         TypeVariable returned,
         List<Block> blocks,
         Source source
@@ -124,7 +124,8 @@ public class ConstraintGenerator {
 
     private void enterFrame(List<String> argumentNames, Source source) {
         this.stack.add(new CallFrame(
-            new ArrayList<>(), this.ctx.makeVar(), new LinkedList<>(), source
+            new ArrayList<>(), new HashSet<>(), this.ctx.makeVar(), 
+            new LinkedList<>(), source
         ));
         this.enterBlock();
         for(String argName: argumentNames) {
@@ -184,12 +185,6 @@ public class ConstraintGenerator {
                 }
             }
             alwaysReturns &= branch.alwaysReturns;
-            for(String captureName: branch.captures) {
-                if(this.block().variables.containsKey(captureName)) {
-                    continue;
-                }
-                this.block().captures.add(captureName);
-            }
         }
         if(initializes != null) {
             for(String initName: initializes) {
@@ -233,10 +228,10 @@ public class ConstraintGenerator {
                 this.enterFrame(data.argumentNames(), node.source);
                 this.walkBlock(data.body());
                 CallFrame frame = this.frame();
-                Block block = this.block();
                 this.exitFrame();
                 data.captures().set(Optional.of(new HashMap<>()));
-                for(String capture: block.captures) {
+                System.out.println(frame.captures);
+                for(String capture: frame.captures) {
                     TypeVariable captureVar = null;
                     for(
                         int frameI = this.stack.size() - 1; 
@@ -775,8 +770,11 @@ public class ConstraintGenerator {
                                 if(!initialized && assigned) {
                                     this.block().initializes.add(name);
                                 }
-                                if(this.frame() != frame) {
-                                    this.block().captures.add(name);
+                                for(
+                                    int mFrameI = this.stack.size() - 1; 
+                                    mFrameI > frameI; mFrameI -= 1
+                                ) {
+                                    this.stack.get(frameI).captures.add(name);
                                 }
                             }
                             return Optional.of(block.variables.get(name));

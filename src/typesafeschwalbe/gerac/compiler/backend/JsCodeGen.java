@@ -601,6 +601,7 @@ public class JsCodeGen implements CodeGen {
                 variantI < symbol.variantCount(); 
                 variantI += 1
             ) {
+                if(symbol.mappedVariantIdx(variantI) != variantI) { continue; }
                 Symbols.Symbol.Procedure variantData = symbol
                     .getVariant(variantI);
                 out.append("function ");
@@ -634,9 +635,12 @@ public class JsCodeGen implements CodeGen {
     private void emitContextInit(StringBuilder out) {
         int ctxI = this.contextStack.size() - 1;
         Ir.Context ctx = this.contextStack.get(ctxI);
-        out.append("const captured");
-        out.append(ctxI);
-        out.append(" = {};\n");
+        for(String capturedName: ctx.capturedNames.values()) {
+            System.out.println(capturedName);
+            out.append("const captured_");
+            out.append(capturedName);
+            out.append(" = { value: undefined };\n");
+        }
         for(int varI = 0; varI < ctx.variableTypes.size(); varI += 1) {
             if(ctx.capturedNames.containsKey(varI)) { continue; }
             out.append("let local");
@@ -655,14 +659,13 @@ public class JsCodeGen implements CodeGen {
         int ctxI = this.contextStack.size() - 1;
         Ir.Context ctx = this.contextStack.get(ctxI);
         String capturedName = ctx.capturedNames.get(v.index);
-        if(capturedName == null) {
+        if(capturedName != null) {
+            out.append("captured_");
+            out.append(capturedName);
+            out.append(".value");
+        } else {
             out.append("local");
             out.append(v.index);
-        } else {
-            out.append("captured");
-            out.append(ctxI);
-            out.append(".");
-            out.append(capturedName);
         }
     }
 
@@ -894,18 +897,16 @@ public class JsCodeGen implements CodeGen {
             case READ_CAPTURE: {
                 Ir.Instr.CaptureAccess data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
-                out.append(" = captured");
-                out.append(this.contextStack.size() - 2);
-                out.append(".");
+                out.append(" = captured_");
                 out.append(data.captureName());
+                out.append(".value");
                 out.append(";\n");
             } break;
             case WRITE_CAPTURE: {
                 Ir.Instr.CaptureAccess data = instr.getValue();
-                out.append("captured");
-                out.append(this.contextStack.size() - 2);
-                out.append(".");
+                out.append("captured_");
                 out.append(data.captureName());
+                out.append(".value");
                 out.append(" = ");
                 this.emitVariable(instr.arguments.get(0), out);
                 out.append(";\n");
@@ -1113,7 +1114,11 @@ public class JsCodeGen implements CodeGen {
                     if(isExternal) {
                         out.append(symbol.externalName.get());
                     } else if(hasBody) {
-                        this.emitVariant(data.path(), data.variant(), out);
+                        this.emitVariant(
+                            data.path(), 
+                            symbol.mappedVariantIdx(data.variant()), 
+                            out
+                        );
                     }
                     out.append("(");
                     for(int argI = 0; argI < instr.arguments.size(); argI += 1) {

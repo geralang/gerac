@@ -23,7 +23,7 @@ public class Compiler {
     ) {
         Symbols symbols = new Symbols();
         TypeContext typeContext = new TypeContext();
-        BuiltIns.addParsedFiles(files);
+        //BuiltIns.addParsedFiles(files);
         BuiltIns.addSymbols(typeContext, symbols);
         for(String fileName: files.keySet()) {
             String fileContent = files.get(fileName);
