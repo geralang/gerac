@@ -296,17 +296,17 @@ public class Lexer {
                 this.next();
                 if(this.current() == '=') {
                     this.next();
-                    return this.makeToken("<=", Token.Type.LESS_THAN);
+                    return this.makeToken("<=", Token.Type.LESS_THAN_EQUAL);
                 } else {
-                    return this.makeToken("<", Token.Type.LESS_THAN_EQUAL);
+                    return this.makeToken("<", Token.Type.LESS_THAN);
                 }
             case '>':
                 this.next();
                 if(this.current() == '=') {
                     this.next();
-                    return this.makeToken(">=", Token.Type.GREATER_THAN);
+                    return this.makeToken(">=", Token.Type.GREATER_THAN_EQUAL);
                 } else {
-                    return this.makeToken(">", Token.Type.GREATER_THAN_EQUAL);
+                    return this.makeToken(">", Token.Type.GREATER_THAN);
                 }
             case '!':
                 this.next();

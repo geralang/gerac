@@ -160,57 +160,50 @@ public class Lowerer {
     Ir.StaticValue.Closure lowerClosureValue(
         Value.Closure v
     ) throws ErrorException {
-        boolean isEmpty = v.captureTypes.isEmpty();
-        Map<String, Ir.StaticValue> captureValues = null;
-        List<TypeVariable> argumentTypes = null;
-        Ir.Context context = null;
-        List<Ir.Instr> body = null;
-        if(!isEmpty) {
-            captureValues = new HashMap<>();
-            for(String capture: v.captureTypes.keySet()) {
-                Value captureValue = null;
-                for(
-                    int frameI = v.environment.size() - 1; 
-                    frameI >= 0; 
-                    frameI -= 1
-                ) {
-                    Map<String, Optional<Value>> frame = v.environment
-                        .get(frameI);
-                    if(!frame.containsKey(capture)) { continue; }
-                    captureValue = frame.get(capture).get();
-                    break;
-                }
-                if(captureValue == null) {
-                    throw new RuntimeException("capture value should exist!");
-                }
-                captureValues.put(capture, this.staticValues.add(captureValue));
-            }
-            argumentTypes = v.argumentTypes;
-            Ir.Context prevContext = this.context;
-            List<BlockVariables> prevVars = this.variableStack;
-            this.context = new Ir.Context();
-            this.variableStack = new LinkedList<>();
-            this.enterBlock();
+        Map<String, Ir.StaticValue> captureValues = new HashMap<>();
+        for(String capture: v.captureTypes.keySet()) {
+            Value captureValue = null;
             for(
-                int argI = 0; 
-                argI < v.argumentNames.size(); 
-                argI += 1
+                int frameI = v.environment.size() - 1; 
+                frameI >= 0; 
+                frameI -= 1
             ) {
-                String argName = v.argumentNames.get(argI);
-                TypeVariable argType = v.argumentTypes.get(argI);
-                Ir.Variable variable = this.context
-                    .allocateArgument(argType);
-                this.variables().variables.put(argName, variable);
-                this.variables().lastUpdates.put(argName, variable.version);
+                Map<String, Optional<Value>> frame = v.environment
+                    .get(frameI);
+                if(!frame.containsKey(capture)) { continue; }
+                captureValue = frame.get(capture).get();
+                break;
             }
-            this.lowerNodes(v.body);
-            body = this.exitBlock();
-            context = this.context;
-            this.context = prevContext;
-            this.variableStack = prevVars;
+            if(captureValue == null) {
+                throw new RuntimeException("capture value should exist!");
+            }
+            captureValues.put(capture, this.staticValues.add(captureValue));
         }
+        List<TypeVariable> argumentTypes = v.argumentTypes;
+        Ir.Context prevContext = this.context;
+        List<BlockVariables> prevVars = this.variableStack;
+        this.context = new Ir.Context();
+        this.variableStack = new LinkedList<>();
+        this.enterBlock();
+        for(
+            int argI = 0; 
+            argI < v.argumentNames.size(); 
+            argI += 1
+        ) {
+            String argName = v.argumentNames.get(argI);
+            TypeVariable argType = v.argumentTypes.get(argI);
+            Ir.Variable variable = this.context
+                .allocateArgument(argType);
+            this.variables().variables.put(argName, variable);
+            this.variables().lastUpdates.put(argName, variable.version);
+        }
+        this.lowerNodes(v.body);
+        List<Ir.Instr> body = this.exitBlock();
+        Ir.Context context = this.context;
+        this.context = prevContext;
+        this.variableStack = prevVars;
         return new Ir.StaticValue.Closure(
-            v, isEmpty, captureValues, argumentTypes, context, body
+            v, captureValues, argumentTypes, context, body
         );
     }
 

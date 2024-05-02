@@ -166,7 +166,6 @@ public class ConstraintGenerator {
                 )
             ));
         }
-        this.exitBlock();
         this.stack.remove(this.stack.size() - 1);
     }
 
@@ -230,7 +229,6 @@ public class ConstraintGenerator {
                 CallFrame frame = this.frame();
                 this.exitFrame();
                 data.captures().set(Optional.of(new HashMap<>()));
-                System.out.println(frame.captures);
                 for(String capture: frame.captures) {
                     TypeVariable captureVar = null;
                     for(
@@ -774,7 +772,7 @@ public class ConstraintGenerator {
                                     int mFrameI = this.stack.size() - 1; 
                                     mFrameI > frameI; mFrameI -= 1
                                 ) {
-                                    this.stack.get(frameI).captures.add(name);
+                                    this.stack.get(mFrameI).captures.add(name);
                                 }
                             }
                             return Optional.of(block.variables.get(name));

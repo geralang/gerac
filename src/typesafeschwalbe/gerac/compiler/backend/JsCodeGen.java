@@ -105,6 +105,7 @@ public class JsCodeGen implements CodeGen {
             }
             gera___stack.push("<array-init>", file, line);
             gera___panic(`the value ${size} is not a valid array size`);
+
         }
 
         function gera___verify_index(index, length, file, line) {
@@ -329,7 +330,6 @@ public class JsCodeGen implements CodeGen {
                         this.emitVariable(args.get(0), out);
                         out.append("))");
                     } break;
-                    case ANY:
                     case NUMERIC: {
                         out.append(
                             "gera___panic(\"if you read this, that means that"
@@ -349,30 +349,9 @@ public class JsCodeGen implements CodeGen {
             new Namespace(List.of("core", "as_flt")),
             (tctx, args, argt, dest, out) -> {
                 this.emitVariable(dest, out);
-                out.append(" = ");
-                switch(tctx.get(argt.get(0)).type) {
-                    case INTEGER: {
-                        out.append("Number(");
-                        this.emitVariable(args.get(0), out);
-                        out.append(")");
-                    } break;
-                    case FLOAT: {
-                        this.emitVariable(args.get(0), out);
-                    } break;
-                    case ANY:
-                    case NUMERIC: {
-                        out.append(
-                            "gera___panic(\"if you read this, that means that"
-                                + " the compiler fucked up real bad :(\");\n"
-                        );
-                    } break;
-                    default: {
-                        throw new RuntimeException(
-                            "should not be encountered!"
-                        );
-                    }
-                }
-                out.append(";\n");
+                out.append(" = Number(");
+                this.emitVariable(args.get(0), out);
+                out.append(");\n");
             }
         );
         this.builtIns.put(
@@ -505,10 +484,11 @@ public class JsCodeGen implements CodeGen {
                     : "false"
             );
         } else if(v instanceof Ir.StaticValue.Int) {
+            out.append("BigInt.asIntN(64, ");
             out.append(String.valueOf(
                 v.<Ir.StaticValue.Int>getValue().value
             ));
-            out.append("n");
+            out.append("n)");
         } else if(v instanceof Ir.StaticValue.Float) {
             out.append(String.valueOf(
                 v.<Ir.StaticValue.Float>getValue().value
@@ -556,28 +536,25 @@ public class JsCodeGen implements CodeGen {
             }
         } else if(v instanceof Ir.StaticValue.Closure) {
             Ir.StaticValue.Closure data = v.getValue();
-            if(!data.isEmpty) {
-                this.emitValueRef(v, out);
-                out.append(" = (function() {\n");
-                out.append("const captured0 = {}\n");
-                for(String capture: data.captureValues.keySet()) {
-                    out.append("captured0.");
-                    out.append(capture);
-                    out.append(" = ");
-                    this.emitValueRef(data.captureValues.get(capture), out);
-                    out.append(";\n");
-                }
-                out.append("return ");
-                this.emitArgListDef(data.argumentTypes.size(), out);
-                out.append(" => {\n");
-                this.enterContext(new Ir.Context());
-                this.enterContext(data.context);
-                this.emitContextInit(out);
-                this.emitInstructions(data.body, out);
-                this.exitContext();
-                this.exitContext();
-                out.append("} })();\n");
+            this.emitValueRef(v, out);
+            out.append(" = (function() {\n");
+            for(String capture: data.captureValues.keySet()) {
+                out.append("let captured_");
+                out.append(capture);
+                out.append(" = ");
+                this.emitValueRef(data.captureValues.get(capture), out);
+                out.append(";\n");
             }
+            out.append("return ");
+            this.emitArgListDef(data.argumentTypes.size(), out);
+            out.append(" => {\n");
+            this.enterContext(new Ir.Context());
+            this.enterContext(data.context);
+            this.emitContextInit(out);
+            this.emitInstructions(data.body, out);
+            this.exitContext();
+            this.exitContext();
+            out.append("} })();\n");
         } else if(v instanceof Ir.StaticValue.Union) {
             this.emitValueRef(v, out);
             out.append(".value = ");
@@ -636,14 +613,13 @@ public class JsCodeGen implements CodeGen {
         int ctxI = this.contextStack.size() - 1;
         Ir.Context ctx = this.contextStack.get(ctxI);
         for(String capturedName: ctx.capturedNames.values()) {
-            System.out.println(capturedName);
-            out.append("const captured_");
+            out.append("let captured_");
             out.append(capturedName);
-            out.append(" = { value: undefined };\n");
+            out.append(";\n");
         }
         for(int varI = 0; varI < ctx.variableTypes.size(); varI += 1) {
             if(ctx.capturedNames.containsKey(varI)) { continue; }
-            out.append("let local");
+            out.append("let local_");
             out.append(varI);
             out.append(";\n");
         }
@@ -662,9 +638,8 @@ public class JsCodeGen implements CodeGen {
         if(capturedName != null) {
             out.append("captured_");
             out.append(capturedName);
-            out.append(".value");
         } else {
-            out.append("local");
+            out.append("local_");
             out.append(v.index);
         }
     }
@@ -747,9 +722,9 @@ public class JsCodeGen implements CodeGen {
             case LOAD_INTEGER: {
                 Ir.Instr.LoadInteger data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
+                out.append(" = BigInt.asIntN(64, ");
                 out.append(data.value());
-                out.append("n;\n");
+                out.append("n);\n");
             } break;
             case LOAD_FLOAT: {
                 Ir.Instr.LoadFloat data = instr.getValue();
@@ -799,11 +774,11 @@ public class JsCodeGen implements CodeGen {
             case LOAD_REPEAT_ARRAY: {
                 Ir.Instr.LoadRepeatArray data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
-                out.append(" = new Array(");
+                out.append(" = new Array(Number(");
                 this.emitArraySizeVerify(
                     instr.arguments.get(1), data.source(), out
                 );
-                out.append(").fill(");
+                out.append(")).fill(");
                 this.emitVariable(instr.arguments.get(0), out);
                 out.append(");\n");
             } break;
@@ -899,14 +874,12 @@ public class JsCodeGen implements CodeGen {
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = captured_");
                 out.append(data.captureName());
-                out.append(".value");
                 out.append(";\n");
             } break;
             case WRITE_CAPTURE: {
                 Ir.Instr.CaptureAccess data = instr.getValue();
                 out.append("captured_");
                 out.append(data.captureName());
-                out.append(".value");
                 out.append(" = ");
                 this.emitVariable(instr.arguments.get(0), out);
                 out.append(";\n");
@@ -922,43 +895,86 @@ public class JsCodeGen implements CodeGen {
             case ADD: {
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
-                this.emitVariable(instr.arguments.get(0), out);
-                out.append(" + ");
-                this.emitVariable(instr.arguments.get(1), out);
+                Ir.Context ctx = this.contextStack
+                    .get(this.contextStack.size() - 1);
+                boolean isInteger = this.typeContext
+                    .get(ctx.variableTypes.get(instr.arguments.get(0).index))
+                    .type == DataType.Type.INTEGER;
+                if(isInteger) {
+                    out.append("BigInt.asIntN(64, ");
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" + ");
+                    this.emitVariable(instr.arguments.get(1), out);
+                    out.append(")");
+                } else {
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" + ");
+                    this.emitVariable(instr.arguments.get(1), out);
+                }
                 out.append(";\n");
             } break;
             case SUBTRACT: {
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
-                this.emitVariable(instr.arguments.get(0), out);
-                out.append(" - ");
-                this.emitVariable(instr.arguments.get(1), out);
+                Ir.Context ctx = this.contextStack
+                    .get(this.contextStack.size() - 1);
+                boolean isInteger = this.typeContext
+                    .get(ctx.variableTypes.get(instr.arguments.get(0).index))
+                    .type == DataType.Type.INTEGER;
+                if(isInteger) {
+                    out.append("BigInt.asIntN(64, ");
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" - ");
+                    this.emitVariable(instr.arguments.get(1), out);
+                    out.append(")");
+                } else {
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" - ");
+                    this.emitVariable(instr.arguments.get(1), out);
+                }
                 out.append(";\n");
             } break;
             case MULTIPLY: {
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
-                this.emitVariable(instr.arguments.get(0), out);
-                out.append(" * ");
-                this.emitVariable(instr.arguments.get(1), out);
+                Ir.Context ctx = this.contextStack
+                    .get(this.contextStack.size() - 1);
+                boolean isInteger = this.typeContext
+                    .get(ctx.variableTypes.get(instr.arguments.get(0).index))
+                    .type == DataType.Type.INTEGER;
+                if(isInteger) {
+                    out.append("BigInt.asIntN(64, ");
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" * ");
+                    this.emitVariable(instr.arguments.get(1), out);
+                    out.append(")");
+                } else {
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" * ");
+                    this.emitVariable(instr.arguments.get(1), out);
+                }
                 out.append(";\n");
             } break;
             case DIVIDE: {
                 Ir.Instr.Division data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
-                this.emitVariable(instr.arguments.get(0), out);
-                out.append(" / ");
                 Ir.Context ctx = this.contextStack
                     .get(this.contextStack.size() - 1);
                 boolean isInteger = this.typeContext
-                    .get(ctx.variableTypes.get(instr.arguments.get(1).index))
+                    .get(ctx.variableTypes.get(instr.arguments.get(0).index))
                     .type == DataType.Type.INTEGER;
                 if(isInteger) {
+                    out.append("BigInt.asIntN(64, ");
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" / ");
                     this.emitIntDivisorVerify(
                         instr.arguments.get(1), data.source(), out
                     );
+                    out.append(")");
                 } else {
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" / ");
                     this.emitVariable(instr.arguments.get(1), out);
                 }
                 out.append(";\n");
@@ -967,18 +983,22 @@ public class JsCodeGen implements CodeGen {
                 Ir.Instr.Division data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
-                this.emitVariable(instr.arguments.get(0), out);
-                out.append(" % ");
                 Ir.Context ctx = this.contextStack
                     .get(this.contextStack.size() - 1);
                 boolean isInteger = this.typeContext
-                    .get(ctx.variableTypes.get(instr.arguments.get(1).index))
+                    .get(ctx.variableTypes.get(instr.arguments.get(0).index))
                     .type == DataType.Type.INTEGER;
                 if(isInteger) {
+                    out.append("BigInt.asIntN(64, ");
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" % ");
                     this.emitIntDivisorVerify(
                         instr.arguments.get(1), data.source(), out
                     );
+                    out.append(")");
                 } else {
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(" % ");
                     this.emitVariable(instr.arguments.get(1), out);
                 }
                 out.append(";\n");
@@ -986,8 +1006,19 @@ public class JsCodeGen implements CodeGen {
             case NEGATE: {
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
-                out.append(" -");
-                this.emitVariable(instr.arguments.get(0), out);
+                Ir.Context ctx = this.contextStack
+                    .get(this.contextStack.size() - 1);
+                boolean isInteger = this.typeContext
+                    .get(ctx.variableTypes.get(instr.arguments.get(0).index))
+                    .type == DataType.Type.INTEGER;
+                if(isInteger) {
+                    out.append("BigInt.asIntN(64, -");
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(")");
+                } else {
+                    out.append("-");
+                    this.emitVariable(instr.arguments.get(0), out);
+                }
                 out.append(";\n");
             } break;
             case LESS_THAN: {

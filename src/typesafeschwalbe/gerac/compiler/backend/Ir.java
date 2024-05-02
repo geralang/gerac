@@ -242,7 +242,6 @@ public class Ir {
     
         public static class Closure extends StaticValue {
             private final Object ptr;
-            public final boolean isEmpty;
             public final Map<String, Ir.StaticValue> captureValues;
             public final List<TypeVariable> argumentTypes;
             public final Ir.Context context;
@@ -250,14 +249,12 @@ public class Ir {
     
             public Closure(
                 Object ptr,
-                boolean isEmpty,
                 Map<String, Ir.StaticValue> captureValues,
                 List<TypeVariable> argumentTypes,
                 Ir.Context context,
                 List<Ir.Instr> body
             ) {
                 this.ptr = ptr;
-                this.isEmpty = isEmpty;
                 this.captureValues = captureValues;
                 this.argumentTypes = argumentTypes;
                 this.context = context;
