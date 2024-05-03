@@ -38,9 +38,9 @@ public class Token {
         DOUBLE_PIPE("'||'", 8),
         DOUBLE_DOT("'..'", 9),
         DOUBLE_DOT_EQUALS("'..='", 9),
-        FUNCTION_PIPE("'|>'", 11),
-        MEMBER_PIPE("'.>'", 11),
-        QUESTION_MARK("'?'", 11),
+        FUNCTION_PIPE("'|>'", 10),
+        MEMBER_PIPE("'.>'", 10),
+        QUESTION_MARK("'?'", 10),
         PAREN_OPEN("'('", 1),
         PAREN_CLOSE("')'"),
         BRACKET_OPEN("'['"),
@@ -64,7 +64,7 @@ public class Token {
 
         public static final int PREFIX_MINUS_PRECEDENCE = 2;
         public static final int PREFIX_EXCLAMATION_MARK_PRECEDENCE = 2;
-        public static final int PREFIX_HASHTAG_PRECEDENCE = 10;
+        public static final int PREFIX_HASHTAG_PRECEDENCE = 11;
 
         public final String description;
         public final int infixPrecedence;
