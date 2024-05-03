@@ -136,6 +136,18 @@ public class ConstraintSolver {
     ) throws ErrorException {
         for(Scope scope: this.scopeStack) {
             if(scope.symbol != symbol) { continue; }
+            if(argumentTypes.isPresent()) {
+                for(
+                    int argI = 0; argI < data.argumentNames().size(); 
+                    argI += 1
+                ) {
+                    TypeVariable argV = argumentTypes.get().get(argI);
+                    this.unifyVars(
+                        argV, scope.arguments().get().get(argI), 
+                        argumentSources.get().get(argI)
+                    );
+                }
+            }
             return new SolvedProcedure(scope.variant, scope.returned);
         }
         int variant = symbol.variantCount();
