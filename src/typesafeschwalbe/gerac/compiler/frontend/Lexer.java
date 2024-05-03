@@ -197,7 +197,7 @@ public class Lexer {
             switch(content) {
                 case "proc": t = Token.Type.KEYWORD_PROCEDURE; break;
                 case "case": t = Token.Type.KEYWORD_CASE; break;
-                case "var": t = Token.Type.KEYWORD_VARIABLE; break;
+                case "val": t = Token.Type.KEYWORD_VALUE; break;
                 case "mut": t = Token.Type.KEYWORD_MUTABLE; break;
                 case "return": t = Token.Type.KEYWORD_RETURN; break;
                 case "mod": t = Token.Type.KEYWORD_MODULE; break;
@@ -316,6 +316,9 @@ public class Lexer {
                 } else {
                     return this.makeToken("!", Token.Type.EXCLAMATION_MARK);
                 }
+            case '?':
+                this.next();
+                return this.makeToken("?", Token.Type.QUESTION_MARK);
             case '&':
                 if(this.peek() == '&') {
                     this.next();

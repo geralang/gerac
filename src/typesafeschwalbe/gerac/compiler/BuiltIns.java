@@ -26,7 +26,7 @@ public class BuiltIns {
             mod core
 
             pub proc range(start, end) {
-                mut var i = start
+                mut i = start
                 return || {
                     case i >= end -> return #end unit
                     i = i + 1
@@ -35,7 +35,7 @@ public class BuiltIns {
             }
 
             pub proc range_incl(start, end) {
-                mut var i = start
+                mut i = start
                 return || {
                     case i > end -> return #end unit
                     i = i + 1

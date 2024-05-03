@@ -96,11 +96,24 @@ public class SourceParser extends Parser {
     private List<AstNode> parseStatement(
         boolean inGlobalScope
     ) throws ErrorException {
+        boolean isPublic = this.current.type == Token.Type.KEYWORD_PUBLIC;
+        if(isPublic) {
+            if(!inGlobalScope) {
+                throw new ErrorException(new Error(
+                    "'pub' used in local context",
+                    Error.Marking.error(
+                        this.current.source,
+                        "'pub' may only be used in the global scope"
+                    )
+                ));
+            }
+            this.next();
+            this.expect(Token.Type.KEYWORD_PROCEDURE, Token.Type.KEYWORD_VALUE);
+        }
         if(inGlobalScope) {
             this.expect(
-                Token.Type.KEYWORD_PUBLIC,
                 Token.Type.KEYWORD_PROCEDURE,
-                Token.Type.KEYWORD_VARIABLE,
+                Token.Type.KEYWORD_VALUE,
                 Token.Type.KEYWORD_TARGET,
                 Token.Type.KEYWORD_MODULE,
                 Token.Type.KEYWORD_USE
@@ -108,143 +121,93 @@ public class SourceParser extends Parser {
         }
         Token start = this.current;
         switch(this.current.type) {
-            case KEYWORD_PUBLIC:
-            case KEYWORD_MUTABLE:
-            case KEYWORD_PROCEDURE:
-            case KEYWORD_VARIABLE: {
-                boolean isPublic = this.current.type
-                    == Token.Type.KEYWORD_PUBLIC;
-                if(isPublic) { this.next(); }
-                this.expect(
-                    Token.Type.KEYWORD_MUTABLE,
-                    Token.Type.KEYWORD_PROCEDURE,
-                    Token.Type.KEYWORD_VARIABLE
-                );
-                boolean isMutable = this.current.type
-                    == Token.Type.KEYWORD_MUTABLE;
-                Token mutableToken = this.current;
-                if(isMutable) { this.next(); }
-                this.expect(
-                    Token.Type.KEYWORD_PROCEDURE,
-                    Token.Type.KEYWORD_VARIABLE
-                );
-                if(this.current.type == Token.Type.KEYWORD_VARIABLE) {
-                    if(isPublic && !inGlobalScope) {
-                        throw new ErrorException(new Error(
-                            "Local variable marked as public",
-                            Error.Marking.error(
-                                start.source,
-                                "local variables may not be marked as public"
-                            )
-                        ));
-                    }
-                    if(isMutable && inGlobalScope) {
-                        throw new ErrorException(new Error(
-                            "Global variable marked as mutable",
-                            Error.Marking.error(
-                                start.source,
-                                "global variables may not be marked as mutable"
-                            )
-                        ));
-                    }
-                    this.next();
-                    this.expect(Token.Type.IDENTIFIER);
-                    String name = this.current.content;
-                    Token nameToken = this.current;
-                    this.next();
-                    if(inGlobalScope) {
-                        this.expect(Token.Type.EQUALS);
-                    }
-                    if(this.current.type != Token.Type.EQUALS) {
-                        return List.of(new AstNode(
-                            AstNode.Type.VARIABLE,
-                            new AstNode.Variable(
-                                isPublic, isMutable, name,
-                                new Ref<>(Optional.empty()),
-                                Optional.empty()
-                            ),
-                            new Source(start.source, nameToken.source)
-                        ));
-                    }
-                    this.next();
-                    AstNode value = this.parseExpression();
-                    return List.of(new AstNode(
-                        AstNode.Type.VARIABLE,
-                        new AstNode.Variable(
-                            isPublic, isMutable, name,
-                            new Ref<>(Optional.empty()),
-                            Optional.of(value)
-                        ),
-                        new Source(start.source, value.source)
-                    ));
-                } else {
-                    if(!inGlobalScope) {
-                        throw new ErrorException(new Error(
-                            "Procedure in local context",
-                            Error.Marking.error(
-                                this.current.source,
-                                "procedures may not be defined here"
-                            )
-                        ));
-                    }
-                    if(isMutable) {
-                        throw new ErrorException(new Error(
-                            "Procedure marked as mutable",
-                            Error.Marking.error(
-                                mutableToken.source,
-                                "procedures may not be marked as mutable"
-                            )
-                        ));
-                    }
-                    this.next();
-                    this.expect(Token.Type.IDENTIFIER);
-                    String name = this.current.content;
-                    this.next();
-                    this.expect(Token.Type.PAREN_OPEN);
-                    this.next();
-                    List<String> argumentNames = new ArrayList<>();
-                    while(this.current.type != Token.Type.PAREN_CLOSE) {
-                        this.expect(Token.Type.IDENTIFIER);
-                        argumentNames.add(this.current.content);
-                        this.next();
-                        this.expect(Token.Type.COMMA, Token.Type.PAREN_CLOSE);
-                        if(this.current.type == Token.Type.COMMA) {
-                            this.next();
-                        }
-                    }
-                    this.next();
-                    this.expect(Token.Type.BRACE_OPEN, Token.Type.EQUALS);
-                    List<AstNode> body;
-                    Source endSource;
-                    if(this.current.type == Token.Type.EQUALS) {
-                        Source returnSourceStart = this.current.source;
-                        this.next();
-                        AstNode value = this.parseExpression();
-                        body = List.of(new AstNode(
-                            AstNode.Type.RETURN,
-                            new AstNode.MonoOp(value),
-                            new Source(returnSourceStart, value.source)
-                        ));
-                        endSource = value.source;
-                    } else {
-                        this.next();
-                        body = this.parseStatements(LOCALLY_SCOPED);
-                        this.expect(Token.Type.BRACE_CLOSE);
-                        endSource = this.current.source;
-                        this.next();
-                    }
-                    return List.of(new AstNode(
-                        AstNode.Type.PROCEDURE,
-                        new AstNode.Procedure(
-                            isPublic, name, argumentNames, body
-                        ),
-                        new Source(start.source, endSource)
+            case KEYWORD_PROCEDURE: {
+                if(!inGlobalScope) {
+                    throw new ErrorException(new Error(
+                        "Procedure in local context",
+                        Error.Marking.error(
+                            this.current.source,
+                            "procedures may only be defined in the global scope"
+                        )
                     ));
                 }
+                this.next();
+                this.expect(Token.Type.IDENTIFIER);
+                String name = this.current.content;
+                this.next();
+                this.expect(Token.Type.PAREN_OPEN);
+                this.next();
+                List<String> argumentNames = new ArrayList<>();
+                while(this.current.type != Token.Type.PAREN_CLOSE) {
+                    this.expect(Token.Type.IDENTIFIER);
+                    argumentNames.add(this.current.content);
+                    this.next();
+                    this.expect(Token.Type.COMMA, Token.Type.PAREN_CLOSE);
+                    if(this.current.type == Token.Type.COMMA) {
+                        this.next();
+                    }
+                }
+                this.next();
+                this.expect(Token.Type.BRACE_OPEN, Token.Type.EQUALS);
+                List<AstNode> body;
+                Source endSource;
+                if(this.current.type == Token.Type.EQUALS) {
+                    Source returnSourceStart = this.current.source;
+                    this.next();
+                    AstNode value = this.parseExpression(true);
+                    body = List.of(new AstNode(
+                        AstNode.Type.RETURN,
+                        new AstNode.MonoOp(value),
+                        new Source(returnSourceStart, value.source)
+                    ));
+                    endSource = value.source;
+                } else {
+                    this.next();
+                    body = this.parseStatements(LOCALLY_SCOPED);
+                    this.expect(Token.Type.BRACE_CLOSE);
+                    endSource = this.current.source;
+                    this.next();
+                }
+                return List.of(new AstNode(
+                    AstNode.Type.PROCEDURE,
+                    new AstNode.Procedure(
+                        isPublic, name, argumentNames, body
+                    ),
+                    new Source(start.source, endSource)
+                ));
+            }
+            case KEYWORD_VALUE:
+            case KEYWORD_MUTABLE: {
+                boolean isMutable = this.current.type
+                    == Token.Type.KEYWORD_MUTABLE;
+                this.next();
+                this.expect(Token.Type.IDENTIFIER);
+                String name = this.current.content;
+                Token nameToken = this.current;
+                this.next();
+                if(inGlobalScope) {
+                    this.expect(Token.Type.EQUALS);
+                }
+                Optional<AstNode> value = Optional.empty();
+                Source source = new Source(start.source, nameToken.source);
+                if(this.current.type == Token.Type.EQUALS) {
+                    this.next();
+                    value = Optional.of(this.parseExpression(!inGlobalScope));
+                    source = new Source(start.source, value.get().source);
+                }
+                return List.of(new AstNode(
+                    AstNode.Type.VARIABLE,
+                    new AstNode.Variable(
+                        isPublic, isMutable, name,
+                        new Ref<>(Optional.empty()),
+                        value
+                    ),
+                    source
+                ));
             }
             case KEYWORD_CASE: {
                 this.next();
-                AstNode value = this.parseExpression();
+                AstNode value = this.parseExpression(true);
                 this.expect(Token.Type.ARROW, Token.Type.BRACE_OPEN);
                 if(this.current.type == Token.Type.ARROW) {
                     this.next();
@@ -361,7 +324,7 @@ public class SourceParser extends Parser {
                         List<AstNode> branchValues = new ArrayList<>();
                         List<List<AstNode>> branchBodies = new ArrayList<>();
                         while(this.current.type != Token.Type.BRACE_CLOSE) {
-                            AstNode branchValue = this.parseExpression();
+                            AstNode branchValue = this.parseExpression(false);
                             branchValues.add(branchValue);
                             this.expect(Token.Type.ARROW);
                             this.next();
@@ -413,7 +376,7 @@ public class SourceParser extends Parser {
             }
             case KEYWORD_RETURN: {
                 this.next();
-                AstNode value = this.parseExpression();
+                AstNode value = this.parseExpression(true);
                 return List.of(new AstNode(
                     AstNode.Type.RETURN,
                     new AstNode.MonoOp(value),
@@ -464,7 +427,7 @@ public class SourceParser extends Parser {
                     : List.of();
             }
             default: {
-                AstNode expr = this.parseExpression();
+                AstNode expr = this.parseExpression(true);
                 if(this.current.type != Token.Type.EQUALS) {
                     return List.of(expr);
                 }
@@ -482,7 +445,7 @@ public class SourceParser extends Parser {
                     ));
                 }
                 this.next();
-                AstNode value = this.parseExpression();
+                AstNode value = this.parseExpression(true);
                 return List.of(new AstNode(
                     AstNode.Type.ASSIGNMENT,
                     new AstNode.BiOp(expr, value),
@@ -492,8 +455,8 @@ public class SourceParser extends Parser {
         }
     }
 
-    private AstNode parseExpression() throws ErrorException {
-        return this.parseExpression(999);
+    private AstNode parseExpression(boolean inCalledScope) throws ErrorException {
+        return this.parseExpression(999, inCalledScope);
     }
 
     private static AstNode.Type infixBiOpNodeType(Token operatorToken) {
@@ -515,7 +478,9 @@ public class SourceParser extends Parser {
         }
     }
 
-    private AstNode parseExpression(int precedence) throws ErrorException {
+    private AstNode parseExpression(
+        int precedence, boolean inCalledScope
+    ) throws ErrorException {
         Optional<AstNode> previous = Optional.empty();
         while(true) {
             int currentPrecedence = this.current.type.infixPrecedence;
@@ -530,7 +495,8 @@ public class SourceParser extends Parser {
                         this.next();
                         List<AstNode> arguments = new ArrayList<>();
                         while(this.current.type != Token.Type.PAREN_CLOSE) {
-                            AstNode argument = this.parseExpression();
+                            AstNode argument = this
+                                .parseExpression(inCalledScope);
                             arguments.add(argument);
                             this.expect(
                                 Token.Type.COMMA, Token.Type.PAREN_CLOSE
@@ -558,7 +524,8 @@ public class SourceParser extends Parser {
                         this.next();
                         List<AstNode> arguments = new ArrayList<>();
                         while(this.current.type != Token.Type.PAREN_CLOSE) {
-                            AstNode argument = this.parseExpression();
+                            AstNode argument = this
+                                .parseExpression(inCalledScope);
                             arguments.add(argument);
                             this.expect(
                                 Token.Type.COMMA, Token.Type.PAREN_CLOSE
@@ -582,7 +549,8 @@ public class SourceParser extends Parser {
                         AstNode piped = previous.get();
                         this.next();
                         AstNode into = this.parseExpression(
-                            Token.Type.FUNCTION_PIPE.infixPrecedence
+                            Token.Type.FUNCTION_PIPE.infixPrecedence, 
+                            inCalledScope
                         );
                         if(into.type != AstNode.Type.CALL) {
                             throw new ErrorException(new Error(
@@ -622,7 +590,7 @@ public class SourceParser extends Parser {
                     case BRACKET_OPEN: {
                         AstNode accessed = previous.get();
                         this.next();
-                        AstNode index = this.parseExpression();
+                        AstNode index = this.parseExpression(inCalledScope);
                         this.expect(Token.Type.BRACKET_CLOSE);
                         Token end = this.current;
                         this.next();
@@ -649,7 +617,7 @@ public class SourceParser extends Parser {
                         AstNode left = previous.get();
                         this.next();
                         AstNode right = this.parseExpression(
-                            start.type.infixPrecedence
+                            start.type.infixPrecedence, inCalledScope
                         );
                         previous = Optional.of(new AstNode(
                             SourceParser.infixBiOpNodeType(start),
@@ -663,7 +631,7 @@ public class SourceParser extends Parser {
                         AstNode rangeStart = previous.get();
                         this.next();
                         AstNode rangeEnd = this.parseExpression(
-                            start.type.infixPrecedence
+                            start.type.infixPrecedence, inCalledScope
                         );
                         previous = Optional.of(new AstNode(
                             AstNode.Type.CALL,
@@ -683,6 +651,30 @@ public class SourceParser extends Parser {
                                 List.of(rangeStart, rangeEnd)
                             ),
                             new Source(rangeStart.source, rangeEnd.source)
+                        ));
+                        continue;
+                    }
+                    case QUESTION_MARK: {
+                        if(!inCalledScope) {
+                            throw new ErrorException(new Error(
+                                "Variant unwrap used in non-call context",
+                                Error.Marking.error(
+                                    this.current.source,
+                                    "no value can be returned in this context,"
+                                        + " but '?' might return a value"
+                                )
+                            ));
+                        }
+                        AstNode unwrapped = previous.get();
+                        this.next();
+                        this.expect(Token.Type.IDENTIFIER);
+                        String variantName = this.current.content;
+                        Token endToken = this.current;
+                        this.next();
+                        previous = Optional.of(new AstNode(
+                            AstNode.Type.VARIANT_UNWRAP,
+                            new AstNode.VariantUnwrap(unwrapped, variantName),
+                            new Source(unwrapped.source, endToken.source)
                         ));
                         continue;
                     }
@@ -723,7 +715,7 @@ public class SourceParser extends Parser {
                         endSource = this.current.source;
                         this.next();
                     } else {
-                        AstNode value = this.parseExpression();
+                        AstNode value = this.parseExpression(true);
                         endSource = value.source;
                         body = List.of(new AstNode(
                             AstNode.Type.RETURN,
@@ -760,7 +752,7 @@ public class SourceParser extends Parser {
                         AstNode memberValue;
                         if(this.current.type == Token.Type.EQUALS) {
                             this.next();
-                            memberValue = this.parseExpression();
+                            memberValue = this.parseExpression(inCalledScope);
                             this.expect(
                                 Token.Type.COMMA, Token.Type.BRACE_CLOSE
                             );
@@ -810,14 +802,14 @@ public class SourceParser extends Parser {
                         ));
                         continue;
                     }
-                    AstNode value = this.parseExpression();
+                    AstNode value = this.parseExpression(inCalledScope);
                     this.expect(
                         Token.Type.COMMA, Token.Type.SEMICOLON, 
                         Token.Type.BRACKET_CLOSE
                     );
                     if(this.current.type == Token.Type.SEMICOLON) {
                         this.next();
-                        AstNode size = this.parseExpression();
+                        AstNode size = this.parseExpression(inCalledScope);
                         this.expect(Token.Type.BRACKET_CLOSE);
                         Token end = this.current;
                         this.next();
@@ -833,8 +825,10 @@ public class SourceParser extends Parser {
                     if(this.current.type == Token.Type.COMMA) {
                         this.next();                        
                         while(this.current.type != Token.Type.BRACKET_CLOSE) {
-                            values.add(this.parseExpression());
-                            this.expect(Token.Type.BRACKET_CLOSE, Token.Type.COMMA);
+                            values.add(this.parseExpression(inCalledScope));
+                            this.expect(
+                                Token.Type.BRACKET_CLOSE, Token.Type.COMMA
+                            );
                             if(this.current.type == Token.Type.COMMA) {
                                 this.next();
                             }
@@ -900,7 +894,7 @@ public class SourceParser extends Parser {
                 case MINUS: {
                     this.next();
                     AstNode negated = this.parseExpression(
-                        Token.Type.PREFIX_MINUS_PRECEDENCE
+                        Token.Type.PREFIX_MINUS_PRECEDENCE, inCalledScope
                     );
                     previous = Optional.of(new AstNode(
                         AstNode.Type.NEGATE, 
@@ -912,7 +906,8 @@ public class SourceParser extends Parser {
                 case EXCLAMATION_MARK: {
                     this.next();
                     AstNode negated = this.parseExpression(
-                        Token.Type.PREFIX_EXCLAMATION_MARK_PRECEDENCE
+                        Token.Type.PREFIX_EXCLAMATION_MARK_PRECEDENCE,
+                        inCalledScope
                     );
                     previous = Optional.of(new AstNode(
                         AstNode.Type.NOT, 
@@ -948,7 +943,7 @@ public class SourceParser extends Parser {
                     String variantName = this.current.content;
                     this.next();
                     AstNode variantValue = this.parseExpression(
-                        Token.Type.PREFIX_HASHTAG_PRECEDENCE
+                        Token.Type.PREFIX_HASHTAG_PRECEDENCE, inCalledScope
                     );
                     previous = Optional.of(new AstNode(
                         AstNode.Type.VARIANT_LITERAL, 
@@ -959,7 +954,7 @@ public class SourceParser extends Parser {
                 }
                 case KEYWORD_STATIC: {
                     this.next();
-                    AstNode expr = this.parseExpression();
+                    AstNode expr = this.parseExpression(false);
                     previous = Optional.of(new AstNode(
                         AstNode.Type.STATIC, 
                         new AstNode.MonoOp(expr),
@@ -969,7 +964,7 @@ public class SourceParser extends Parser {
                 }
                 case PAREN_OPEN: {
                     this.next();
-                    AstNode expr = this.parseExpression();
+                    AstNode expr = this.parseExpression(inCalledScope);
                     this.expect(Token.Type.PAREN_CLOSE);
                     Token end = this.current;
                     this.next();

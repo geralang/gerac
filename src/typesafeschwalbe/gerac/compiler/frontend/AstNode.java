@@ -110,6 +110,11 @@ public class AstNode {
         AstNode value
     ) {}
 
+    public static record VariantUnwrap(
+        AstNode unwrapped,
+        String variantName
+    ) {}
+
     public static record MacroInsertion(
         Namespace path,
         List<AstNode> arguments
@@ -177,6 +182,7 @@ public class AstNode {
         MODULE_ACCESS,           // ModuleAccess
         USE,                     // Usages
         VARIANT_LITERAL,         // VariantLiteral
+        VARIANT_UNWRAP,          // VariantUnwrap
         STATIC,                  // MonoOp
         TARGET                   // Target
     }

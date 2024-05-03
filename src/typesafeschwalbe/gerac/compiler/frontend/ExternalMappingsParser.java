@@ -116,7 +116,7 @@ public class ExternalMappingsParser extends Parser {
                     )
                 );
             } break;
-            case "var": {
+            case "val": {
                 this.next();
                 List<String> pathElements = new ArrayList<>();
                 this.expect(Token.Type.IDENTIFIER);
@@ -151,7 +151,7 @@ public class ExternalMappingsParser extends Parser {
                 );
             } break;
             default: {
-                this.throwUnexpected("'type', 'proc' or 'var'");
+                this.throwUnexpected("'type', 'proc' or 'val'");
             }
         }
     }

@@ -1245,6 +1245,17 @@ public class ConstraintSolver {
                     node.source, node.resultType
                 );
             }
+            case VARIANT_UNWRAP: {
+                AstNode.VariantUnwrap data = node.getValue();
+                return new AstNode(
+                    node.type,
+                    new AstNode.VariantUnwrap(
+                        this.processNode(data.unwrapped()),
+                        data.variantName()
+                    ),
+                    node.source, node.resultType
+                );
+            }
             case PROCEDURE:
             case PROCEDURE_CALL:
             case VARIABLE_ACCESS:

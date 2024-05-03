@@ -396,7 +396,7 @@ public class ConstraintGenerator {
                 AstNode.MonoOp data = node.getValue();
                 TypeVariable value = this.walkNode(data.value()).get();
                 this.addConstraint(new TypeConstraint(
-                    value, data.value().source,
+                    value, node.source,
                     TypeConstraint.Type.UNIFY,
                     new TypeConstraint.Unify(this.frame().returned)
                 ));
@@ -839,6 +839,22 @@ public class ConstraintGenerator {
                     new TypeConstraint.HasVariant(data.variantName(), value)
                 ));
                 return Optional.of(variant);
+            }
+            case VARIANT_UNWRAP: {
+                AstNode.VariantUnwrap data = node.getValue();
+                TypeVariable unwrapped = this.walkNode(data.unwrapped()).get();
+                TypeVariable value = this.ctx.makeVar();
+                this.addConstraint(new TypeConstraint(
+                    unwrapped, node.source,
+                    TypeConstraint.Type.HAS_VARIANT,
+                    new TypeConstraint.HasVariant(data.variantName(), value)
+                ));
+                this.addConstraint(new TypeConstraint(
+                    unwrapped, node.source,
+                    TypeConstraint.Type.UNIFY,
+                    new TypeConstraint.Unify(this.frame().returned)
+                ));
+                return Optional.of(value);
             }
             case STATIC: {
                 AstNode.MonoOp data = node.getValue();

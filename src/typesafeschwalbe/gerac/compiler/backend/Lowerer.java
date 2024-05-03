@@ -329,7 +329,7 @@ public class Lowerer {
                     branchI < data.branchBodies().size(); 
                     branchI += 1
                 ) {
-                    Value branchValue = this.interpreter.evaluateNode(
+                    Value branchValue = this.interpreter.evaluateStaticNode(
                         data.branchValues().get(branchI)
                     );
                     branchValues.add(this.staticValues.add(branchValue));
@@ -867,7 +867,7 @@ public class Lowerer {
                     .getVariant(data.variant().get());
                 if(variant.valueNode().isPresent()) {
                     if(variant.value().isEmpty()) {
-                        Value value = this.interpreter.evaluateNode(
+                        Value value = this.interpreter.evaluateStaticNode(
                             variant.valueNode().get()
                         );
                         variant = new Symbols.Symbol.Variable(
@@ -906,9 +906,28 @@ public class Lowerer {
                 ));
                 return Optional.of(dest);
             }
+            case VARIANT_UNWRAP: {
+                AstNode.VariantUnwrap data = node.getValue();
+                Ir.Variable unwrapped = this.lowerNode(data.unwrapped()).get();
+                Ir.Variable val = this.context.allocate(node.resultType.get());
+                this.block().add(new Ir.Instr(
+                    Ir.Instr.Type.BRANCH_ON_VARIANT,
+                    List.of(unwrapped),
+                    new Ir.Instr.BranchOnVariant(
+                        List.of(data.variantName()), List.of(Optional.of(val)),
+                        List.of(List.of()),
+                        List.of(new Ir.Instr(
+                            Ir.Instr.Type.RETURN, List.of(unwrapped),
+                            null, Optional.empty()
+                        ))
+                    ),
+                    Optional.empty()
+                ));
+                return Optional.of(val);
+            }
             case STATIC: {
                 AstNode.MonoOp data = node.getValue();
-                Value value = this.interpreter.evaluateNode(data.value());
+                Value value = this.interpreter.evaluateStaticNode(data.value());
                 Ir.StaticValue staticValue = this.staticValues.add(value);
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
                 this.block().add(new Ir.Instr(

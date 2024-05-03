@@ -20,6 +20,14 @@ import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
 public class Interpreter {
 
+    private static class ReturnException extends Exception {
+        private final Value value;
+
+        private ReturnException(Value value) {
+            this.value = value;
+        }
+    }
+
     private static Error makeExternalUsageError(Namespace path, Source source) {
         return new Error(
             "Usage of an external symbol in static context",
@@ -221,7 +229,6 @@ public class Interpreter {
     private final Symbols symbols;
     private List<Map<String, Optional<Value>>> stack;
     private final List<CallTraceEntry> callTrace;
-    private Optional<Value> returnedValue;
     private final Map<Namespace, BuiltInProcedure> builtIns;
 
     public Interpreter(Map<String, String> sourceFiles, Symbols symbols) {
@@ -229,7 +236,6 @@ public class Interpreter {
         this.symbols = symbols;
         this.stack = new LinkedList<>();
         this.callTrace = new LinkedList<>();
-        this.returnedValue = Optional.empty();
         this.builtIns = new HashMap<>();
         this.addBuiltins();
     }
@@ -250,14 +256,8 @@ public class Interpreter {
         this.callTrace.add(new CallTraceEntry(path, source));
     }
 
-    private Value exitCall() {
+    private void exitCall() {
         this.callTrace.remove(this.callTrace.size() - 1);
-        Value returnedValue = Value.UNIT;
-        if(this.returnedValue.isPresent()) {
-            returnedValue = this.returnedValue.get();
-            this.returnedValue = Optional.empty();
-        }
-        return returnedValue;
     }
 
     private void panic(String reason, Source source) throws ErrorException {
@@ -333,20 +333,36 @@ public class Interpreter {
                 Optional.of(arguments.get(argI))
             );
         }
-        this.evaluateBlock(called.body);
+        Value returnedValue = Value.UNIT;
+        try {
+            this.evaluateBlock(called.body);
+        } catch(ReturnException returned) {
+            returnedValue = returned.value;
+        }
         this.exitFrame();
         this.stack = prevStack;
-        return this.exitCall();
+        return returnedValue;
     }
 
-    private void evaluateBlock(List<AstNode> body) throws ErrorException {
+    private void evaluateBlock(
+        List<AstNode> body
+    ) throws ErrorException, ReturnException {
         for(AstNode node: body) {
-            if(this.returnedValue.isPresent()) { return; }
             this.evaluateNode(node);
         }
     }
 
-    public Value evaluateNode(AstNode node) throws ErrorException {
+    public Value evaluateStaticNode(AstNode node) throws ErrorException {
+        try {
+            return this.evaluateNode(node);
+        } catch(ReturnException returned) {
+            throw new RuntimeException("not allowed to return here!");
+        }
+    }
+
+    private Value evaluateNode(
+        AstNode node
+    ) throws ErrorException, ReturnException {
         switch(node.type) {
             case CLOSURE: {
                 AstNode.Closure data = node.getValue();
@@ -449,8 +465,7 @@ public class Interpreter {
             case RETURN: {
                 AstNode.MonoOp data = node.getValue();
                 Value value = this.evaluateNode(data.value());
-                this.returnedValue = Optional.of(value);
-                return Value.UNIT;
+                throw new ReturnException(value);
             }
             case CALL: {
                 AstNode.Call data = node.getValue();
@@ -507,9 +522,14 @@ public class Interpreter {
                     );
                     this.currentFrame().put(argName, Optional.of(argValue));
                 }
-                this.evaluateBlock(symbolData.body().get());
+                Value returnedValue = Value.UNIT;
+                try {
+                    this.evaluateBlock(symbolData.body().get());
+                } catch(ReturnException returned) {
+                    returnedValue = returned.value;
+                }
                 this.exitFrame();
-                return this.exitCall();
+                return returnedValue;
             }
             case METHOD_CALL: {
                 AstNode.MethodCall data = node.getValue();
@@ -845,6 +865,15 @@ public class Interpreter {
                 Value value = this.evaluateNode(data.value());
                 return new Value.Union(data.variantName(), value);
             }
+            case VARIANT_UNWRAP: {
+                AstNode.VariantUnwrap data = node.getValue();
+                Value unwrapped = this.evaluateNode(data.unwrapped());
+                Value.Union unwrappedData = unwrapped.getValue();
+                if(!unwrappedData.variant.equals(data.variantName())) {
+                    throw new ReturnException(unwrapped);
+                }
+                return unwrappedData.value;
+            }
             case STATIC: {
                 AstNode.MonoOp data = node.getValue();
                 return this.evaluateNode(data.value());
@@ -863,7 +892,7 @@ public class Interpreter {
 
     private void evaluateAssignment(
         AstNode node, Value value
-    ) throws ErrorException {
+    ) throws ErrorException, ReturnException {
         switch(node.type) {
             case OBJECT_ACCESS: {
                 AstNode.ObjectAccess data = node.getValue();
