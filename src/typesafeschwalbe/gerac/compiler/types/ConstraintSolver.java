@@ -549,6 +549,49 @@ public class ConstraintSolver {
                     c.source
                 );
             } break;
+            case VARIANTS_OF_EXCEPT: {
+                TypeConstraint.VariantsOfExcept data = c.getValue();
+                DataType<TypeVariable> of = this.ctx.get(data.of());
+                // // check not needed; the constraint generator makes sure this
+                // // is always the case
+                // if(of.type != DataType.Type.UNION) {
+                //     // error here
+                // }
+                DataType.Union<TypeVariable> ofData = of.getValue();
+                DataType<TypeVariable> r = t;
+                if(r.type == DataType.Type.ANY) {
+                    Map<String, TypeVariable> variants = new HashMap<>();
+                    for(String variant: ofData.variantTypes().keySet()) {
+                        if(variant.equals(data.except())) { continue; }
+                        variants.put(
+                            variant, ofData.variantTypes().get(variant)
+                        );
+                    }
+                    r = new DataType<>(
+                        DataType.Type.UNION, 
+                        new DataType.Union<>(variants, true), 
+                        Optional.of(c.source)
+                    );
+                    this.ctx.set(c.target, r);
+                }
+                if(r.type != DataType.Type.UNION) {
+                    throw new ErrorException(
+                        ConstraintSolver.makeInvalidTypeError(
+                            r.source.get(), r.type.toString(),
+                            c.source, "a union variant"
+                        )
+                    );
+                }
+                DataType.Union<TypeVariable> unionData = r.getValue();
+                for(String variant: ofData.variantTypes().keySet()) {
+                    if(variant.equals(data.except())) { continue; }
+                    this.unifyVars(
+                        unionData.variantTypes().get(variant),
+                        ofData.variantTypes().get(variant),
+                        c.source
+                    );
+                }
+            } break;
             case LIMIT_VARIANTS: {
                 TypeConstraint.LimitVariants data = c.getValue();
                 DataType<TypeVariable> r = t;

@@ -35,6 +35,10 @@ public class TypeConstraint {
         String name, TypeVariable type
     ) implements ConstraintValue {}
 
+    public static record VariantsOfExcept(
+        TypeVariable of, String except
+    ) implements ConstraintValue {}
+
     public static record LimitVariants(
         Set<String> names
     ) implements ConstraintValue {}
@@ -44,17 +48,18 @@ public class TypeConstraint {
     ) implements ConstraintValue {}
 
     public enum Type {
-        IS_NUMERIC,     // = null
-        IS_INDEXED,     // = null
-        IS_REFERENCED,  // = null
-        IS_TYPE,        // IsType
-        HAS_ELEMENT,    // HasElement
-        HAS_MEMBER,     // HasMember
-        LIMIT_MEMBERS,  // LimitMembers
-        HAS_SIGNATURE,  // HasSignature
-        HAS_VARIANT,    // HasVariant
-        LIMIT_VARIANTS, // LimitVariants
-        UNIFY           // Unify
+        IS_NUMERIC,         // = null
+        IS_INDEXED,         // = null
+        IS_REFERENCED,      // = null
+        IS_TYPE,            // IsType
+        HAS_ELEMENT,        // HasElement
+        HAS_MEMBER,         // HasMember
+        LIMIT_MEMBERS,      // LimitMembers
+        HAS_SIGNATURE,      // HasSignature
+        HAS_VARIANT,        // HasVariant
+        VARIANTS_OF_EXCEPT, // VariantsOfExcept
+        LIMIT_VARIANTS,     // LimitVariants
+        UNIFY               // Unify
     }
 
     public final TypeVariable target;

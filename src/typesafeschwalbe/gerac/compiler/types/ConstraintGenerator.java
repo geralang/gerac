@@ -850,9 +850,11 @@ public class ConstraintGenerator {
                     new TypeConstraint.HasVariant(data.variantName(), value)
                 ));
                 this.addConstraint(new TypeConstraint(
-                    unwrapped, node.source,
-                    TypeConstraint.Type.UNIFY,
-                    new TypeConstraint.Unify(this.frame().returned)
+                    this.frame().returned, node.source,
+                    TypeConstraint.Type.VARIANTS_OF_EXCEPT,
+                    new TypeConstraint.VariantsOfExcept(
+                        unwrapped, data.variantName()
+                    )
                 ));
                 return Optional.of(value);
             }
