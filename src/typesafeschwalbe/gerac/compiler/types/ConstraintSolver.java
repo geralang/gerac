@@ -555,7 +555,12 @@ public class ConstraintSolver {
                 // // check not needed; the constraint generator makes sure this
                 // // is always the case
                 // if(of.type != DataType.Type.UNION) {
-                //     // error here
+                //     throw new ErrorException(
+                //         ConstraintSolver.makeInvalidTypeError(
+                //             of.source.get(), of.type.toString(),
+                //             c.source, "a union variant"
+                //         )
+                //     );
                 // }
                 DataType.Union<TypeVariable> ofData = of.getValue();
                 DataType<TypeVariable> r = t;
@@ -585,11 +590,18 @@ public class ConstraintSolver {
                 DataType.Union<TypeVariable> unionData = r.getValue();
                 for(String variant: ofData.variantTypes().keySet()) {
                     if(variant.equals(data.except())) { continue; }
-                    this.unifyVars(
-                        unionData.variantTypes().get(variant),
-                        ofData.variantTypes().get(variant),
-                        c.source
-                    );
+                    TypeVariable variantType = unionData.variantTypes()
+                        .get(variant);
+                    if(variantType == null) {
+                        unionData.variantTypes().put(
+                            variant, ofData.variantTypes().get(variant)
+                        );
+                    } else {
+                        this.unifyVars(
+                            variantType, ofData.variantTypes().get(variant),
+                            c.source
+                        );
+                    }
                 }
             } break;
             case LIMIT_VARIANTS: {
