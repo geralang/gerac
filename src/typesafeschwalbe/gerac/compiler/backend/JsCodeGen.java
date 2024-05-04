@@ -737,10 +737,6 @@ public class JsCodeGen implements CodeGen {
                 this.exitContext();
                 out.append("};\n");
             } break;
-            case LOAD_EMPTY_CLOSURE: {
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = () => {};\n");
-            } break;
             case LOAD_STATIC_VALUE: {
                 Ir.Instr.LoadStaticValue data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);

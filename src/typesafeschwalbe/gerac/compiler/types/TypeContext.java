@@ -24,6 +24,10 @@ public class TypeContext {
         return this.substitutes.toString();
     }
 
+    public int varVount() {
+        return this.nextVarId;
+    }
+
     public TypeVariable makeVar() {
         return this.makeVar(new DataType<>(
             DataType.Type.ANY, null, Optional.empty()
@@ -73,6 +77,12 @@ public class TypeContext {
 
     public boolean deepEquals(TypeVariable a, TypeVariable b) {
         return this.deepEquals(a, b, new HashSet<>());
+    }
+
+    public boolean deepEquals(int a_id, int b_id) {
+        return this.deepEquals(
+            new TypeVariable(a_id), new TypeVariable(b_id), new HashSet<>()
+        );
     }
 
     private boolean deepEquals(

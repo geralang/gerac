@@ -407,7 +407,6 @@ public class Ir {
             LOAD_REPEAT_ARRAY,  // LoadRepeatArray   | [value, size] -> res
             LOAD_VARIANT,       // LoadVariant       | [value] -> res
             LOAD_CLOSURE,       // LoadClosure       | [capture_vals...] -> res
-            LOAD_EMPTY_CLOSURE, // = null            | [] -> res
             LOAD_STATIC_VALUE,  // LoadStaticValue   | [] -> res
             LOAD_EXT_VARIABLE,  // LoadExtVariable   | [] -> res
 

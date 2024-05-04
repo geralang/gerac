@@ -79,7 +79,8 @@ public class ConstraintSolver {
         Optional<List<TypeVariable>> arguments,
         TypeVariable returned,
         List<ConstraintGenerator.VariableUsage> varUsages,
-        List<ConstraintGenerator.ProcedureUsage> procUsages
+        List<ConstraintGenerator.ProcedureUsage> procUsages,
+        boolean keepResult
     ) {}
 
     private Symbols symbols;
@@ -93,7 +94,9 @@ public class ConstraintSolver {
         return this.scopeStack.get(this.scopeStack.size() - 1);
     }
 
-    public List<Error> checkSymbols(Symbols symbols, TypeContext ctx) {
+    public List<Error> checkSymbols(
+        Symbols symbols, TypeContext ctx, Namespace mainPath
+    ) {
         this.symbols = symbols;
         this.ctx = ctx;
         Set<Error> errors = new HashSet<>();
@@ -105,7 +108,10 @@ public class ConstraintSolver {
                 switch(symbol.type) {
                     case PROCEDURE: {
                         Symbols.Symbol.Procedure data = symbol.getValue();
-                        this.solveProcedure(symbol, data, Optional.empty());
+                        this.solveProcedure(
+                            symbol, data, Optional.empty(), 
+                            path.equals(mainPath)
+                        );
                     } break;
                     case VARIABLE: {
                         Symbols.Symbol.Variable data = symbol.getValue();
@@ -144,7 +150,7 @@ public class ConstraintSolver {
     
     private SolvedProcedure solveProcedure(
         Symbols.Symbol symbol, Symbols.Symbol.Procedure data,
-        Optional<Source> usageSource
+        Optional<Source> usageSource, boolean keepResult
     ) throws ErrorException {
         for(Scope scope: this.scopeStack) {
             if(scope.symbol != symbol) { continue; }
@@ -161,7 +167,8 @@ public class ConstraintSolver {
             scope = new Scope(
                 symbol, variant,
                 Optional.of(builtin.arguments()), builtin.returned(),
-                List.of(), List.of()
+                List.of(), List.of(),
+                keepResult
             );
             constraints = builtin.constraints();
         } else {
@@ -170,7 +177,8 @@ public class ConstraintSolver {
             scope = new Scope(
                 symbol, variant,
                 Optional.of(cOutput.arguments()), cOutput.returned(),
-                cOutput.varUsages(), cOutput.procUsages()
+                cOutput.varUsages(), cOutput.procUsages(),
+                keepResult
             );
             constraints = cOutput.constraints();
         }
@@ -183,12 +191,14 @@ public class ConstraintSolver {
             );
         }
         this.scopeStack.remove(this.scopeStack.size() - 1);
-        symbol.addVariant(new Symbols.Symbol.Procedure(
-            data.argumentNames(), data.builtinContext(),
-            Optional.of(scope.arguments.get()), Optional.of(scope.returned), 
-            processedBody,
-            Optional.empty(), Optional.empty()
-        ));
+        if(keepResult) {
+            symbol.addVariant(new Symbols.Symbol.Procedure(
+                data.argumentNames(), data.builtinContext(),
+                Optional.of(scope.arguments.get()), Optional.of(scope.returned), 
+                processedBody,
+                Optional.empty(), Optional.empty()
+            ));
+        }
         return new SolvedProcedure(
             variant, scope.arguments.get(), scope.returned
         );
@@ -216,7 +226,8 @@ public class ConstraintSolver {
         this.scopeStack.add(new Scope(
             symbol, 0,
             Optional.empty(), cOutput.value(),
-            cOutput.varUsages(), cOutput.procUsages()
+            cOutput.varUsages(), cOutput.procUsages(),
+            true
         ));
         this.solveConstraints(cOutput.constraints());
         Optional<AstNode> processedNode = Optional.empty();
@@ -941,7 +952,8 @@ public class ConstraintSolver {
             try {
                 solved = this.solveProcedure(
                     symbol, symbolData,
-                    Optional.of(p.node().source)
+                    Optional.of(p.node().source),
+                    this.scope().keepResult
                 );
                 List<TypeVariable> attemptArgs = p.arguments()
                     .stream().map(this.ctx::copyVar).toList();
@@ -1216,7 +1228,8 @@ public class ConstraintSolver {
                         .stream().map(a -> node.source).toList();
                     SolvedProcedure solved = this.solveProcedure(
                         symbol, symbolData, 
-                        Optional.of(node.source)
+                        Optional.of(node.source),
+                        this.scope().keepResult
                     );
                     solved.unify(
                         this, 

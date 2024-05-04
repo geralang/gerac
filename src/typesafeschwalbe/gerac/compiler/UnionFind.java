@@ -71,6 +71,11 @@ public class UnionFind<T> {
         }
     }
 
+    public boolean isRoot(int idx) {
+        Entry<T> entry = this.values.get(this.find(idx));
+        return entry.parent == -1;
+    }
+
     @Override
     public String toString() {
         StringBuilder r = new StringBuilder();
