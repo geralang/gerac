@@ -393,10 +393,7 @@ public class Ir {
         ) {}
 
         public static record CallProcedure(
-            Namespace path, int variant, Source source
-        ) {}
-        public static record CallClosure(
-            Source source
+            Namespace path, int variant
         ) {}
 
         public enum Type {

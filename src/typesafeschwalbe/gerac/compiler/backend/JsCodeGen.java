@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import typesafeschwalbe.gerac.compiler.BuiltIns;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
@@ -65,46 +64,12 @@ public class JsCodeGen implements CodeGen {
             };
         })();
         
-        const gera___stack = {
-            trace: [],
-            push: function(name, file, line) {
-                this.trace.push({ name, file, line });
-                if(this.trace.length > GERA_MAX_CALL_DEPTH) {
-                    gera___panic("Maximum call depth exceeded!");
-                }
-            },
-            pop: function() { this.trace.pop(); }
-        };
-        
-        function gera___panic(message) {
-            let err = "";
-            err += `The program panicked: ${message}` + '\\n';
-            err += `Stack trace (latest call first):` + '\\n';
-            let i = gera___stack.trace.length - 1;
-            while(true) {
-                const si = gera___stack.trace[i];
-                if(i < 0) { break; }
-                err += ` ${i} ${si.name} at ${si.file}:${si.line}` + '\\n';
-                if(i === 0) { break; }
-                i -= 1;
-            }
-            console.error(err);
-            class GeraPanic extends Error {
-                constructor() {
-                    super("The program panicked.");
-                    this.name = "error";
-                    this.stack = null;
-                }
-            }
-            throw new GeraPanic();
-        }
-        
         function gera___verify_size(size, file, line) {
             if(size >= 0n) {
                 return size;
             }
             gera___stack.push("<array-init>", file, line);
-            gera___panic(`the value ${size} is not a valid array size`);
+            throw `the value ${size} is not a valid array size`;
 
         }
 
@@ -115,16 +80,14 @@ public class JsCodeGen implements CodeGen {
                 return final_index;
             }
             gera___stack.push("<index>", file, line);
-            gera___panic(
-                `the index ${index} is out of bounds`
-                    + ` for an array of length ${length}`
-            );
+            throw `the index ${index} is out of bounds`
+                + ` for an array of length ${length}`;
         }
         
         function gera___verify_integer_divisor(d, file, line) {
             if(d != 0n) { return d; }
             gera___stack.push("<division>", file, line);
-            gera___panic("integer division by zero");
+            throw "integer division by zero";
         }
         
         function gera___substring(s, s_start_idx, s_end_idx) {
@@ -134,20 +97,16 @@ public class JsCodeGen implements CodeGen {
                 start_idx += s_length;
             }
             if(start_idx < 0 || start_idx > s_length) {
-                gera___panic(
-                    `the start index ${s_start_idx} is out of bounds`
-                        + ` for a string of length ${s_length}`
-                );
+                throw `the start index ${s_start_idx} is out of bounds`
+                    + ` for a string of length ${s_length}`;
             }
             let end_idx = s_end_idx;
             if(end_idx < 0) {
                 end_idx += s_length;
             }
             if(end_idx < 0 || end_idx > s_length) {
-                gera___panic(
-                    `the end index ${s_end_idx} is out of bounds`
-                        + ` for a string of length ${s_length}`
-                );
+                throw `the end index ${s_end_idx} is out of bounds`
+                    + ` for a string of length ${s_length}`;
             }
             let start_offset = 0;
             for(let i = 0n; i < start_idx; i += 1n) {
@@ -233,11 +192,9 @@ public class JsCodeGen implements CodeGen {
         this.builtIns.put(
             new Namespace(List.of("core", "panic")),
             (tctx, args, argt, dest, out) -> {
-                this.emitVariable(dest, out);
-                out.append(" = ");
-                out.append("gera___panic(");
+                out.append("throw ");
                 this.emitVariable(args.get(0), out);
-                out.append(");\n");
+                out.append(";\n");
             }
         );
         this.builtIns.put(
@@ -306,8 +263,9 @@ public class JsCodeGen implements CodeGen {
                     case INDEXED:
                     case REFERENCED: {
                         out.append(
-                            "gera___panic(\"if you read this, that means that"
-                                + " the compiler fucked up real bad :(\");\n"
+                            "(() => { throw \"if you read this, that means that"
+                                + " the compiler fucked up real bad :(\" "
+                                + "})();\n"
                         );
                     } break;
                     default: {
@@ -332,8 +290,9 @@ public class JsCodeGen implements CodeGen {
                     } break;
                     case NUMERIC: {
                         out.append(
-                            "gera___panic(\"if you read this, that means that"
-                                + " the compiler fucked up real bad :(\");\n"
+                            "(() => { throw \"if you read this, that means that"
+                                + " the compiler fucked up real bad :(\" "
+                                + "})();\n"
                         );
                     } break;
                     default: {
@@ -444,12 +403,8 @@ public class JsCodeGen implements CodeGen {
         out.append("\n");
         this.emitSymbols(out);
         out.append("\n");
-        this.emitStackTracePush(
-            mainPath, new Source(BuiltIns.BUILTIN_FILE_NAME, 0, 0), out
-        );
         this.emitVariant(mainPath, 0, out);
         out.append("();\n");
-        this.emitStackTracePop(out);
         out.append("})();\n");
         return out.toString();
     }
@@ -642,22 +597,6 @@ public class JsCodeGen implements CodeGen {
             out.append("local_");
             out.append(v.index);
         }
-    }
-
-    private void emitStackTracePush(
-        Namespace path, Source source, StringBuilder out
-    ) {
-        out.append("gera___stack.push(");
-        this.emitStringLiteral(path.toString(), out);
-        out.append(", ");
-        this.emitStringLiteral(source.file(), out);
-        out.append(", ");
-        out.append(source.computeLine(this.sourceFiles));
-        out.append(");\n");
-    }
-
-    private void emitStackTracePop(StringBuilder out) {
-        out.append("gera___stack.pop();\n");
     }
 
     private void emitVariant(Namespace path, int variant, StringBuilder out) {
@@ -1134,7 +1073,6 @@ public class JsCodeGen implements CodeGen {
 
             case CALL_PROCEDURE: {
                 Ir.Instr.CallProcedure data = instr.getValue();
-                this.emitStackTracePush(data.path(), data.source(), out);
                 Symbols.Symbol symbol = this.symbols.get(data.path()).get();
                 boolean isExternal = symbol.externalName.isPresent();
                 boolean hasBody = symbol.<Symbols.Symbol.Procedure>getValue()
@@ -1172,13 +1110,8 @@ public class JsCodeGen implements CodeGen {
                         out
                     );
                 }
-                this.emitStackTracePop(out);
             } break;
             case CALL_CLOSURE: {
-                Ir.Instr.CallClosure data = instr.getValue();
-                this.emitStackTracePush(
-                    new Namespace(List.of("<closure>")), data.source(), out
-                );
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
                 this.emitVariable(instr.arguments.get(0), out);
@@ -1190,7 +1123,6 @@ public class JsCodeGen implements CodeGen {
                     this.emitVariable(instr.arguments.get(argI), out);
                 }
                 out.append(");\n");
-                this.emitStackTracePop(out);
             } break;
             case RETURN: {
                 out.append("return ");

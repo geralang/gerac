@@ -518,7 +518,7 @@ public class Lowerer {
                 this.block().add(new Ir.Instr(
                     Ir.Instr.Type.CALL_CLOSURE,
                     arguments,
-                    new Ir.Instr.CallClosure(node.source),
+                    null,
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
@@ -534,7 +534,7 @@ public class Lowerer {
                     Ir.Instr.Type.CALL_PROCEDURE,
                     arguments,
                     new Ir.Instr.CallProcedure(
-                        data.path(), data.variant(), node.source
+                        data.path(), data.variant()
                     ),
                     Optional.of(dest)
                 ));
@@ -565,7 +565,7 @@ public class Lowerer {
                 this.block().add(new Ir.Instr(
                     Ir.Instr.Type.CALL_CLOSURE,
                     arguments,
-                    new Ir.Instr.CallClosure(node.source),
+                    null,
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
