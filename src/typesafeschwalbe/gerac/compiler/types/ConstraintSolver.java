@@ -16,7 +16,6 @@ import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Ref;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.Symbols;
-import typesafeschwalbe.gerac.compiler.UnionFind;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
 
@@ -59,7 +58,7 @@ public class ConstraintSolver {
                 (pathDescription.length() > 0
                     ? pathDescription 
                     : "they"
-                ) + " need to be compatible because of this"
+                ) + " are combined into one type here, which is not possible"
             )
         );
     }
@@ -106,10 +105,7 @@ public class ConstraintSolver {
                 switch(symbol.type) {
                     case PROCEDURE: {
                         Symbols.Symbol.Procedure data = symbol.getValue();
-                        this.solveProcedure(
-                            symbol, data,
-                            Optional.empty(), Optional.empty(), Optional.empty()
-                        );
+                        this.solveProcedure(symbol, data, Optional.empty());
                     } break;
                     case VARIABLE: {
                         Symbols.Symbol.Variable data = symbol.getValue();
@@ -126,29 +122,35 @@ public class ConstraintSolver {
         return new ArrayList<>(errors);
     }
 
-    private static record SolvedProcedure(int variant, TypeVariable returned) {}
+    private static record SolvedProcedure(
+        int variant, List<TypeVariable> arguments, TypeVariable returned
+    ) {
+        private void unify(
+            ConstraintSolver solver,
+            List<TypeVariable> gArguments, List<Source> gArgSources,
+            TypeVariable eReturned, Source callSource
+        ) throws ErrorException {
+            for(int argI = 0; argI < this.arguments.size(); argI += 1) {
+                solver.unifyVars(
+                    this.arguments.get(argI), gArguments.get(argI), 
+                    gArgSources.get(argI)
+                );
+            }
+            solver.unifyVars(
+                this.returned, eReturned, callSource
+            );
+        }
+    }
     
     private SolvedProcedure solveProcedure(
         Symbols.Symbol symbol, Symbols.Symbol.Procedure data,
-        Optional<List<TypeVariable>> argumentTypes,
-        Optional<Source> usageSource,
-        Optional<List<Source>> argumentSources
+        Optional<Source> usageSource
     ) throws ErrorException {
         for(Scope scope: this.scopeStack) {
             if(scope.symbol != symbol) { continue; }
-            if(argumentTypes.isPresent()) {
-                for(
-                    int argI = 0; argI < data.argumentNames().size(); 
-                    argI += 1
-                ) {
-                    TypeVariable argV = argumentTypes.get().get(argI);
-                    this.unifyVars(
-                        argV, scope.arguments().get().get(argI), 
-                        argumentSources.get().get(argI)
-                    );
-                }
-            }
-            return new SolvedProcedure(scope.variant, scope.returned);
+            return new SolvedProcedure(
+                scope.variant, scope.arguments().get(), scope.returned
+            );
         }
         int variant = symbol.variantCount();
         Scope scope;
@@ -173,15 +175,6 @@ public class ConstraintSolver {
             constraints = cOutput.constraints();
         }
         this.scopeStack.add(scope);
-        if(argumentTypes.isPresent()) {
-            for(int argI = 0; argI < data.argumentNames().size(); argI += 1) {
-                TypeVariable argV = argumentTypes.get().get(argI);
-                this.unifyVars(
-                    argV, scope.arguments().get().get(argI), 
-                    argumentSources.get().get(argI)
-                );
-            }
-        }
         this.solveConstraints(constraints);
         Optional<List<AstNode>> processedBody = Optional.empty();
         if(data.body().isPresent()) {
@@ -196,7 +189,9 @@ public class ConstraintSolver {
             processedBody,
             Optional.empty(), Optional.empty()
         ));
-        return new SolvedProcedure(variant, scope.returned);
+        return new SolvedProcedure(
+            variant, scope.arguments.get(), scope.returned
+        );
     }
 
     private TypeVariable solveVariable(
@@ -668,46 +663,48 @@ public class ConstraintSolver {
         }
     }
 
-    private static record Unification(TypeVariable a, TypeVariable b) {}
+    private static record Unification<T>(
+        T a, T b, Source source, String description
+    ) {}
 
     private TypeVariable unifyVars(
-        TypeVariable varA, TypeVariable varB, Source src
+        TypeVariable a, TypeVariable b, Source source
     ) throws ErrorException {
-        return this.unifyVars(varA, varB, src, "", new LinkedList<>());
+        LinkedList<Unification<TypeVariable>> queue = new LinkedList<>();
+        this.unifyVars(new Unification<>(a, b, source, ""), queue);
+        while(queue.size() > 0) {
+            Unification<TypeVariable> unification = queue.pop();
+            this.unifyVars(unification, queue);
+        }
+        return a;
     }
-    private TypeVariable unifyVars(
-        TypeVariable varA, TypeVariable varB, Source src,
-        String pathDescription, List<Unification> encountered
+
+    private void unifyVars(
+        Unification<TypeVariable> unification, 
+        List<Unification<TypeVariable>> queue
     ) throws ErrorException {
-        UnionFind<DataType<TypeVariable>> types = this.ctx.substitutes;
-        int rootA = types.find(varA.id);
-        int rootB = types.find(varB.id);
-        if(rootA == rootB) {
-            return varA;   
-        }
-        Unification encounter = new Unification(varA, varB);
-        for(Unification u: encountered) {
-            if(types.find(u.a.id) == rootA && types.find(u.b.id) == rootB) {
-                return varA;
-            }
-        }
-        encountered.add(encounter);
-        DataType<TypeVariable> union = this.unifyTypes(
-            types.get(varA.id), types.get(varB.id), src, 
-            pathDescription, encountered
+        int rootA = this.ctx.substitutes.find(unification.a.id);
+        int rootB = this.ctx.substitutes.find(unification.b.id);
+        if(rootA == rootB) { return; }
+        DataType<TypeVariable> r = this.unifyTypes(
+            new Unification<>(
+                this.ctx.substitutes.get(rootA), 
+                this.ctx.substitutes.get(rootB),
+                unification.source, unification.description
+            ), queue
         );
-        types.union(varA.id, varB.id);
-        types.set(rootA, union);
-        encountered.remove(encountered.size() - 1);
-        return varA;
+        this.ctx.substitutes.union(rootA, rootB);
+        this.ctx.substitutes.set(rootA, r);
     }
 
     private DataType<TypeVariable> unifyTypes(
-        DataType<TypeVariable> a, DataType<TypeVariable> b, Source src,
-        String pathDescription, List<Unification> encountered
+        Unification<DataType<TypeVariable>> unification,
+        List<Unification<TypeVariable>> queue
     ) throws ErrorException {
-        String pathD = (pathDescription.length() > 0? " of " : "")
-            + pathDescription;
+        String description = (unification.description.length() > 0? " of " : "")
+            + unification.description;
+        DataType<TypeVariable> a = unification.a;
+        DataType<TypeVariable> b = unification.b;
         if(a.type == DataType.Type.ANY) { return b; }
         if(b.type == DataType.Type.ANY) { return a; }
         if(a.type == DataType.Type.NUMERIC && b.type.isNumeric()) { return b; }
@@ -725,7 +722,7 @@ public class ConstraintSolver {
                 ConstraintSolver.makeIncompatibleTypesError(
                     a.source.get(), a.type.toString(), 
                     b.source.get(), b.type.toString(), 
-                    src, pathDescription
+                    unification.source, unification.description
                 )
             );
         }
@@ -744,12 +741,12 @@ public class ConstraintSolver {
             case ARRAY: {
                 DataType.Array<TypeVariable> dataA = a.getValue();
                 DataType.Array<TypeVariable> dataB = b.getValue();
-                value = new DataType.Array<>(this.unifyVars(
-                    dataA.elementType(), dataB.elementType(), 
-                    src,
-                    "the array element types" + pathD,
-                    encountered
+                queue.add(new Unification<>(
+                    dataA.elementType(), dataB.elementType(),
+                    unification.source,
+                    "the array element types" + description
                 ));
+                value = new DataType.Array<>(dataA.elementType());
             } break;
             case UNORDERED_OBJECT: {
                 DataType.UnorderedObject<TypeVariable> dataA = a.getValue();
@@ -771,23 +768,25 @@ public class ConstraintSolver {
                                     + " '" + member + "'", 
                                 (inA? b : a).source.get(), 
                                 "an object without that property",
-                                src, pathDescription
+                                unification.source, unification.description
                             )
                         );
                     }
-                    if(!inA) {
-                        members.put(member, dataB.memberTypes().get(member));
-                    } else if(!inB) {
-                        members.put(member, dataA.memberTypes().get(member));
-                    } else {
-                        members.put(member, this.unifyVars(
-                            dataA.memberTypes().get(member), 
-                            dataB.memberTypes().get(member), 
-                            src, 
-                            "the object properties '" + member + "'" + pathD,
-                            encountered
+                    if(inA && inB) {
+                        queue.add(new Unification<>(
+                            dataA.memberTypes().get(member),
+                            dataB.memberTypes().get(member),
+                            unification.source,
+                            "the object properties '" + member + "'" 
+                                + description
                         ));
                     }
+                    members.put(
+                        member, 
+                        inA
+                            ? dataA.memberTypes().get(member)
+                            : dataB.memberTypes().get(member)
+                    );
                 }
                 value = new DataType.UnorderedObject<>(
                     members, dataA.expandable() && dataB.expandable()
@@ -807,31 +806,26 @@ public class ConstraintSolver {
                             b.source.get(), 
                             "a closure with " + bArgC + "argument"
                                 + (bArgC == 1? "" : "s"), 
-                            src, pathDescription
+                            unification.source, unification.description
                         )
                     );
                 }
-                List<TypeVariable> arguments = new ArrayList<>(aArgC);
                 for(int argI = 0; argI < aArgC; argI += 1) {
-                    arguments.add(this.unifyVars(
+                    queue.add(new Unification<>(
                         dataA.argumentTypes().get(argI), 
                         dataB.argumentTypes().get(argI),
-                        src,
+                        unification.source,
                         "the " + ConstraintSolver.displayOrdinal(argI)
-                            + " closure arguments" + pathD,
-                        encountered
+                            + " closure arguments" + description
                     ));
                 }
-                value = new DataType.Closure<>(
-                    arguments, 
-                    this.unifyVars(
-                        dataA.returnType(), 
-                        dataB.returnType(), 
-                        src,
-                        "the closure return values" + pathD,
-                        encountered
-                    )
-                );
+                queue.add(new Unification<>(
+                    dataA.returnType(), 
+                    dataB.returnType(), 
+                    unification.source,
+                    "the closure return values" + description
+                ));
+                value = dataA;
             } break;
             case UNION: {
                 DataType.Union<TypeVariable> dataA = a.getValue();
@@ -853,27 +847,25 @@ public class ConstraintSolver {
                                     + " '" + variant + "'", 
                                 (inA? b : a).source.get(), 
                                 "a union without that variant",
-                                src, pathDescription
+                                unification.source, unification.description
                             )
                         );
                     }
-                    if(!inA) {
-                        variants.put(
-                            variant, dataB.variantTypes().get(variant)
-                        );
-                    } else if(!inB) {
-                        variants.put(
-                            variant, dataA.variantTypes().get(variant)
-                        );
-                    } else {
-                        variants.put(variant, this.unifyVars(
-                            dataA.variantTypes().get(variant), 
-                            dataB.variantTypes().get(variant), 
-                            src, 
-                            "the union variants '" + variant + "'" + pathD,
-                            encountered
+                    if(inA && inB) {
+                        queue.add(new Unification<>(
+                            dataA.variantTypes().get(variant),
+                            dataB.variantTypes().get(variant),
+                            unification.source,
+                            "the union variants '" + variant + "'" 
+                                + description
                         ));
                     }
+                    variants.put(
+                        variant, 
+                        inA
+                            ? dataA.variantTypes().get(variant)
+                            : dataB.variantTypes().get(variant)
+                    );
                 }
                 value = new DataType.Union<>(
                     variants, dataA.expandable() && dataB.expandable()
@@ -944,29 +936,31 @@ public class ConstraintSolver {
                 ));
                 continue;
             }
-            List<TypeVariable> attemptArgs = p.arguments()
-                .stream().map(this.ctx::copyVar).toList();
             SolvedProcedure solved;
             List<Scope> prevScopeStack = new LinkedList<>(this.scopeStack);
             try {
                 solved = this.solveProcedure(
                     symbol, symbolData,
-                    Optional.of(attemptArgs),
-                    Optional.of(p.node().source), Optional.of(argSources)
+                    Optional.of(p.node().source)
+                );
+                List<TypeVariable> attemptArgs = p.arguments()
+                    .stream().map(this.ctx::copyVar).toList();
+                TypeVariable attemptReturned = this.ctx.makeVar();
+                solved.unify(
+                    this, 
+                    attemptArgs, argSources, 
+                    attemptReturned, p.node().source
                 );
             } catch(ErrorException e) {
                 this.scopeStack = prevScopeStack;
                 errors.add(e.error);
                 continue;
             }
-            for(int argI = 0; argI < attemptArgs.size(); argI += 1) {
-                this.unifyVars(
-                    attemptArgs.get(argI), 
-                    p.arguments().get(argI), 
-                    p.node().source
-                );
-            }
-            this.unifyVars(solved.returned, p.returned(), p.node().source);
+            solved.unify(
+                this, p.arguments(), 
+                argSources, p.returned(), 
+                p.node().source
+            );
             return new ProcCall(fullPath, solved.variant);
         }
         if(errors.size() == 0) {
@@ -1222,13 +1216,12 @@ public class ConstraintSolver {
                         .stream().map(a -> node.source).toList();
                     SolvedProcedure solved = this.solveProcedure(
                         symbol, symbolData, 
-                        Optional.of(procUsage.arguments()),
-                        Optional.of(node.source),
-                        Optional.of(argSources)
+                        Optional.of(node.source)
                     );
-                    this.unifyVars(
-                        solved.returned, procUsage.returned(),
-                        procUsage.node().source
+                    solved.unify(
+                        this, 
+                        procUsage.arguments(), argSources, 
+                        procUsage.returned(), node.source
                     );
                     // 'std::math::pow' -> '|x, n| std::math::pow(x, n)'
                     List<AstNode> argNodes = new ArrayList<>();

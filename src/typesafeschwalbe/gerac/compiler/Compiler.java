@@ -81,6 +81,16 @@ public class Compiler {
         if(typeErrors.size() > 0) {
             return Result.ofError(typeErrors);
         }
+        // DEBUG ///////////////////////////////////////////////////////////////
+        // java.util.Scanner input = new java.util.Scanner(System.in);
+        // System.out.print("$");
+        // while(input.hasNextLine()) {
+        //     int id = Integer.parseInt(input.nextLine());
+        //     System.out.println("= " + typeContext.get(id) + " (root = " + typeContext.substitutes.find(id) + ")");
+        //     System.out.print("$");
+        // }
+        // input.close();
+        ////////////////////////////////////////////////////////////////////////
         Lowerer lowerer = new Lowerer(files, symbols, typeContext);
         Optional<Error> loweringError = lowerer.lowerProcedures();
         if(loweringError.isPresent()) {
