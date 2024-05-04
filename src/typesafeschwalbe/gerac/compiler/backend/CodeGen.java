@@ -13,8 +13,7 @@ public interface CodeGen {
     public static interface Constructor {
         CodeGen create(
             Map<String, String> sourceFiles, Symbols symbols, 
-            TypeContext typeContext, Ir.StaticValues staticValues, 
-            long maxCallDepth
+            TypeContext typeContext, Ir.StaticValues staticValues
         );
     }
 

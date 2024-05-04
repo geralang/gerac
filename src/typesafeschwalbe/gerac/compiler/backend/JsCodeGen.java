@@ -353,20 +353,18 @@ public class JsCodeGen implements CodeGen {
     private final Symbols symbols;
     private final TypeContext typeContext;
     private final Ir.StaticValues staticValues;
-    private final long maxCallDepth;
     private final Map<Namespace, BuiltInProcedure> builtIns;
 
     private final List<Ir.Context> contextStack;
 
     public JsCodeGen(
         Map<String, String> sourceFiles, Symbols symbols, 
-        TypeContext typeContext, Ir.StaticValues staticValues, long maxCallDepth
+        TypeContext typeContext, Ir.StaticValues staticValues
     ) {
         this.sourceFiles = sourceFiles;
         this.symbols = symbols;
         this.typeContext = typeContext;
         this.staticValues = staticValues;
-        this.maxCallDepth = maxCallDepth;
         this.builtIns = new HashMap<>();
         this.contextStack = new LinkedList<>();
         this.addBuiltins();
@@ -393,9 +391,6 @@ public class JsCodeGen implements CodeGen {
         out.append("\n");
         out.append("(function() {\n");
         out.append("\"use strict\";\n");
-        out.append("const GERA_MAX_CALL_DEPTH = ");
-        out.append(this.maxCallDepth);
-        out.append(";\n");
         out.append("\n");
         out.append(CORE_LIB);
         out.append("\n");

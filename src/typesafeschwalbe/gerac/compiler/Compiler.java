@@ -18,8 +18,7 @@ import typesafeschwalbe.gerac.compiler.backend.Lowerer;
 public class Compiler {
 
     public static Result<String> compile(
-        Map<String, String> files, Target target, String mainRaw,
-        long maxCallDepth
+        Map<String, String> files, Target target, String mainRaw
     ) {
         Symbols symbols = new Symbols();
         TypeContext typeContext = new TypeContext();
@@ -97,7 +96,7 @@ public class Compiler {
             return Result.ofError(loweringError.get());
         }
         CodeGen codeGen = target.codeGen.create(
-            files, symbols, typeContext, lowerer.staticValues, maxCallDepth
+            files, symbols, typeContext, lowerer.staticValues
         );
         String output = codeGen.generate(mainPath);
         return Result.ofValue(output);

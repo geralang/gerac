@@ -7,7 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.Optional;
 import java.util.HashMap;
 import java.util.List;
 
@@ -37,10 +36,6 @@ public class Main {
         'o', "output", "specifies the output file path",
         "output file path"
     );
-    private static final Cli.OptionalArgument MAX_CD = new Cli.OptionalArgument(
-        's', "maxcalldepth", "overwrites the maximum call depth",
-        "maximum call depth (default = 1024)"
-    );
     private static final Cli.Flag NO_COLOR = new Cli.Flag(
         'c', "nocolor", "disables colored output"
     );
@@ -52,7 +47,6 @@ public class Main {
         // parse CLI arguments
         Cli cli = new Cli()
             .add(MAIN).add(TARGET).add(OUTPUT)
-            .add(MAX_CD)
             .add(NO_COLOR);
         Result<Cli.Values> cliParseResult = cli.parse(args);
         if(cliParseResult.isError()) {
@@ -119,30 +113,9 @@ public class Main {
                 colored
             );
         }
-        // parse the given max call depth
-        long maxCallDepth = 1024;
-        Optional<String> optStrMaxCallDepth = cliValues.get(MAX_CD);
-        if(optStrMaxCallDepth.isPresent()) {
-            String strMaxCallDepth = optStrMaxCallDepth.get();
-            try {
-                maxCallDepth = Long.parseLong(strMaxCallDepth);
-                if(maxCallDepth < 0) {
-                    throw new RuntimeException("must not be negative");
-                }
-            } catch(Exception e) {
-                Main.exitWithErrors(
-                    List.of(new Error(
-                        "'" + strMaxCallDepth + "'"
-                            + " is not a valid maximum call depth"
-                    )),
-                    files,
-                    colored
-                );
-            }
-        }
         // compile
         Result<String> compilationResult = Compiler.compile(
-            files, target, main, maxCallDepth
+            files, target, main
         );
         if(compilationResult.isError()) {
             Main.exitWithErrors(
