@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import typesafeschwalbe.gerac.compiler.Symbols;
@@ -278,6 +279,7 @@ public class CCodeGen implements CodeGen {
         }
         """;
 
+
     private final Map<String, String> sourceFiles;
     private final Symbols symbols;
     private final TypeContext typeContext;
@@ -304,6 +306,7 @@ public class CCodeGen implements CodeGen {
         this.collapseDuplicateTypes();
     }
 
+
     private void collapseDuplicateTypes() {
         for(int tid = 0; tid < this.typeContext.varVount(); tid += 1) {
             if(!this.typeContext.substitutes.isRoot(tid)) { continue; }
@@ -315,17 +318,21 @@ public class CCodeGen implements CodeGen {
         }
     }
 
+
     private void enterContext(Ir.Context context) {
         this.contextStack.add(context);
     }
+
 
     private Ir.Context context() {
         return this.contextStack.get(this.contextStack.size() - 1);
     }
 
+
     private void exitContext() {
         this.contextStack.remove(this.contextStack.size() - 1);
     }
+
 
     private long getVariantTagNumber(String variantName) {
         Long existingNumber = this.unionVariantTagNumbers.get(variantName);
@@ -335,6 +342,7 @@ public class CCodeGen implements CodeGen {
         this.nextUnionTagNumber += 1;
         return number;
     }
+
 
     @Override
     public String generate(Namespace mainPath) {
@@ -349,15 +357,21 @@ public class CCodeGen implements CodeGen {
         out.append("\n");
         out.append(CORE_LIB);
         StringBuilder typed = new StringBuilder();
-        // this.emitStaticValues(typed);
+        this.emitValueDeclarations(typed);
+        this.emitValueInitializer(typed);
         typed.append("\n");
         this.emitSymbols(typed);
-        this.emitTypeDeclarations(out);
+        StringBuilder types = new StringBuilder();
+        out.append("\n");
+        this.emitTypeDeclarations(types, out);
+        out.append("\n");
+        out.append(types);
         out.append("\n");
         out.append(typed);
         out.append("\n");
         out.append("int main(int argc, char** argv) {\n");
         out.append("    gera___set_args(argc, argv);\n");
+        out.append("    gera_init_svals();\n");
         out.append("    ");
         this.emitVariant(mainPath, 0, out);
         out.append("();\n");
@@ -366,7 +380,49 @@ public class CCodeGen implements CodeGen {
         return out.toString();
     }
 
-    private void emitTypeDeclarations(StringBuilder out) {
+
+    private void emitValueDeclarations(StringBuilder out) {
+        int valC = this.staticValues.values.size();
+        for(int valI = 0; valI < valC; valI += 1) {
+            Ir.StaticValue val = this.staticValues.values.get(valI);
+            if(val instanceof Ir.StaticValue.Unit) { continue; }
+            out.append("static ");
+            this.emitValueType(val, out);
+            out.append(" ");
+            this.emitValueRef(val, out);
+            out.append(";\n");
+        }
+    }
+
+
+    private void emitValueType(Ir.StaticValue v, StringBuilder out) {
+        if(v instanceof Ir.StaticValue.Unit) out.append("void");
+        else if(v instanceof Ir.StaticValue.Bool) out.append("gbool");
+        else if(v instanceof Ir.StaticValue.Int) out.append("gint");
+        else if(v instanceof Ir.StaticValue.Float) out.append("gfloat");
+        else if(v instanceof Ir.StaticValue.Str) out.append("GeraString");
+        else if(v instanceof Ir.StaticValue.Arr) out.append("GeraArray");
+        else if(v instanceof Ir.StaticValue.Obj) out.append("GeraObject");
+        else if(v instanceof Ir.StaticValue.Closure) out.append("GeraClosure");
+        else if(v instanceof Ir.StaticValue.Union) out.append("GeraUnion");
+        else throw new RuntimeException("unhandled value type!");
+    }
+
+
+    private void emitValueInitializer(StringBuilder out) {
+        out.append("void gera_init_svals(void) {\n");
+        // TODO!
+        out.append("}\n");
+    }
+
+
+    private void emitValueRef(Ir.StaticValue v, StringBuilder out) {
+        out.append("gera_sval_");
+        out.append(this.staticValues.getIndexOf(v));
+    }
+
+
+    private void emitTypeDeclarations(StringBuilder out, StringBuilder pre) {
         Set<Integer> emitted = new HashSet<>();
         while(true) {
             int tid = -1;
@@ -403,22 +459,154 @@ public class CCodeGen implements CodeGen {
                     // TODO!
                     break;
             }
+            this.emitTypeFunctions(tid, out, pre);
         }
     }
+
 
     private void emitObjectLayoutName(int tid, StringBuilder out) {
         out.append("GeraObjectLayout");
         out.append(this.typeContext.substitutes.find(tid));
     }
 
-    private void emitUnionLayoutName(int tid, StringBuilder out) {
-        out.append("GeraUnionLayout");
-        out.append(this.typeContext.substitutes.find(tid));
+
+    private void emitTypeFunctions(
+        int tid, StringBuilder out, StringBuilder pre
+    ) {
+        DataType<TypeVariable> tval = this.typeContext.get(tid);
+        switch(tval.type) {
+            case UNIT: case ANY: case NUMERIC: case INDEXED: 
+            case REFERENCED: 
+            case BOOLEAN: case INTEGER: case FLOAT: case STRING:
+                break;
+            case ARRAY: case UNORDERED_OBJECT: case UNION: {
+                pre.append("gbool gera_");
+                pre.append(tid);
+                pre.append("_eq(");
+                this.emitType(tid, pre);
+                pre.append(" a, ");
+                this.emitType(tid, pre);
+                pre.append(" b);\n");
+            } break;
+            case CLOSURE: {
+                // TODO!
+            } break;
+        }
+        switch(tval.type) {
+            case UNIT: case ANY: case NUMERIC: case INDEXED: case REFERENCED: 
+            case BOOLEAN: case INTEGER: case FLOAT: case STRING:
+                break;
+            case ARRAY: {
+                DataType.Array<TypeVariable> td = tval.getValue();
+                out.append("gbool gera_");
+                out.append(tid);
+                out.append("_eq(");
+                this.emitType(tid, out);
+                out.append(" a, ");
+                this.emitType(tid, out);
+                out.append(" b) {\n");
+                out.append("    if(a.length != b.length) { return 0; }\n");
+                out.append("    ");
+                this.emitType(td.elementType(), out);
+                out.append("* dataA = (");
+                this.emitType(td.elementType(), out);
+                out.append("*) a.data;\n");
+                out.append("    ");
+                this.emitType(td.elementType(), out);
+                out.append("* dataB = (");
+                this.emitType(td.elementType(), out);
+                out.append("*) b.data;\n");
+                out.append("    for(size_t i = 0; i < a.length; i += 1) {\n");
+                out.append("    if(!(");
+                this.emitEquality(
+                    "dataA[i]", "dataB[i]", td.elementType(), out
+                );
+                out.append(")) { return 0; }\n");
+                out.append("    }\n");
+                out.append("    return 1;\n");
+                out.append("}\n");
+            } break;
+            case UNORDERED_OBJECT: {
+                DataType.UnorderedObject<TypeVariable> td = tval.getValue();
+                out.append("gbool gera_");
+                out.append(tid);
+                out.append("_eq(");
+                this.emitType(tid, out);
+                out.append(" a, ");
+                this.emitType(tid, out);
+                out.append(" b) {\n");
+                out.append("    ");
+                this.emitObjectLayoutName(tid, out);
+                out.append("* dataA = (");
+                this.emitObjectLayoutName(tid, out);
+                out.append("*) a.allocation->data;\n");
+                out.append("    ");
+                this.emitObjectLayoutName(tid, out);
+                out.append("* dataB = (");
+                this.emitObjectLayoutName(tid, out);
+                out.append("*) b.allocation->data;\n");
+                for(String memberName: td.memberTypes().keySet()) {
+                    TypeVariable memberType = td.memberTypes().get(memberName);
+                    out.append("    if(!(");
+                    this.emitEquality(
+                        "dataA->" + memberName, "dataB->" + memberName, 
+                        memberType, out
+                    );
+                    out.append(")) { return 0; }\n");
+                }
+                out.append("    return 1;\n");
+                out.append("}\n");
+            } break;
+            case UNION: {
+                DataType.Union<TypeVariable> td = tval.getValue();
+                out.append("gbool gera_");
+                out.append(tid);
+                out.append("_eq(");
+                this.emitType(tid, out);
+                out.append(" a, ");
+                this.emitType(tid, out);
+                out.append(" b) {\n");
+                out.append("    if(a.tag != b.tag) { return 0; }\n");
+                out.append("    switch(a.tag) {\n");
+                for(String variantName: td.variantTypes().keySet()) {
+                    TypeVariable variantType = td.variantTypes()
+                        .get(variantName);
+                    out.append("        case ");
+                    out.append(this.getVariantTagNumber(variantName));
+                    out.append(": {\n");
+                    out.append("            ");
+                    this.emitType(variantType, out);
+                    out.append("* dataA = (");
+                    this.emitType(variantType, out);
+                    out.append("*) a.allocation->data;\n");
+                    out.append("            ");
+                    this.emitType(variantType, out);
+                    out.append("* dataB = (");
+                    this.emitType(variantType, out);
+                    out.append("*) b.allocation->data;\n");
+                    out.append("            return ");
+                    this.emitEquality("*dataA", "*dataB", variantType, out);
+                    out.append(";\n");
+                    out.append("        }\n");
+                }
+                out.append("    }\n");
+                out.append("}\n");
+            } break;
+            case CLOSURE: {
+                // TODO!
+            } break;
+        }
     }
 
-    private void emitType(TypeVariable t, StringBuilder out) {
-        this.usedTypes.add(this.typeContext.substitutes.find(t.id));
-        DataType<TypeVariable> tval = this.typeContext.get(t);
+
+    private void emitType(TypeVariable t , StringBuilder out) {
+        this.emitType(t.id, out);
+    }
+
+
+    private void emitType(int tid, StringBuilder out) {
+        this.usedTypes.add(this.typeContext.substitutes.find(tid));
+        DataType<TypeVariable> tval = this.typeContext.get(tid);
         switch(tval.type) {
             case UNIT: case ANY: case NUMERIC: case INDEXED: case REFERENCED:
                 out.append("void"); 
@@ -434,6 +622,7 @@ public class CCodeGen implements CodeGen {
         }
     }
 
+
     private boolean shouldEmitType(TypeVariable t) {
         switch(this.typeContext.get(t).type) {
             case ANY: case NUMERIC: case INDEXED: case REFERENCED: case UNIT:
@@ -444,6 +633,7 @@ public class CCodeGen implements CodeGen {
         }
         return true;
     }
+
 
     private void emitDefaultValue(TypeVariable t, StringBuilder out) {
         DataType<TypeVariable> tval = this.typeContext.get(t);
@@ -463,6 +653,7 @@ public class CCodeGen implements CodeGen {
                 return;
         }
     }
+
 
     private void emitSymbols(StringBuilder out) {
         for(Namespace path: this.symbols.allSymbolPaths()) {
@@ -500,6 +691,49 @@ public class CCodeGen implements CodeGen {
                     }
                     hadArg = true;
                     this.emitType(argT, out);
+                    out.append(" arg_");
+                    out.append(argI);
+                }
+                out.append(");\n");
+            }
+        }
+        for(Namespace path: this.symbols.allSymbolPaths()) {
+            Symbols.Symbol symbol = this.symbols.get(path).get();
+            if(symbol.type != Symbols.Symbol.Type.PROCEDURE) {
+                continue;
+            }
+            Symbols.Symbol.Procedure symbolData = symbol.getValue();
+            if(symbolData.body().isEmpty()) {
+                continue;
+            }
+            for(
+                int variantI = 0; 
+                variantI < symbol.variantCount(); 
+                variantI += 1
+            ) {
+                if(symbol.mappedVariantIdx(variantI) != variantI) { continue; }
+                Symbols.Symbol.Procedure variantData = symbol
+                    .getVariant(variantI);
+                this.emitType(variantData.returnType().get(), out);
+                out.append(" ");
+                this.emitVariant(path, variantI, out);
+                out.append("(");
+                int argC = variantData.argumentTypes().get().size();
+                if(argC == 0) { 
+                    out.append("void"); 
+                }
+                boolean hadArg = false;
+                for(int argI = 0; argI < argC; argI += 1) {
+                    TypeVariable argT = variantData.argumentTypes()
+                        .get().get(argI);
+                    if(!this.shouldEmitType(argT)) { continue; }
+                    if(hadArg) { 
+                        out.append(", "); 
+                    }
+                    hadArg = true;
+                    this.emitType(argT, out);
+                    out.append(" arg_");
+                    out.append(argI);
                 }
                 out.append(") {\n");
                 this.enterContext(variantData.ir_context().get());
@@ -511,7 +745,20 @@ public class CCodeGen implements CodeGen {
                     out.append(" local_");
                     out.append(varI);
                     out.append(" = ");
-                    this.emitDefaultValue(varT, out);
+                    int argI = -1;
+                    for(int cArgI = 0; cArgI < argC; cArgI += 1) {
+                        int cVarI = this.context().argumentVars
+                            .get(cArgI).index;
+                        if(cVarI != varI) { continue; }
+                        argI = cArgI;
+                        break;
+                    }
+                    if(argI == -1) {
+                        this.emitDefaultValue(varT, out);
+                    } else {
+                        out.append("arg_");
+                        out.append(argI);
+                    }
                     out.append(";\n");
                 }
                 this.emitInstructions(variantData.ir_body().get(), out);
@@ -522,16 +769,19 @@ public class CCodeGen implements CodeGen {
         }
     }
 
+
     private void emitVariable(Ir.Variable v, StringBuilder out) {
         out.append("local_");
         out.append(v.index);
     }
+
 
     private void emitVariant(Namespace path, int variant, StringBuilder out) {
         this.emitPath(path, out);
         out.append("_");
         out.append(variant);
     }
+
 
     private void emitPath(Namespace path, StringBuilder out) {
         for(
@@ -551,6 +801,7 @@ public class CCodeGen implements CodeGen {
         }
     }
 
+
     private void emitStringLiteral(String content, StringBuilder out) {
         out.append("\"");
         for(int charI = 0; charI < content.length(); charI += 1) {
@@ -568,11 +819,13 @@ public class CCodeGen implements CodeGen {
         out.append("\"");
     }
 
+
     private void emitInstructions(List<Ir.Instr> instr, StringBuilder out) {
         for(Ir.Instr i: instr) {
             this.emitInstruction(i, out);
         }
     }
+
 
     private void emitInstruction(Ir.Instr instr, StringBuilder out) {
         switch(instr.type) {
@@ -722,8 +975,6 @@ public class CCodeGen implements CodeGen {
                 Ir.Instr.LoadVariant data = instr.getValue();
                 TypeVariable valueT = this.context().variableTypes
                     .get(instr.arguments.get(0).index);
-                TypeVariable unionT = this.context().variableTypes
-                    .get(instr.dest.get().index);
                 if(!this.shouldEmitType(valueT)) {
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = (GeraUnion) { .allocation = NULL, .tag = ");
@@ -732,21 +983,13 @@ public class CCodeGen implements CodeGen {
                 } else {
                     out.append("{\n");
                     out.append("    GeraAllocation* a = gera___alloc(sizeof(");
-                    this.emitUnionLayoutName(unionT.id, out);
+                    this.emitType(valueT, out);
                     out.append("), &gera___free_nothing);\n");
-                    out.append("    ");
-                    this.emitUnionLayoutName(unionT.id, out);
-                    out.append("* value = (");
-                    this.emitUnionLayoutName(unionT.id, out);
-                    out.append("*) a->data;\n");
-                    out.append("    ");
-                    out.append("*value = (");
-                    this.emitUnionLayoutName(unionT.id, out);
-                    out.append(") { .");
-                    out.append(data.variantName());
-                    out.append(" = ");
+                    out.append("    *((");
+                    this.emitType(valueT, out);
+                    out.append("*) a->data) = ");
                     this.emitVariable(instr.arguments.get(0), out);
-                    out.append(" };\n");
+                    out.append(";\n");
                     out.append("    ");
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = (GeraUnion) { .allocation = a, .tag = ");
@@ -984,9 +1227,11 @@ public class CCodeGen implements CodeGen {
                     out.append(data.source().computeLine(this.sourceFiles));
                     out.append(")))");
                 } else {
+                    out.append("gera___float_mod(");
                     this.emitVariable(instr.arguments.get(0), out);
-                    out.append(" % ");
+                    out.append(", ");
                     this.emitVariable(instr.arguments.get(1), out);
+                    out.append(")");
                 }
                 out.append(";\n");
             } break;
@@ -1038,10 +1283,28 @@ public class CCodeGen implements CodeGen {
                 out.append(";\n");
             } break;
             case EQUALS: {
-                // TODO!
+                TypeVariable compT = this.context().variableTypes
+                    .get(instr.arguments.get(0).index);
+                this.emitVariable(instr.dest.get(), out);
+                out.append(" = ");
+                StringBuilder a = new StringBuilder();
+                StringBuilder b = new StringBuilder();
+                this.emitVariable(instr.arguments.get(0), a);
+                this.emitVariable(instr.arguments.get(1), b);
+                this.emitEquality(a.toString(), b.toString(), compT, out);
+                out.append(";\n");
             } break;
             case NOT_EQUALS: {
-                // TODO!
+                TypeVariable compT = this.context().variableTypes
+                    .get(instr.arguments.get(0).index);
+                this.emitVariable(instr.dest.get(), out);
+                out.append(" = !(");
+                StringBuilder a = new StringBuilder();
+                StringBuilder b = new StringBuilder();
+                this.emitVariable(instr.arguments.get(0), a);
+                this.emitVariable(instr.arguments.get(1), b);
+                this.emitEquality(a.toString(), b.toString(), compT, out);
+                out.append(");\n");
             } break;
             case NOT: {
                 this.emitVariable(instr.dest.get(), out);
@@ -1051,10 +1314,81 @@ public class CCodeGen implements CodeGen {
             } break;
 
             case BRANCH_ON_VALUE: {
-                // TODO!
+                Ir.Instr.BranchOnValue data = instr.getValue();
+                TypeVariable valT = this.context().variableTypes
+                    .get(instr.arguments.get(0).index);
+                DataType<TypeVariable> valVT = this.typeContext.get(valT);
+                int brC = data.branchBodies().size();
+                if(valVT.type == DataType.Type.INTEGER) {
+                    out.append("switch(");
+                    this.emitVariable(instr.arguments.get(0), out);
+                    out.append(") {\n");
+                    for(int brI = 0; brI < brC; brI += 1) {
+                        long brVal = data.branchValues().get(brI)
+                            .<Ir.StaticValue.Int>getValue().value;
+                        out.append("case ");
+                        out.append(brVal);
+                        out.append(":\n");
+                        this.emitInstructions(
+                            data.branchBodies().get(brI), out
+                        );
+                        out.append("break;\n");
+                    }
+                    out.append("default:\n");
+                    this.emitInstructions(data.elseBody(), out);
+                    out.append("}\n");
+                } else {
+                    StringBuilder v = new StringBuilder();
+                    this.emitVariable(instr.arguments.get(0), v);
+                    for(int brI = 0; brI < brC; brI += 1) {
+                        StringBuilder bV = new StringBuilder();
+                        this.emitValueRef(data.branchValues().get(brI), bV);
+                        if(brI > 0) {
+                            out.append(" else ");
+                        }
+                        out.append("if(");
+                        this.emitEquality(
+                            v.toString(), bV.toString(), valT, out
+                        );
+                        out.append(") {\n");
+                        this.emitInstructions(
+                            data.branchBodies().get(brI), out
+                        );
+                        out.append("}");
+                    }
+                    out.append(" else {\n");
+                    this.emitInstructions(data.elseBody(), out);
+                    out.append("}\n");
+                }
             } break;
             case BRANCH_ON_VARIANT: {
-                // TODO!
+                Ir.Instr.BranchOnVariant data = instr.getValue();
+                out.append("switch(");
+                this.emitVariable(instr.arguments.get(0), out);
+                out.append(".tag) {\n");
+                for(int brI = 0; brI < data.branchBodies().size(); brI += 1) {
+                    String variantName = data.branchVariants().get(brI);
+                    out.append("case ");
+                    out.append(this.getVariantTagNumber(variantName));
+                    out.append(":\n");
+                    Optional<Ir.Variable> bVar = data.branchVariables()
+                        .get(brI);
+                    if(bVar.isPresent()) {
+                        TypeVariable valT = this.context().variableTypes
+                            .get(bVar.get().index);
+                        this.emitVariable(bVar.get(), out);
+                        out.append(" = *((");
+                        this.emitType(valT, out);
+                        out.append("*) ");
+                        this.emitVariable(instr.arguments.get(0), out);
+                        out.append(".allocation->data);\n");
+                    }
+                    this.emitInstructions(data.branchBodies().get(brI), out);
+                    out.append("break;\n");
+                }
+                out.append("default:\n");
+                this.emitInstructions(data.elseBody(), out);
+                out.append("}\n");
             } break;
 
             case CALL_PROCEDURE: {
@@ -1097,6 +1431,44 @@ public class CCodeGen implements CodeGen {
             case LOAD_UNIT:
             case PHI: {
                 // do nothing
+            } break;
+        }
+    }
+
+
+    private void emitEquality(
+        String a, String b, TypeVariable t, StringBuilder out
+    ) {
+        this.usedTypes.add(this.typeContext.substitutes.find(t.id));
+        DataType<TypeVariable> tval = this.typeContext.get(t);
+        int tRoot = this.typeContext.substitutes.find(t.id);
+        switch(tval.type) {
+            case UNIT: case ANY: case NUMERIC: case INDEXED: case REFERENCED: {
+                out.append("1"); 
+            } break;
+            case BOOLEAN: case INTEGER: case FLOAT: {
+                out.append(a);
+                out.append(" == ");
+                out.append(b); 
+            } break;
+            case STRING: {
+                out.append("gera___string_eq(");
+                out.append(a);
+                out.append(", ");
+                out.append(b);
+                out.append(")");
+            } break;
+            case ARRAY: case UNORDERED_OBJECT: case UNION: {
+                out.append("gera_");
+                out.append(tRoot);
+                out.append("_eq(");
+                out.append(a);
+                out.append(", ");
+                out.append(b);
+                out.append(")");
+            } break;
+            case CLOSURE: {
+                // TODO!
             } break;
         }
     }
