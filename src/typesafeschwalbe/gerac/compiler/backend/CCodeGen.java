@@ -23,38 +23,158 @@ public class CCodeGen implements CodeGen {
 
         void gera___panic(const char* reason);
 
-        GeraAllocation* gera___alloc(size_t size, GeraFreeHandler fh) {
-            if(size == 0) { return NULL; }
-            GeraAllocation* a = geracoredeps_malloc(
-                sizeof(GeraAllocation) + size
+        #define GC_USED 1
+        #define GC_REACHABLE 2
+
+        typedef struct GeraGC {
+            GERACORE_MUTEX alloc_add_mutex;
+            GERACORE_MUTEX alloc_resize_mutex;
+            size_t alloc_count;
+            size_t allocs_buffer_size;
+            GeraAllocation* allocs;
+            GERACORE_MUTEX free_mutex;
+            size_t free_count;
+            size_t free_buffer_size;
+            GeraAllocation** free_allocs;
+        } GeraGC;
+
+        static GeraGC GERA___GC_STATE;
+
+        static void gera___gc_state_init(void) {
+            GeraGC* gc = &GERA___GC_STATE;
+            gc->alloc_add_mutex = geracoredeps_create_mutex();
+            gc->alloc_resize_mutex = geracoredeps_create_mutex();
+            gc->alloc_count = 0;
+            gc->allocs_buffer_size = 1;
+            gc->allocs = geracoredeps_malloc(
+                sizeof(GeraAllocation) * gc->allocs_buffer_size
             );
-            if(a == NULL) { gera___panic("memory allocation failed"); }
-            a->rc_mutex = geracoredeps_create_mutex();
-            a->data_mutex = geracoredeps_create_mutex();
+            gc->free_mutex = geracoredeps_create_mutex();
+            gc->free_count = 0;
+            gc->free_buffer_size = 1;
+            gc->free_allocs = geracoredeps_malloc(
+                sizeof(GeraAllocation*) * gc->free_buffer_size
+            );
+        }
+
+        GeraAllocation* gera___alloc(size_t size, GeraAllocHandler mark_h) {
+            if(size == 0) { return NULL; }
+            GeraGC* gc = &GERA___GC_STATE;
+            geracoredeps_lock_mutex(&gc->free_mutex);
+            if(gc->free_count > 0) {
+                gc->free_count -= 1;
+                GeraAllocation* a = gc->free_allocs[gc->free_count];
+                geracoredeps_unlock_mutex(&gc->free_mutex);
+                geracoredeps_lock_mutex(&a->header_mutex);
+                a->rc = 1;
+                a->size = size;
+                a->fh = NULL;
+                a->mh = mark_h;
+                a->gc_flags = GC_USED;
+                a->data = geracoredeps_malloc(size);
+                geracoredeps_unlock_mutex(&a->header_mutex);
+                return a;
+            }
+            geracoredeps_unlock_mutex(&gc->free_mutex);
+            geracoredeps_lock_mutex(&gc->alloc_add_mutex);
+            geracoredeps_lock_mutex(&gc->alloc_resize_mutex);
+            if(gc->alloc_count >= gc->allocs_buffer_size) {
+                gc->allocs_buffer_size *= 2;
+                gc->allocs = geracoredeps_realloc(
+                    gc->allocs, 
+                    sizeof(GeraAllocation) * gc->allocs_buffer_size
+                );
+            }
+            GeraAllocation* a = gc->allocs + gc->alloc_count;
+            gc->alloc_count += 1;
+            geracoredeps_unlock_mutex(&gc->alloc_add_mutex);
+            a->header_mutex = geracoredeps_create_mutex();
             a->rc = 1;
             a->size = size;
-            a->fh = fh;
+            a->fh = NULL;
+            a->mh = mark_h;
+            a->gc_flags = GC_USED;
+            a->data_mutex = geracoredeps_create_mutex();
+            a->data = geracoredeps_malloc(size);
+            geracoredeps_unlock_mutex(&gc->alloc_resize_mutex);
             return a;
         }
 
         void gera___stack_copied(GeraAllocation* a) {
             if(a == NULL) { return; }
-            geracoredeps_lock_mutex(&a->rc_mutex);
+            geracoredeps_lock_mutex(&a->header_mutex);
             a->rc += 1;
-            geracoredeps_unlock_mutex(&a->rc_mutex);
+            geracoredeps_unlock_mutex(&a->header_mutex);
         }
 
         void gera___stack_deleted(GeraAllocation* a) {
             if(a == NULL) { return; }
-            geracoredeps_lock_mutex(&a->rc_mutex);
+            geracoredeps_lock_mutex(&a->header_mutex);
             a->rc -= 1;
-            geracoredeps_unlock_mutex(&a->rc_mutex);
+            geracoredeps_unlock_mutex(&a->header_mutex);
+        }
+
+        void gera___mark_ref(GeraAllocation* a) {
+            if(a == NULL) { return; }
+            geracoredeps_lock_mutex(&a->header_mutex);
+            if(a->gc_flags & GC_REACHABLE) {
+                geracoredeps_unlock_mutex(&a->header_mutex);
+                return;
+            }
+            a->gc_flags |= GC_REACHABLE;
+            GeraAllocHandler mh = a->mh;
+            geracoredeps_unlock_mutex(&a->header_mutex);
+            if(mh != NULL) { (mh)(a->data, a->size); }
         }
 
         void gera___free(GeraAllocation* a) {
             if(a == NULL) { return; }
-            (a->fh)(a->data, a->size);
-            geracoredeps_free(a);
+            GeraGC* gc = &GERA___GC_STATE;
+            geracoredeps_lock_mutex(&a->header_mutex);
+            if(a->fh != NULL) { (a->fh)(a->data, a->size); }
+            a->gc_flags = 0;
+            geracoredeps_free(a->data);
+            geracoredeps_unlock_mutex(&a->header_mutex);
+            geracoredeps_lock_mutex(&gc->free_mutex);
+            if(gc->free_count >= gc->free_buffer_size) {
+                gc->free_buffer_size *= 2;
+                gc->free_allocs = geracoredeps_realloc(
+                    gc->free_allocs, 
+                    sizeof(GeraAllocation*) * gc->free_buffer_size
+                );
+            }
+            gc->free_allocs[gc->free_count] = a;
+            geracoredeps_unlock_mutex(&gc->free_mutex);
+        }
+
+        void gera___gc_cycle() {
+            GeraGC* gc = &GERA___GC_STATE;
+            geracoredeps_lock_mutex(&gc->alloc_add_mutex);
+            size_t alloc_c = gc->alloc_count;
+            geracoredeps_unlock_mutex(&gc->alloc_add_mutex);
+            geracoredeps_lock_mutex(&gc->alloc_resize_mutex);
+            for(size_t alloc_i = 0; alloc_i < alloc_c; alloc_i += 1) {
+                GeraAllocation* a = gc->allocs + alloc_i;
+                geracoredeps_lock_mutex(&a->header_mutex);
+                gbool used = a->gc_flags & GC_USED;
+                gbool stack_reachable = a->rc > 0;
+                geracoredeps_unlock_mutex(&a->header_mutex);
+                if(used && stack_reachable) {
+                    gera___mark_ref(a);
+                }
+            }
+            for(size_t alloc_i = 0; alloc_i < alloc_c; alloc_i += 1) {
+                GeraAllocation* a = gc->allocs + alloc_i;
+                geracoredeps_lock_mutex(&a->header_mutex);
+                gbool used = a->gc_flags & GC_USED;
+                gbool reachable = a->gc_flags & GC_REACHABLE;
+                a->gc_flags &= ~GC_REACHABLE;
+                geracoredeps_unlock_mutex(&a->header_mutex);
+                if(used && !reachable) {
+                    gera___free(a);
+                }
+            }
+            geracoredeps_unlock_mutex(&gc->alloc_resize_mutex);
         }
 
         double gera___float_mod(double x, double div) {
@@ -70,8 +190,6 @@ public class CCodeGen implements CodeGen {
             }
             return 1;
         }
-
-        void gera___free_nothing(char* data, size_t size) {}
 
         #if defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__))
             #define PANIC_REASON_COLOR "\033[0;91;1m"
@@ -186,9 +304,7 @@ public class CCodeGen implements CodeGen {
             for(; data[length_bytes] != '\\0'; length += 1) {
                 length_bytes += gera___codepoint_size(data[length_bytes]);
             }
-            GeraAllocation* allocation = gera___alloc(
-                length_bytes, &gera___free_nothing
-            );
+            GeraAllocation* allocation = gera___alloc(length_bytes, NULL);
             for(size_t c = 0; c < length_bytes; c += 1) {
                 allocation->data[c] = data[c];
             }
@@ -237,7 +353,7 @@ public class CCodeGen implements CodeGen {
 
         GeraString gera___concat(GeraString a, GeraString b) {
             GeraAllocation* allocation = gera___alloc(
-                a.length_bytes + b.length_bytes, &gera___free_nothing
+                a.length_bytes + b.length_bytes, NULL
             );
             GeraString result = (GeraString) {
                 .allocation = allocation,
@@ -265,7 +381,7 @@ public class CCodeGen implements CodeGen {
         GeraArray GERA_ARGS;
         void gera___set_args(int argc, char** argv) {
             GeraAllocation* allocation = gera___alloc(
-                sizeof(GeraString) * argc, &gera___free_nothing
+                sizeof(GeraString) * argc, NULL
             );
             GeraString* data = (GeraString*) allocation->data;
             for(size_t i = 0; i < argc; i += 1) {
@@ -376,6 +492,8 @@ public class CCodeGen implements CodeGen {
         out.append(typed);
         out.append("\n");
         out.append("int main(int argc, char** argv) {\n");
+        out.append("    gera___gc_state_init();\n");
+        out.append("    geracoredeps_start_gc();\n");
         out.append("    gera___set_args(argc, argv);\n");
         out.append("    gera_init_svals();\n");
         out.append("    ");
@@ -775,7 +893,7 @@ public class CCodeGen implements CodeGen {
                 out.append(capturedName);
                 out.append(" = gera___alloc(sizeof(");
                 this.emitType(varT, out);
-                out.append("), &gera___free_nothing);\n");
+                out.append("), NULL);\n"); // TODO! REPLACE THIS `NULL` WITH ACTUAL MARK HANDLER
             } else {
                 this.emitType(varT, out);
                 out.append(" local_");
@@ -913,7 +1031,7 @@ public class CCodeGen implements CodeGen {
                 out.append("{\n");
                 out.append("    GeraAllocation* a = gera___alloc(sizeof(");
                 this.emitObjectLayoutName(objT.id, out);
-                out.append("), &gera___free_nothing);\n");
+                out.append("), NULL);\n"); // TODO! REPLACE THIS `NULL` WITH ACTUAL MARK HANDLER
                 out.append("    ");
                 this.emitObjectLayoutName(objT.id, out);
                 out.append("* members = (");
@@ -953,7 +1071,7 @@ public class CCodeGen implements CodeGen {
                     this.emitType(itemT, out);
                     out.append(") * ");
                     out.append(instr.arguments.size());
-                    out.append(", &gera___free_nothing);\n");
+                    out.append(", NULL);\n"); // TODO! REPLACE THIS `NULL` WITH ACTUAL MARK HANDLER
                     out.append("    ");
                     this.emitType(itemT, out);
                     out.append("* items = (");
@@ -997,7 +1115,7 @@ public class CCodeGen implements CodeGen {
                     out.append(");\n");
                     out.append("    GeraAllocation* a = gera___alloc(sizeof(");
                     this.emitType(itemT, out);
-                    out.append(") * length, &gera___free_nothing);\n");
+                    out.append(") * length, NULL);\n"); // TODO! REPLACE THIS `NULL` WITH ACTUAL MARK HANDLER
                     out.append("    ");
                     this.emitType(itemT, out);
                     out.append("* items = (");
@@ -1033,7 +1151,7 @@ public class CCodeGen implements CodeGen {
                     out.append("{\n");
                     out.append("    GeraAllocation* a = gera___alloc(sizeof(");
                     this.emitType(valueT, out);
-                    out.append("), &gera___free_nothing);\n");
+                    out.append("), NULL);\n"); // TODO! REPLACE THIS `NULL` WITH ACTUAL MARK HANDLER
                     out.append("    *((");
                     this.emitType(valueT, out);
                     out.append("*) a->data) = ");
@@ -1076,7 +1194,7 @@ public class CCodeGen implements CodeGen {
                 out.append("    GeraAllocation* a = gera___alloc(sizeof(");
                 out.append("GeraClosureCaptures");
                 out.append(closureId);
-                out.append("), &gera___free_nothing);\n");
+                out.append("), NULL);\n"); // TODO! REPLACE THIS `NULL` WITH ACTUAL MARK HANDLER
                 out.append("    GeraClosureCaptures");
                 out.append(closureId);
                 out.append("* c = (GeraClosureCaptures");
