@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
@@ -368,7 +369,7 @@ public class Ir {
         public static record LoadClosure(
             // values = capture values
             List<TypeVariable> argumentTypes, TypeVariable returnType,
-            List<String> captureNames,
+            List<String> captureNames, Set<String> inheritedCaptures,
             Context context, List<Instr> body
         ) {}
         public static record LoadStaticValue(StaticValue value) {}

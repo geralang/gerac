@@ -251,6 +251,7 @@ public class Lowerer {
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
                 List<String> captureNames = new ArrayList<>();
                 List<Ir.Variable> captureValues = new ArrayList<>();
+                Set<String> inheritedCaptures = new HashSet<>();
                 for(String captureName: data.captures().get().get().keySet()) {
                     captureNames.add(captureName);
                     if(this.variables().variables.containsKey(captureName)) {
@@ -259,16 +260,7 @@ public class Lowerer {
                         captureValues.add(var);
                         this.context.markCaptured(var, captureName);
                     } else {
-                        Ir.Variable value = this.context.allocate(
-                            data.captures().get().get().get(captureName)
-                        );
-                        this.block().add(new Ir.Instr(
-                            Ir.Instr.Type.READ_CAPTURE,
-                            List.of(), 
-                            new Ir.Instr.CaptureAccess(captureName),
-                            Optional.of(value)
-                        ));
-                        captureValues.add(value);
+                        inheritedCaptures.add(captureName);
                     }
                 }
                 Ir.Context prevContext = this.context;
@@ -300,7 +292,8 @@ public class Lowerer {
                     new Ir.Instr.LoadClosure(
                         data.argumentTypes().get().get(), 
                         data.returnType().get().get(), 
-                        captureNames, context, body
+                        captureNames, inheritedCaptures, 
+                        context, body
                     ), 
                     Optional.of(dest)
                 ));
