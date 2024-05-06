@@ -797,6 +797,16 @@ public class ConstraintGenerator {
                 }
                 switch(accessed.get().type) {
                     case VARIABLE: {
+                        if(assigned) {
+                            throw new ErrorException(new Error(
+                                "Assignment to an immutable variable",
+                                Error.Marking.error(
+                                    node.source, 
+                                    "this variable has not been"
+                                        + " declared as mutable"
+                                )
+                            ));
+                        }
                         TypeVariable value = this.ctx.makeVar();
                         this.varUsages.add(
                             new VariableUsage(node, fullPath, value)
@@ -804,6 +814,15 @@ public class ConstraintGenerator {
                         return Optional.of(value);
                     }
                     case PROCEDURE: {
+                        if(assigned) {
+                            throw new ErrorException(new Error(
+                                "Assignment to a procedure",
+                                Error.Marking.error(
+                                    node.source, 
+                                    "procedures cannot be assigned to"
+                                )
+                            ));
+                        }
                         Symbols.Symbol.Procedure symbolData = accessed.get()
                             .getValue();
                         List<TypeVariable> arguments = new ArrayList<>();
