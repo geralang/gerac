@@ -23,86 +23,66 @@ public class CCodeGen implements CodeGen {
 
         void gera___panic(const char* reason);
 
-        #define GC_USED 1
-        #define GC_REACHABLE 2
+        #define GC_REACHABLE 1
+        #define GC_FREE 2
+        #define GC_DATA_LOCKED 4
+
+        typedef struct GeraGcAlloc GeraGcAlloc;
+        typedef struct GeraGcAlloc {
+            GERACORE_MUTEX connected_mutex;
+            GeraGcAlloc* next;
+            GeraGcAlloc* last;
+            GeraAllocation allocation;
+        } GeraGcAlloc;
 
         typedef struct GeraGC {
-            GERACORE_MUTEX alloc_add_mutex;
-            GERACORE_MUTEX alloc_resize_mutex;
+            GERACORE_MUTEX add_mutex;
+            GeraGcAlloc* first_alloc;
+            GeraGcAlloc* last_alloc;
             size_t alloc_count;
-            size_t allocs_buffer_size;
-            GeraAllocation** allocs;
-            GERACORE_MUTEX free_mutex;
-            size_t free_count;
-            size_t free_buffer_size;
-            size_t* free_allocs;
         } GeraGC;
 
         static GeraGC GERA___GC_STATE;
 
         static void gera___gc_state_init(void) {
             GeraGC* gc = &GERA___GC_STATE;
-            gc->alloc_add_mutex = geracoredeps_create_mutex();
-            gc->alloc_resize_mutex = geracoredeps_create_mutex();
+            gc->first_alloc = NULL;
+            gc->last_alloc = NULL;
             gc->alloc_count = 0;
-            gc->allocs_buffer_size = 256;
-            gc->allocs = geracoredeps_malloc(
-                sizeof(GeraAllocation*) * gc->allocs_buffer_size
-            );
-            gc->free_mutex = geracoredeps_create_mutex();
-            gc->free_count = 0;
-            gc->free_buffer_size = 256;
-            gc->free_allocs = geracoredeps_malloc(
-                sizeof(size_t) * gc->free_buffer_size
-            );
         }
 
         GeraAllocation* gera___alloc(size_t size, GeraAllocHandler mark_h) {
-            if(size == 0) { return NULL; }
+            if(size == 0) {
+                size = 1;
+            }
             GeraGC* gc = &GERA___GC_STATE;
-            geracoredeps_lock_mutex(&gc->free_mutex);
-            if(gc->free_count > 0) {
-                gc->free_count -= 1;
-                size_t alloc_i = gc->free_allocs[gc->free_count];
-                GeraAllocation* a = gc->allocs[alloc_i];
-                geracoredeps_unlock_mutex(&gc->free_mutex);
-                geracoredeps_lock_mutex(&a->header_mutex);
-                a->rc = 1;
-                a->size = size;
-                a->fh = NULL;
-                a->mh = mark_h;
-                a->gc_flags = GC_USED;
-                a->data = geracoredeps_malloc(size);
-                gera___begin_write(a);
-                geracoredeps_unlock_mutex(&a->header_mutex);
-                return a;
-            }
-            geracoredeps_unlock_mutex(&gc->free_mutex);
-            geracoredeps_lock_mutex(&gc->alloc_add_mutex);
-            geracoredeps_lock_mutex(&gc->alloc_resize_mutex);
-            if(gc->alloc_count >= gc->allocs_buffer_size) {
-                gc->allocs_buffer_size *= 2;
-                gc->allocs = geracoredeps_realloc(
-                    gc->allocs, 
-                    sizeof(GeraAllocation*) * gc->allocs_buffer_size
-                );
-            }
-            GeraAllocation* a = geracoredeps_malloc(sizeof(GeraAllocation));
-            gc->allocs[gc->alloc_count] = a;
+            geracoredeps_lock_mutex(&gc->add_mutex);
             gc->alloc_count += 1;
-            a->header_mutex = geracoredeps_create_mutex();
-            a->rc = 1;
-            a->size = size;
-            a->fh = NULL;
-            a->mh = mark_h;
-            a->gc_flags = GC_USED;
-            a->data_mutex = geracoredeps_create_mutex();
-            a->data = geracoredeps_malloc(size);
-            geracoredeps_unlock_mutex(&gc->alloc_add_mutex);
-            geracoredeps_unlock_mutex(&gc->alloc_resize_mutex);
-            gera___begin_write(a);
-            printf("[GC] Allocation of %zu bytes at %p\\n", size, a);
-            return a;
+            GeraGcAlloc* a = geracoredeps_malloc(sizeof(GeraGcAlloc));
+            a->connected_mutex = geracoredeps_create_mutex();
+            a->next = NULL;
+            a->last = gc->last_alloc;
+            a->allocation.header_mutex = geracoredeps_create_mutex();
+            a->allocation.rc = 1;
+            a->allocation.size = size;
+            a->allocation.fh = NULL;
+            a->allocation.mh = mark_h;
+            a->allocation.gc_flags = GC_REACHABLE;
+            a->allocation.data_mutex = geracoredeps_create_mutex();
+            a->allocation.data = geracoredeps_malloc(size);
+            if(gc->first_alloc == NULL) { 
+                gc->first_alloc = a; 
+            }
+            if(gc->last_alloc != NULL) { 
+                geracoredeps_lock_mutex(&gc->last_alloc->connected_mutex);
+                gc->last_alloc->next = a;
+                geracoredeps_unlock_mutex(&gc->last_alloc->connected_mutex);
+            }
+            gc->last_alloc = a;
+            geracoredeps_unlock_mutex(&gc->add_mutex);
+            geracoredeps_lock_mutex(&a->allocation.data_mutex);
+            // printf("[GC] Allocation of %zu byte(s) at %p\\n", size, a);
+            return &a->allocation;
         }
 
         void gera___begin_read(GeraAllocation* a) {
@@ -152,55 +132,92 @@ public class CCodeGen implements CodeGen {
             if(mh != NULL) { (mh)(a); }
         }
 
-        void gera___free(GeraAllocation* a, size_t alloc_i) {
+        void gera___free(GeraGcAlloc* a, gbool gc_locked) {
             if(a == NULL) { return; }
             GeraGC* gc = &GERA___GC_STATE;
-            printf("[GC] Deallocation of allocation at %p\\n", a);
-            geracoredeps_lock_mutex(&a->header_mutex);
-            if(a->fh != NULL) { (a->fh)(a); }
-            a->gc_flags = 0;
-            geracoredeps_free(a->data);
-            geracoredeps_unlock_mutex(&a->header_mutex);
-            geracoredeps_lock_mutex(&gc->free_mutex);
-            if(gc->free_count >= gc->free_buffer_size) {
-                gc->free_buffer_size *= 2;
-                gc->free_allocs = geracoredeps_realloc(
-                    gc->free_allocs, 
-                    sizeof(size_t) * gc->free_buffer_size
-                );
+            // printf("[GC] Deallocation of allocation at %p\\n", a);
+            if(a->allocation.fh != NULL) { (a->allocation.fh)(&a->allocation); }
+            if(!gc_locked) {
+                geracoredeps_lock_mutex(&gc->add_mutex);
             }
-            gc->free_allocs[gc->free_count] = alloc_i;
-            geracoredeps_unlock_mutex(&gc->free_mutex);
+            if(a->last == NULL) {
+                gc->first_alloc = a->next;
+            } else {
+                geracoredeps_lock_mutex(&a->last->connected_mutex);
+                a->last->next = a->next;
+                geracoredeps_unlock_mutex(&a->last->connected_mutex);
+            }
+            if(a->next == NULL) {
+                gc->last_alloc = a->last;
+            } else {
+                geracoredeps_lock_mutex(&a->next->connected_mutex);
+                a->next->last = a->last;
+                geracoredeps_unlock_mutex(&a->next->connected_mutex);
+            }
+            gc->alloc_count -= 1;
+            if(!gc_locked) {
+                geracoredeps_unlock_mutex(&gc->add_mutex);
+            }
+            geracoredeps_free_mutex(&a->allocation.header_mutex);
+            geracoredeps_free_mutex(&a->allocation.data_mutex);
+            geracoredeps_free(a->allocation.data);
+            geracoredeps_free_mutex(&a->connected_mutex);
+            geracoredeps_free(a);
+        }
+
+        void gera___gc_cycle_with_lock(gbool gc_locked) {
+            GeraGC* gc = &GERA___GC_STATE;
+            printf("[GC] Currently has %zu allocations\\n", gc->alloc_count);
+            if(!gc_locked) {
+                geracoredeps_lock_mutex(&gc->add_mutex);
+            }
+            size_t start_alloc_count = gc->alloc_count;
+            GeraGcAlloc* first = gc->first_alloc;
+            if(!gc_locked) {
+                geracoredeps_unlock_mutex(&gc->add_mutex);
+            }
+            GeraGcAlloc* c = first;
+            while(c != NULL) {
+                geracoredeps_lock_mutex(&c->allocation.header_mutex);
+                gbool stack_reachable = c->allocation.rc > 0;
+                geracoredeps_unlock_mutex(&c->allocation.header_mutex);
+                if(stack_reachable) {
+                    gera___mark_ref(&c->allocation);
+                }
+                geracoredeps_lock_mutex(&c->connected_mutex);
+                GeraGcAlloc* next = c->next;
+                geracoredeps_unlock_mutex(&c->connected_mutex);
+                c = next;
+            }
+            c = first;
+            while(c != NULL) {
+                geracoredeps_lock_mutex(&c->allocation.header_mutex);
+                gbool reachable = c->allocation.gc_flags & GC_REACHABLE;
+                c->allocation.gc_flags &= ~GC_REACHABLE;
+                geracoredeps_unlock_mutex(&c->allocation.header_mutex);
+                geracoredeps_lock_mutex(&c->connected_mutex);
+                GeraGcAlloc* next = c->next;
+                geracoredeps_unlock_mutex(&c->connected_mutex);
+                if(!reachable) {
+                    gera___free(c, gc_locked);
+                }
+                c = next;
+            }
+            if(!gc_locked) {
+                geracoredeps_lock_mutex(&gc->add_mutex);
+            }
+            size_t end_alloc_count = gc->alloc_count;
+            if(!gc_locked) {
+                if(end_alloc_count >= start_alloc_count * 2) {
+                    printf("[GC] Starting aggressive cycle\\n");
+                    gera___gc_cycle_with_lock(1);
+                }
+                geracoredeps_unlock_mutex(&gc->add_mutex);
+            }
         }
 
         void gera___gc_cycle() {
-            GeraGC* gc = &GERA___GC_STATE;
-            geracoredeps_lock_mutex(&gc->alloc_add_mutex);
-            size_t alloc_c = gc->alloc_count;
-            geracoredeps_unlock_mutex(&gc->alloc_add_mutex);
-            geracoredeps_lock_mutex(&gc->alloc_resize_mutex);
-            for(size_t alloc_i = 0; alloc_i < alloc_c; alloc_i += 1) {
-                GeraAllocation* a = gc->allocs[alloc_i];
-                geracoredeps_lock_mutex(&a->header_mutex);
-                gbool used = a->gc_flags & GC_USED;
-                gbool stack_reachable = a->rc > 0;
-                geracoredeps_unlock_mutex(&a->header_mutex);
-                if(used && stack_reachable) {
-                    gera___mark_ref(a);
-                }
-            }
-            for(size_t alloc_i = 0; alloc_i < alloc_c; alloc_i += 1) {
-                GeraAllocation* a = gc->allocs[alloc_i];
-                geracoredeps_lock_mutex(&a->header_mutex);
-                gbool used = a->gc_flags & GC_USED;
-                gbool reachable = a->gc_flags & GC_REACHABLE;
-                a->gc_flags &= ~GC_REACHABLE;
-                geracoredeps_unlock_mutex(&a->header_mutex);
-                if(used && !reachable) {
-                    gera___free(a, alloc_i);
-                }
-            }
-            geracoredeps_unlock_mutex(&gc->alloc_resize_mutex);
+            gera___gc_cycle_with_lock(0);
         }
 
         double gera___float_mod(double x, double div) {
@@ -425,10 +442,121 @@ public class CCodeGen implements CodeGen {
         """;
 
 
+    @FunctionalInterface
+    private static interface BuiltInProcedure {
+        void emit(
+            TypeContext tctx, List<Ir.Variable> args, List<TypeVariable> argt,
+            Ir.Variable dest, StringBuilder out
+        );
+    }
+
+    private void addBuiltins() {
+        this.builtIns.put(
+            new Namespace(List.of("core", "addr_eq")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                this.emitType(argt.get(0), out);
+                out.append(" a = ");
+                this.emitVariable(args.get(0), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                this.emitVarSync("begin_read", args.get(1), out);
+                this.emitType(argt.get(1), out);
+                out.append(" b = ");
+                this.emitVariable(args.get(1), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(1), out);
+                this.emitVarSync("begin_write", dest, out);
+                this.emitVariable(dest, out);
+                out.append(" = a.allocation == b.allocation;\n");
+                this.emitVarSync("end_write", dest, out);
+                out.append("}\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "tag_eq")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                this.emitType(argt.get(0), out);
+                out.append(" a = ");
+                this.emitVariable(args.get(0), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                this.emitVarSync("begin_read", args.get(1), out);
+                this.emitType(argt.get(1), out);
+                out.append(" b = ");
+                this.emitVariable(args.get(1), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(1), out);
+                out.append("gera___begin_read(a.allocation);\n");
+                out.append("gera___begin_read(b.allocation);\n");
+                out.append(
+                    "GeraUnionData* ad = (GeraUnionData*) a.allocation->data;\n"
+                );
+                out.append(
+                    "GeraUnionData* bd = (GeraUnionData*) b.allocation->data;\n"
+                );
+                out.append("gbool result = ad->tag == bd->tag;\n");
+                out.append("gera___end_read(a.allocation);\n");
+                out.append("gera___end_read(b.allocation);\n");
+                this.emitVarSync("begin_write", dest, out);
+                this.emitVariable(dest, out);
+                out.append(" = result;\n");
+                this.emitVarSync("end_write", dest, out);
+                out.append("}\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "length")),
+            (tctx, args, argt, dest, out) -> {
+                this.emitVarSync("begin_read", args.get(0), out);
+                this.emitVarSync("begin_write", dest, out);
+                this.emitVariable(dest, out);
+                out.append(" = (gint) ");
+                this.emitVariable(args.get(0), out);
+                out.append(".length;\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                this.emitVarSync("end_write", dest, out);
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "exhaust")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                this.emitType(argt.get(0), out);
+                out.append(" iter = ");
+                this.emitVariable(args.get(0), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                out.append("for(;;) {\n");
+                out.append(
+                    "GeraUnion next = ((GeraUnion (*)(void)) iter.body)();\n"
+                );
+                out.append("gera___begin_read(next.allocation);\n");
+                out.append(
+                    "GeraUnionData* data = (GeraUnionData*) next.allocation->data;\n"
+                );
+                out.append("gbool at_end = data->tag == ");
+                out.append(this.getVariantTagNumber("end"));
+                out.append(";\n");
+                out.append("gera___end_read(next.allocation);\n");
+                out.append("gera___stack_deleted(next.allocation);\n");
+                out.append("if(at_end) { break; }\n");
+                out.append("}\n");
+                out.append("}\n");
+            }
+        );
+    }
+
+
     private final Map<String, String> sourceFiles;
     private final Symbols symbols;
     private final TypeContext typeContext;
     private final Ir.StaticValues staticValues;
+    private final Map<Namespace, BuiltInProcedure> builtIns;
 
     private final List<Ir.Context> contextStack;
 
@@ -446,8 +574,10 @@ public class CCodeGen implements CodeGen {
         this.symbols = symbols;
         this.typeContext = typeContext;
         this.staticValues = staticValues;
+        this.builtIns = new HashMap<>();
         this.contextStack = new LinkedList<>();
         this.collapseDuplicateTypes();
+        this.addBuiltins();
     }
 
 
@@ -2173,54 +2303,73 @@ public class CCodeGen implements CodeGen {
 
             case CALL_PROCEDURE: {
                 Ir.Instr.CallProcedure data = instr.getValue();
-                TypeVariable retT = this.context().variableTypes
-                    .get(instr.dest.get().index);
-                out.append("{\n");
-                for(int argI = 0; argI < instr.arguments.size(); argI += 1) {
-                    TypeVariable argT = this.context().variableTypes
-                        .get(instr.arguments.get(argI).index);
-                    if(!this.shouldEmitType(argT)) { continue; }
-                    this.emitStackCopy(instr.arguments.get(argI), out);
-                    this.emitVarSync(
-                        "begin_read", instr.arguments.get(argI), out
-                    );
-                    this.emitType(argT, out);
-                    out.append(" call_arg_");
-                    out.append(argI);
-                    out.append(" = ");
-                    this.emitVariable(instr.arguments.get(argI), out);
-                    out.append(";\n");
-                    this.emitVarSync(
-                        "end_read", instr.arguments.get(argI), out
-                    );
-                }
-                if(this.shouldEmitType(retT)) {
-                    this.emitType(retT, out);
-                    out.append(" call_ret = ");
-                }
-                this.emitVariant(data.path(), data.variant(), out);
-                out.append("(");
-                boolean hadArg = false;
-                for(int argI = 0; argI < instr.arguments.size(); argI += 1) {
-                    TypeVariable argT = this.context().variableTypes
-                        .get(instr.arguments.get(argI).index);
-                    if(!this.shouldEmitType(argT)) { continue; }
-                    if(hadArg) {
-                        out.append(", ");
+                Symbols.Symbol symbol = this.symbols.get(data.path()).get();
+                boolean isExternal = symbol.externalName.isPresent();
+                boolean hasBody = symbol.<Symbols.Symbol.Procedure>getValue()
+                    .body().isPresent();
+                if(isExternal || hasBody) {
+                    TypeVariable retT = this.context().variableTypes
+                        .get(instr.dest.get().index);
+                    out.append("{\n");
+                    for(
+                        int argI = 0; argI < instr.arguments.size(); argI += 1
+                    ) {
+                        TypeVariable argT = this.context().variableTypes
+                            .get(instr.arguments.get(argI).index);
+                        if(!this.shouldEmitType(argT)) { continue; }
+                        this.emitStackCopy(instr.arguments.get(argI), out);
+                        this.emitVarSync(
+                            "begin_read", instr.arguments.get(argI), out
+                        );
+                        this.emitType(argT, out);
+                        out.append(" call_arg_");
+                        out.append(argI);
+                        out.append(" = ");
+                        this.emitVariable(instr.arguments.get(argI), out);
+                        out.append(";\n");
+                        this.emitVarSync(
+                            "end_read", instr.arguments.get(argI), out
+                        );
                     }
-                    hadArg = true;
-                    out.append("call_arg_");
-                    out.append(argI);
+                    if(this.shouldEmitType(retT)) {
+                        this.emitType(retT, out);
+                        out.append(" call_ret = ");
+                    }
+                    this.emitVariant(data.path(), data.variant(), out);
+                    out.append("(");
+                    boolean hadArg = false;
+                    for(
+                        int argI = 0; argI < instr.arguments.size(); argI += 1
+                    ) {
+                        TypeVariable argT = this.context().variableTypes
+                            .get(instr.arguments.get(argI).index);
+                        if(!this.shouldEmitType(argT)) { continue; }
+                        if(hadArg) {
+                            out.append(", ");
+                        }
+                        hadArg = true;
+                        out.append("call_arg_");
+                        out.append(argI);
+                    }
+                    out.append(");\n");
+                    if(this.shouldEmitType(retT)) {
+                        this.emitStackDelete(instr.dest.get(), out);
+                        this.emitVarSync("begin_write", instr.dest.get(), out);
+                        this.emitVariable(instr.dest.get(), out);
+                        out.append(" = call_ret;\n");
+                        this.emitVarSync("end_write", instr.dest.get(), out);
+                    }
+                    out.append("}\n");
+                } else {
+                    this.builtIns.get(data.path()).emit(
+                        this.typeContext, instr.arguments,
+                        instr.arguments.stream()
+                            .map(a -> this.context().variableTypes.get(a.index))
+                            .toList(), 
+                        instr.dest.get(), 
+                        out
+                    );
                 }
-                out.append(");\n");
-                if(this.shouldEmitType(retT)) {
-                    this.emitStackDelete(instr.dest.get(), out);
-                    this.emitVarSync("begin_write", instr.dest.get(), out);
-                    this.emitVariable(instr.dest.get(), out);
-                    out.append(" = call_ret;\n");
-                    this.emitVarSync("end_write", instr.dest.get(), out);
-                }
-                out.append("}\n");
             } break;
             case CALL_CLOSURE: {
                 TypeVariable closureT = this.context().variableTypes
