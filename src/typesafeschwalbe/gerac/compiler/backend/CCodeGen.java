@@ -195,6 +195,73 @@ public class CCodeGen implements CodeGen {
             return -1;
         }
 
+        void gera___verify_substring_input(
+            size_t src_l, gint* start_si, gint* end_si
+        ) {
+            gint start_i = *start_si;
+            if(start_i < 0) { start_i += src_l; }
+            if(start_i < 0 || start_i > src_l) {
+                size_t ssl = geracoredeps_display_sint_length(*start_si);
+                char ss[ssl + 1];
+                geracoredeps_display_sint(*start_si, ss);
+                ss[ssl] = '\\0';
+                size_t lsl = geracoredeps_display_uint_length(src_l);
+                char ls[lsl + 1];
+                geracoredeps_display_uint(src_l, ls);
+                ls[lsl] = '\\0';
+                gera___panic_pre();
+                geracoredeps_eprint("the start index ");
+                geracoredeps_eprint(ss);
+                geracoredeps_eprint(" is out of bounds for a string of length ");
+                geracoredeps_eprint(ls);
+                gera___panic_post();
+            }
+            gint end_i = *end_si;
+            if(end_i < 0) { end_i += src_l; }
+            if(end_i < 0 || end_i > src_l) {
+                size_t esl = geracoredeps_display_sint_length(*end_si);
+                char es[esl + 1];
+                geracoredeps_display_sint(*end_si, es);
+                es[esl] = '\\0';
+                size_t lsl = geracoredeps_display_uint_length(src_l);
+                char ls[lsl + 1];
+                geracoredeps_display_uint(src_l, ls);
+                ls[lsl] = '\\0';
+                gera___panic_pre();
+                geracoredeps_eprint("the end index ");
+                geracoredeps_eprint(es);
+                geracoredeps_eprint(" is out of bounds for a string of length ");
+                geracoredeps_eprint(ls);
+                gera___panic_post();
+
+            }
+            if(start_i > end_i) {
+                size_t ssl = geracoredeps_display_sint_length(*start_si);
+                char ss[ssl + 1];
+                geracoredeps_display_sint(*start_si, ss);
+                ss[ssl] = '\\0';
+                size_t esl = geracoredeps_display_sint_length(*end_si);
+                char es[esl + 1];
+                geracoredeps_display_sint(*end_si, es);
+                es[esl] = '\\0';
+                size_t lsl = geracoredeps_display_uint_length(src_l);
+                char ls[lsl + 1];
+                geracoredeps_display_uint(src_l, ls);
+                ls[lsl] = '\\0';
+                gera___panic_pre();
+                geracoredeps_eprint("the start index ");
+                geracoredeps_eprint(ss);
+                geracoredeps_eprint(" is larger than the end index ");
+                geracoredeps_eprint(es);
+                geracoredeps_eprint(" (length of string is ");
+                geracoredeps_eprint(ls);
+                geracoredeps_eprint(")");
+                gera___panic_post();
+            }
+            *start_si = start_i;
+            *end_si = end_i;
+        }
+
         size_t gera___codepoint_size(char fb) {
             if((fb & 0b10000000) == 0b00000000) { return 1; }
             if((fb & 0b11100000) == 0b11000000) { return 2; }
@@ -277,12 +344,12 @@ public class CCodeGen implements CodeGen {
             return result;
         }
 
-        gint gera___hash(unsigned char* data, size_t data_len) {
+        gint gera___hash(const unsigned char* data, size_t data_len) {
             size_t hash = 0;
             for(size_t i = 0; i < data_len; i += 1) {
                 hash = data[i] + (hash << 6) + (hash << 16) - hash;
             }
-            return *((gint*) &hash);
+            return (gint) hash;
         }
         
         GeraArray GERA_ARGS;
@@ -406,6 +473,372 @@ public class CCodeGen implements CodeGen {
                 out.append("}\n");
             }
         );
+        this.builtIns.put(
+            new Namespace(List.of("core", "exhaust")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                this.emitType(argt.get(0), out);
+                out.append(" iter = ");
+                this.emitVariable(args.get(0), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                out.append("for(;;) {\n");
+                out.append(
+                    "GeraUnion next = ((GeraUnion (*)(GeraAllocation*)) iter.body)"
+                        + "(iter.allocation);\n"
+                );
+                out.append("gbool at_end = next.tag == ");
+                out.append(this.getVariantTagNumber("end"));
+                out.append(";\n");
+                out.append("gera___ref_deleted(next.allocation);\n");
+                out.append("if(at_end) { break; }\n");
+                out.append("}\n");
+                out.append("}\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "panic")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                out.append("GERA_STRING_NULL_TERM(");
+                this.emitVariable(args.get(0), out);
+                out.append(", panic_message_nt);\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                out.append("gera___panic(panic_message_nt);\n");
+                out.append("}\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "as_str")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                if(this.shouldEmitType(argt.get(0))) {
+                    this.emitVarSync("begin_read", args.get(0), out);
+                    this.emitType(argt.get(0), out);
+                    out.append(" converted = ");
+                    this.emitVariable(args.get(0), out);
+                    out.append(";\n");
+                    this.emitVarSync("end_read", args.get(0), out);
+                }
+                switch(tctx.get(argt.get(0)).type) {
+                    case UNIT: {
+                        this.emitVarSync("begin_write", dest, out);
+                        this.emitRefDelete(dest, out);
+                        this.emitVariable(dest, out);
+                        out.append(" = ");
+                        out.append("gera___wrap_static_string(\"unit\");\n");
+                        this.emitVarSync("end_write", dest, out);
+                    } break;
+                    case BOOLEAN: {
+                        this.emitVarSync("begin_write", dest, out);
+                        this.emitRefDelete(dest, out);
+                        this.emitVariable(dest, out);
+                        out.append(" = gera___wrap_static_string");
+                        out.append("(converted? \"true\" : \"false\");\n");
+                        this.emitVarSync("end_write", dest, out);
+                    } break;
+                    case INTEGER: {
+                        out.append(
+                            "size_t result_l = geracoredeps_display_sint_length(converted);\n"
+                        );
+                        out.append("char result[result_l + 1];\n");
+                        out.append(
+                            "geracoredeps_display_sint(converted, result);\n"
+                        );
+                        out.append("result[result_l] = '\\0';\n");
+                        this.emitVarSync("begin_write", dest, out);
+                        this.emitRefDelete(dest, out);
+                        this.emitVariable(dest, out);
+                        out.append(" = gera___alloc_string(result);\n");
+                        this.emitVarSync("end_write", dest, out);
+                    } break;
+                    case FLOAT: {
+                        out.append(
+                            "size_t result_l = geracoredeps_display_float_length(converted);\n"
+                        );
+                        out.append("char result[result_l + 1];\n");
+                        out.append(
+                            "geracoredeps_display_float(converted, result);\n"
+                        );
+                        out.append("result[result_l] = '\\0';\n");
+                        this.emitVarSync("begin_write", dest, out);
+                        this.emitRefDelete(dest, out);
+                        this.emitVariable(dest, out);
+                        out.append(" = gera___alloc_string(result);\n");
+                        this.emitVarSync("end_write", dest, out);
+                    } break;
+                    case STRING: {
+                        this.emitRefCopy("converted", argt.get(0), out);
+                        this.emitVarSync("begin_write", dest, out);
+                        this.emitRefDelete(dest, out);
+                        this.emitVariable(dest, out);
+                        out.append(" = converted;\n");
+                        this.emitVarSync("end_write", dest, out);
+                    } break;
+                    case ARRAY: {
+                        this.emitVarSync("begin_write", dest, out);
+                        this.emitRefDelete(dest, out);
+                        this.emitVariable(dest, out);
+                        out.append(" = ");
+                        out.append("gera___wrap_static_string(\"<array>\");\n");
+                        this.emitVarSync("end_write", dest, out);
+                    } break;
+                    case UNORDERED_OBJECT: {
+                        this.emitVarSync("begin_write", dest, out);
+                        this.emitRefDelete(dest, out);
+                        this.emitVariable(dest, out);
+                        out.append(" = ");
+                        out.append(
+                            "gera___wrap_static_string(\"<object>\");\n"
+                        );
+                        this.emitVarSync("end_write", dest, out);
+                    } break;
+                    case CLOSURE: {
+                        this.emitVarSync("begin_write", dest, out);
+                        this.emitRefDelete(dest, out);
+                        this.emitVariable(dest, out);
+                        out.append(" = ");
+                        out.append(
+                            "gera___wrap_static_string(\"<closure>\");\n"
+                        );
+                        this.emitVarSync("end_write", dest, out);
+                    } break;
+                    case UNION: {
+                        DataType.Union<TypeVariable> union
+                            = tctx.get(argt.get(0)).getValue();
+                        this.emitVarSync("begin_write", dest, out);
+                        this.emitRefDelete(dest, out);
+                        out.append("switch(converted.tag) {\n");
+                        for(String variant: union.variantTypes().keySet()) {
+                            out.append("case ");
+                            out.append(this.getVariantTagNumber(variant));
+                            out.append(":\n");
+                            this.emitVariable(dest, out);
+                            out.append(" = gera___wrap_static_string(\"#");
+                            out.append(variant);
+                            out.append(" <...>\");\n");
+                            out.append("break;\n");
+                        }
+                        out.append("}\n");
+                        this.emitVarSync("end_write", dest, out);
+                    } break;
+                    case ANY:
+                    case NUMERIC:
+                    case INDEXED:
+                    case REFERENCED: {
+                        throw new RuntimeException("unsure of type!");
+                    }
+                    default: {
+                        throw new RuntimeException("unhandled type!");
+                    }
+                }
+                out.append("}\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "as_int")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                this.emitType(argt.get(0), out);
+                out.append(" converted = ");
+                this.emitVariable(args.get(0), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                this.emitVarSync("begin_write", dest, out);
+                this.emitVariable(dest, out);
+                out.append(" = (gint) converted;\n");
+                this.emitVarSync("end_write", dest, out);
+                out.append("}\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "as_flt")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                this.emitType(argt.get(0), out);
+                out.append(" converted = ");
+                this.emitVariable(args.get(0), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                this.emitVarSync("begin_write", dest, out);
+                this.emitVariable(dest, out);
+                out.append(" = (gfloat) converted;\n");
+                this.emitVarSync("end_write", dest, out);
+                out.append("}\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "substring")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                out.append("GeraString src = ");
+                this.emitVariable(args.get(0), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                this.emitVarSync("begin_read", args.get(1), out);
+                out.append("gint start_i = ");
+                this.emitVariable(args.get(1), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(1), out);
+                this.emitVarSync("begin_read", args.get(2), out);
+                out.append("gint end_i = ");
+                this.emitVariable(args.get(2), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(2), out);
+                out.append(
+                    "gera___verify_substring_input(src.length, &start_i, &end_i);\n"
+                );
+                this.emitVarSync("begin_write", dest, out);
+                this.emitRefDelete(dest, out);
+                this.emitVariable(dest, out);
+                out.append(" = gera___substring(src, start_i, end_i);\n");
+                this.emitVarSync("end_write", dest, out);
+                out.append("}\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "concat")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                out.append("GeraString a = ");
+                this.emitVariable(args.get(0), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                this.emitVarSync("begin_read", args.get(1), out);
+                out.append("GeraString b = ");
+                this.emitVariable(args.get(1), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(1), out);
+                this.emitVarSync("begin_write", dest, out);
+                this.emitRefDelete(dest, out);
+                this.emitVariable(dest, out);
+                out.append(" = gera___concat(a, b);\n");
+                this.emitVarSync("end_write", dest, out);
+                out.append("}\n");
+            }
+        );
+        this.builtIns.put(
+            new Namespace(List.of("core", "hash")),
+            (tctx, args, argt, dest, out) -> {
+                out.append("{\n");
+                this.emitVarSync("begin_read", args.get(0), out);
+                this.emitType(argt.get(0), out);
+                out.append(" value = ");
+                this.emitVariable(args.get(0), out);
+                out.append(";\n");
+                this.emitVarSync("end_read", args.get(0), out);
+                this.emitVarSync("begin_write", dest, out);
+                StringBuilder dest_str = new StringBuilder();
+                this.emitVariable(dest, dest_str);
+                this.emitHashValueOf(
+                    "value", argt.get(0), dest_str.toString(), out
+                );
+                this.emitVarSync("end_write", dest, out);
+                out.append("}\n");
+            }
+        );
+    }
+
+    private void emitHashValueOf(
+        String value, TypeVariable t, String dest, StringBuilder out
+    ) {
+        switch(this.typeContext.get(t).type) {
+            case UNIT: {
+                out.append(dest);
+                out.append(" = 0;\n");
+            } break;
+            case BOOLEAN: {
+                out.append(dest);
+                out.append(" = ");
+                out.append(value);
+                out.append(";\n");
+            } break;
+            case INTEGER: {
+                out.append(dest);
+                out.append(" = gera___hash((unsigned char*) &");
+                out.append(value);
+                out.append(", sizeof(gint));\n");
+            } break;
+            case FLOAT: {
+                out.append(dest);
+                out.append(" = gera___hash((unsigned char*) &");
+                out.append(value);
+                out.append(", sizeof(gfloat));\n");
+            } break;
+            case STRING: {
+                out.append(dest);
+                out.append(" = gera___hash((const unsigned char*) ");
+                out.append(value);
+                out.append(".data, ");
+                out.append(value);
+                out.append(".length_bytes);\n");
+            } break;
+            case ARRAY: case UNORDERED_OBJECT: case CLOSURE: {
+                out.append(dest);
+                out.append(" = gera___hash((const unsigned char*) &");
+                out.append(value);
+                out.append(".allocation, sizeof(GeraAllocation*));\n");
+            } break;
+            case UNION: {
+                /*
+                    int hash = 7;
+                    hash = 29 * hash + this.variant.hashCode();
+                    hash = 29 * hash + this.value.hashCode();
+                    return hash;
+                 */
+                DataType.Union<TypeVariable> union
+                    = this.typeContext.get(t).getValue();
+                out.append("{\n");
+                out.append("gera___begin_read(");
+                out.append(value);
+                out.append(".allocation);\n");
+                out.append("uint32_t tag = ");
+                out.append(value);
+                out.append(".tag;\n");
+                out.append("GeraUnionData* data = ");
+                out.append(value);
+                out.append(".data;\n");
+                out.append("switch(tag) {\n");
+                for(String variant: union.variantTypes().keySet()) {
+                    TypeVariable variantT = union.variantTypes().get(variant);
+                    out.append("case ");
+                    out.append(this.getVariantTagNumber(variant));
+                    out.append(":\n");
+                    if(this.shouldEmitType(variantT)) {
+                        this.emitType(variantT, out);
+                        out.append(" value = *((");
+                        this.emitType(variantT, out);
+                        out.append("*) data->data);\n");
+                    }
+                    this.emitHashValueOf("value", variantT, dest, out);
+                    out.append(dest);
+                    out.append(" = (gint) (((guint) 29) * ((guint) ");
+                    out.append(dest);
+                    out.append(") + ((guint) tag));\n");
+                    out.append("break;\n");
+                }
+                out.append("}\n");
+                out.append("gera___end_read(");
+                out.append(value);
+                out.append(".allocation);\n");
+                out.append("}\n");
+            } break;
+            case ANY:
+            case NUMERIC:
+            case INDEXED:
+            case REFERENCED: {
+                throw new RuntimeException("unsure of type!");
+            }
+            default: {
+                throw new RuntimeException("unhandled type!");
+            }
+        }
     }
 
 
@@ -484,7 +917,8 @@ public class CCodeGen implements CodeGen {
         this.closureBodyCount = 0;
         StringBuilder out = new StringBuilder();
         out.append("\n");
-        out.append("""
+        out.append(
+            """
             //
             // Generated from Gera source code by the Gera compiler.
             // See: https://github.com/geralang
@@ -493,7 +927,8 @@ public class CCodeGen implements CodeGen {
         out.append("\n");
         out.append(CORE_LIB);
         out.append("\n");
-        out.append("""
+        out.append(
+            """
             void gera_free_captured_string(GeraAllocation* allocation) {
                 gera___begin_read(allocation);
                 GeraString* value = (GeraString*) allocation->data;
@@ -1401,6 +1836,7 @@ public class CCodeGen implements CodeGen {
                     this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = (GeraUnion) { .allocation = a, .tag = ");
+                    out.append(this.getVariantTagNumber(data.variantName()));
                     out.append(", .data = data };\n");
                     this.emitVarSync("end_write", instr.dest.get(), out);
                     out.append("}\n");
@@ -1914,7 +2350,7 @@ public class CCodeGen implements CodeGen {
                 this.emitVarSync("end_read", instr.arguments.get(0), out);
                 this.emitVarSync("begin_write", instr.dest.get(), out);
                 this.emitVariable(instr.dest.get(), out);
-                out.append(" = value;\n");
+                out.append(" = result;\n");
                 this.emitVarSync("end_write", instr.dest.get(), out);
                 out.append("}\n");
             } break;
