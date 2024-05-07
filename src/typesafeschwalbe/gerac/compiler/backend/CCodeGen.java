@@ -786,12 +786,6 @@ public class CCodeGen implements CodeGen {
                 out.append(".allocation, sizeof(GeraAllocation*));\n");
             } break;
             case UNION: {
-                /*
-                    int hash = 7;
-                    hash = 29 * hash + this.variant.hashCode();
-                    hash = 29 * hash + this.value.hashCode();
-                    return hash;
-                 */
                 DataType.Union<TypeVariable> union
                     = this.typeContext.get(t).getValue();
                 out.append("{\n");
