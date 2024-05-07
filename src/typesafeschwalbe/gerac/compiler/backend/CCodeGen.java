@@ -23,66 +23,43 @@ public class CCodeGen implements CodeGen {
 
         void gera___panic(const char* reason);
 
-        #define GC_REACHABLE 1
-        #define GC_FREE 2
-        #define GC_DATA_LOCKED 4
-
-        typedef struct GeraGcAlloc GeraGcAlloc;
-        typedef struct GeraGcAlloc {
-            GERACORE_MUTEX connected_mutex;
-            GeraGcAlloc* next;
-            GeraGcAlloc* last;
-            GeraAllocation allocation;
-        } GeraGcAlloc;
-
-        typedef struct GeraGC {
-            GERACORE_MUTEX add_mutex;
-            GeraGcAlloc* first_alloc;
-            GeraGcAlloc* last_alloc;
-            size_t alloc_count;
-        } GeraGC;
-
-        static GeraGC GERA___GC_STATE;
-
-        static void gera___gc_state_init(void) {
-            GeraGC* gc = &GERA___GC_STATE;
-            gc->first_alloc = NULL;
-            gc->last_alloc = NULL;
-            gc->alloc_count = 0;
+        GeraAllocation* gera___alloc(size_t size, GeraFreeHandler free_h) {
+            GeraAllocation* a = geracoredeps_malloc(
+                sizeof(GeraAllocation) + size
+            );
+            if(a == NULL) { gera___panic("unable to allocate heap memory"); }
+            a->header_mutex = geracoredeps_create_mutex();
+            a->rc = 1;
+            a->size = size;
+            a->fh = free_h;
+            a->data_mutex = geracoredeps_create_mutex();
+            printf("[GC] Allocation of %zu bytes at %p\\n", size, a);
+            return a;
         }
 
-        GeraAllocation* gera___alloc(size_t size, GeraAllocHandler mark_h) {
-            if(size == 0) {
-                size = 1;
-            }
-            GeraGC* gc = &GERA___GC_STATE;
-            geracoredeps_lock_mutex(&gc->add_mutex);
-            gc->alloc_count += 1;
-            GeraGcAlloc* a = geracoredeps_malloc(sizeof(GeraGcAlloc));
-            a->connected_mutex = geracoredeps_create_mutex();
-            a->next = NULL;
-            a->last = gc->last_alloc;
-            a->allocation.header_mutex = geracoredeps_create_mutex();
-            a->allocation.rc = 1;
-            a->allocation.size = size;
-            a->allocation.fh = NULL;
-            a->allocation.mh = mark_h;
-            a->allocation.gc_flags = GC_REACHABLE;
-            a->allocation.data_mutex = geracoredeps_create_mutex();
-            a->allocation.data = geracoredeps_malloc(size);
-            if(gc->first_alloc == NULL) { 
-                gc->first_alloc = a; 
-            }
-            if(gc->last_alloc != NULL) { 
-                geracoredeps_lock_mutex(&gc->last_alloc->connected_mutex);
-                gc->last_alloc->next = a;
-                geracoredeps_unlock_mutex(&gc->last_alloc->connected_mutex);
-            }
-            gc->last_alloc = a;
-            geracoredeps_unlock_mutex(&gc->add_mutex);
-            geracoredeps_lock_mutex(&a->allocation.data_mutex);
-            // printf("[GC] Allocation of %zu byte(s) at %p\\n", size, a);
-            return &a->allocation;
+        void gera___free(GeraAllocation* a) {
+            if(a == NULL) { return; }
+            printf("[GC] Deallocation of allocation at %p\\n", a);
+            if(a->fh != NULL) { (a->fh)(a); }
+            geracoredeps_free_mutex(&a->header_mutex);
+            geracoredeps_free_mutex(&a->data_mutex);
+            geracoredeps_free(a);
+        }
+
+        void gera___ref_copied(GeraAllocation* a) {
+            if(a == NULL) { return; }
+            geracoredeps_lock_mutex(&a->header_mutex);
+            a->rc += 1;
+            geracoredeps_unlock_mutex(&a->header_mutex);
+        }
+
+        void gera___ref_deleted(GeraAllocation* a) {
+            if(a == NULL) { return; }
+            geracoredeps_lock_mutex(&a->header_mutex);
+            a->rc -= 1;
+            gbool free_alloc = a->rc == 0;
+            geracoredeps_unlock_mutex(&a->header_mutex);
+            if(free_alloc) { gera___free(a); }
         }
 
         void gera___begin_read(GeraAllocation* a) {
@@ -103,121 +80,6 @@ public class CCodeGen implements CodeGen {
         void gera___end_write(GeraAllocation* a) {
             if(a == NULL) { return; }
             geracoredeps_unlock_mutex(&a->data_mutex);
-        }
-
-        void gera___stack_copied(GeraAllocation* a) {
-            if(a == NULL) { return; }
-            geracoredeps_lock_mutex(&a->header_mutex);
-            a->rc += 1;
-            geracoredeps_unlock_mutex(&a->header_mutex);
-        }
-
-        void gera___stack_deleted(GeraAllocation* a) {
-            if(a == NULL) { return; }
-            geracoredeps_lock_mutex(&a->header_mutex);
-            a->rc -= 1;
-            geracoredeps_unlock_mutex(&a->header_mutex);
-        }
-
-        void gera___mark_ref(GeraAllocation* a) {
-            if(a == NULL) { return; }
-            geracoredeps_lock_mutex(&a->header_mutex);
-            if(a->gc_flags & GC_REACHABLE) {
-                geracoredeps_unlock_mutex(&a->header_mutex);
-                return;
-            }
-            a->gc_flags |= GC_REACHABLE;
-            GeraAllocHandler mh = a->mh;
-            geracoredeps_unlock_mutex(&a->header_mutex);
-            if(mh != NULL) { (mh)(a); }
-        }
-
-        void gera___free(GeraGcAlloc* a, gbool gc_locked) {
-            if(a == NULL) { return; }
-            GeraGC* gc = &GERA___GC_STATE;
-            // printf("[GC] Deallocation of allocation at %p\\n", a);
-            if(a->allocation.fh != NULL) { (a->allocation.fh)(&a->allocation); }
-            if(!gc_locked) {
-                geracoredeps_lock_mutex(&gc->add_mutex);
-            }
-            if(a->last == NULL) {
-                gc->first_alloc = a->next;
-            } else {
-                geracoredeps_lock_mutex(&a->last->connected_mutex);
-                a->last->next = a->next;
-                geracoredeps_unlock_mutex(&a->last->connected_mutex);
-            }
-            if(a->next == NULL) {
-                gc->last_alloc = a->last;
-            } else {
-                geracoredeps_lock_mutex(&a->next->connected_mutex);
-                a->next->last = a->last;
-                geracoredeps_unlock_mutex(&a->next->connected_mutex);
-            }
-            gc->alloc_count -= 1;
-            if(!gc_locked) {
-                geracoredeps_unlock_mutex(&gc->add_mutex);
-            }
-            geracoredeps_free_mutex(&a->allocation.header_mutex);
-            geracoredeps_free_mutex(&a->allocation.data_mutex);
-            geracoredeps_free(a->allocation.data);
-            geracoredeps_free_mutex(&a->connected_mutex);
-            geracoredeps_free(a);
-        }
-
-        void gera___gc_cycle_with_lock(gbool gc_locked) {
-            GeraGC* gc = &GERA___GC_STATE;
-            printf("[GC] Currently has %zu allocations\\n", gc->alloc_count);
-            if(!gc_locked) {
-                geracoredeps_lock_mutex(&gc->add_mutex);
-            }
-            size_t start_alloc_count = gc->alloc_count;
-            GeraGcAlloc* first = gc->first_alloc;
-            if(!gc_locked) {
-                geracoredeps_unlock_mutex(&gc->add_mutex);
-            }
-            GeraGcAlloc* c = first;
-            while(c != NULL) {
-                geracoredeps_lock_mutex(&c->allocation.header_mutex);
-                gbool stack_reachable = c->allocation.rc > 0;
-                geracoredeps_unlock_mutex(&c->allocation.header_mutex);
-                if(stack_reachable) {
-                    gera___mark_ref(&c->allocation);
-                }
-                geracoredeps_lock_mutex(&c->connected_mutex);
-                GeraGcAlloc* next = c->next;
-                geracoredeps_unlock_mutex(&c->connected_mutex);
-                c = next;
-            }
-            c = first;
-            while(c != NULL) {
-                geracoredeps_lock_mutex(&c->allocation.header_mutex);
-                gbool reachable = c->allocation.gc_flags & GC_REACHABLE;
-                c->allocation.gc_flags &= ~GC_REACHABLE;
-                geracoredeps_unlock_mutex(&c->allocation.header_mutex);
-                geracoredeps_lock_mutex(&c->connected_mutex);
-                GeraGcAlloc* next = c->next;
-                geracoredeps_unlock_mutex(&c->connected_mutex);
-                if(!reachable) {
-                    gera___free(c, gc_locked);
-                }
-                c = next;
-            }
-            if(!gc_locked) {
-                geracoredeps_lock_mutex(&gc->add_mutex);
-            }
-            size_t end_alloc_count = gc->alloc_count;
-            if(!gc_locked) {
-                if(end_alloc_count >= start_alloc_count * 2) {
-                    printf("[GC] Starting aggressive cycle\\n");
-                    gera___gc_cycle_with_lock(1);
-                }
-                geracoredeps_unlock_mutex(&gc->add_mutex);
-            }
-        }
-
-        void gera___gc_cycle() {
-            gera___gc_cycle_with_lock(0);
         }
 
         double gera___float_mod(double x, double div) {
@@ -435,7 +297,6 @@ public class CCodeGen implements CodeGen {
             gera___end_write(allocation);
             GERA_ARGS = (GeraArray) {
                 .allocation = allocation,
-                .data = allocation->data,
                 .length = argc
             };
         }
@@ -533,17 +394,13 @@ public class CCodeGen implements CodeGen {
                 this.emitVarSync("end_read", args.get(0), out);
                 out.append("for(;;) {\n");
                 out.append(
-                    "GeraUnion next = ((GeraUnion (*)(void)) iter.body)();\n"
+                    "GeraUnion next = ((GeraUnion (*)(GeraAllocation*)) iter.body)"
+                        + "(iter.allocation);\n"
                 );
-                out.append("gera___begin_read(next.allocation);\n");
-                out.append(
-                    "GeraUnionData* data = (GeraUnionData*) next.allocation->data;\n"
-                );
-                out.append("gbool at_end = data->tag == ");
+                out.append("gbool at_end = next.tag == ");
                 out.append(this.getVariantTagNumber("end"));
                 out.append(";\n");
-                out.append("gera___end_read(next.allocation);\n");
-                out.append("gera___stack_deleted(next.allocation);\n");
+                out.append("gera___ref_deleted(next.allocation);\n");
                 out.append("if(at_end) { break; }\n");
                 out.append("}\n");
                 out.append("}\n");
@@ -637,34 +494,34 @@ public class CCodeGen implements CodeGen {
         out.append(CORE_LIB);
         out.append("\n");
         out.append("""
-            void gera_mark_captured_string(GeraAllocation* allocation) {
+            void gera_free_captured_string(GeraAllocation* allocation) {
                 gera___begin_read(allocation);
                 GeraString* value = (GeraString*) allocation->data;
-                gera___mark_ref(value->allocation);
+                gera___ref_deleted(value->allocation);
                 gera___end_read(allocation);
             }   
-            void gera_mark_captured_array(GeraAllocation* allocation) {
+            void gera_free_captured_array(GeraAllocation* allocation) {
                 gera___begin_read(allocation);
                 GeraArray* value = (GeraArray*) allocation->data;
-                gera___mark_ref(value->allocation);
+                gera___ref_deleted(value->allocation);
                 gera___end_read(allocation);
             }   
-            void gera_mark_captured_object(GeraAllocation* allocation) {
+            void gera_free_captured_object(GeraAllocation* allocation) {
                 gera___begin_read(allocation);
                 GeraObject* value = (GeraObject*) allocation->data;
-                gera___mark_ref(value->allocation);
+                gera___ref_deleted(value->allocation);
                 gera___end_read(allocation);
             }   
-            void gera_mark_captured_union(GeraAllocation* allocation) {
+            void gera_free_captured_union(GeraAllocation* allocation) {
                 gera___begin_read(allocation);
                 GeraUnion* value = (GeraUnion*) allocation->data;
-                gera___mark_ref(value->allocation);
+                gera___ref_deleted(value->allocation);
                 gera___end_read(allocation);
             }   
-            void gera_mark_captured_closure(GeraAllocation* allocation) {
+            void gera_free_captured_closure(GeraAllocation* allocation) {
                 gera___begin_read(allocation);
                 GeraClosure* value = (GeraClosure*) allocation->data;
-                gera___mark_ref(value->captures);
+                gera___ref_deleted(value->allocation);
                 gera___end_read(allocation);
             } 
             typedef struct GeraUnionData {
@@ -688,14 +545,11 @@ public class CCodeGen implements CodeGen {
         out.append(typed);
         out.append("\n");
         out.append("int main(int argc, char** argv) {\n");
-        out.append("    gera___gc_state_init();\n");
-        out.append("    geracoredeps_start_gc();\n");
         out.append("    gera___set_args(argc, argv);\n");
         out.append("    gera_init_svals();\n");
         out.append("    ");
         this.emitVariant(mainPath, 0, out);
         out.append("();\n");
-        out.append("    for(;;) {}\n"); // TODO! REMOVE AFTER TESTING
         out.append("    return 0;\n");
         out.append("}\n");
         return out.toString();
@@ -807,12 +661,12 @@ public class CCodeGen implements CodeGen {
                 pre.append(" b);\n");
                 pre.append("void gera_");
                 pre.append(tid);
-                pre.append("_mark(GeraAllocation* allocation);\n");
+                pre.append("_free(GeraAllocation* allocation);\n");
             } break;
             case CLOSURE: {
                 pre.append("void gera_");
                 pre.append(tid);
-                pre.append("_mark(GeraAllocation* allocation);\n");
+                pre.append("_free(GeraAllocation* allocation);\n");
             } break;
         }
         switch(tval.type) {
@@ -833,12 +687,12 @@ public class CCodeGen implements CodeGen {
                 this.emitType(td.elementType(), out);
                 out.append("* dataA = (");
                 this.emitType(td.elementType(), out);
-                out.append("*) a.data;\n");
+                out.append("*) a.allocation->data;\n");
                 out.append("    ");
                 this.emitType(td.elementType(), out);
                 out.append("* dataB = (");
                 this.emitType(td.elementType(), out);
-                out.append("*) b.data;\n");
+                out.append("*) b.allocation->data;\n");
                 out.append("    for(size_t i = 0; i < a.length; i += 1) {\n");
                 out.append("    if(!(");
                 this.emitEquality(
@@ -848,12 +702,12 @@ public class CCodeGen implements CodeGen {
                 out.append("    }\n");
                 out.append("    return 1;\n");
                 out.append("}\n");
-                StringBuilder itemMarkRef = new StringBuilder();
-                this.emitMarkRef("items[i]", td.elementType(), itemMarkRef);
+                StringBuilder itemRefDelete = new StringBuilder();
+                this.emitRefDelete("items[i]", td.elementType(), itemRefDelete);
                 out.append("void gera_");
                 out.append(tid);
-                out.append("_mark(GeraAllocation* allocation) {\n");
-                if(itemMarkRef.length() > 0) {
+                out.append("_free(GeraAllocation* allocation) {\n");
+                if(itemRefDelete.length() > 0) {
                     out.append("    gera___begin_read(allocation);\n");
                     out.append(
                         "    size_t length = allocation->size / sizeof("
@@ -867,7 +721,7 @@ public class CCodeGen implements CodeGen {
                     out.append("*) allocation->data;\n");
                     out.append("    for(size_t i = 0; i < length; i += 1) {\n");
                     out.append("        ");
-                    out.append(itemMarkRef);
+                    out.append(itemRefDelete);
                     out.append("    }\n");
                     out.append("    gera___end_read(allocation);\n");
                 }
@@ -905,7 +759,7 @@ public class CCodeGen implements CodeGen {
                 out.append("}\n");
                 out.append("void gera_");
                 out.append(tid);
-                out.append("_mark(GeraAllocation* allocation) {\n");
+                out.append("_free(GeraAllocation* allocation) {\n");
                 out.append("    gera___begin_read(allocation);\n");
                 out.append("    ");
                 this.emitObjectLayoutName(tid, out);
@@ -914,13 +768,13 @@ public class CCodeGen implements CodeGen {
                 out.append("*) allocation->data;\n");
                 for(String memberName: td.memberTypes().keySet()) {
                     TypeVariable memberType = td.memberTypes().get(memberName);
-                    StringBuilder refMark = new StringBuilder();
-                    this.emitMarkRef(
-                        "members->" + memberName, memberType, refMark
+                    StringBuilder refDelete = new StringBuilder();
+                    this.emitRefDelete(
+                        "members->" + memberName, memberType, refDelete
                     );
-                    if(refMark.length() > 0) {
+                    if(refDelete.length() > 0) {
                         out.append("    ");
-                        out.append(refMark);
+                        out.append(refDelete);
                     }
                 }
                 out.append("    gera___end_read(allocation);\n");
@@ -970,7 +824,7 @@ public class CCodeGen implements CodeGen {
                 out.append("}\n");
                 out.append("void gera_");
                 out.append(tid);
-                out.append("_mark(GeraAllocation* allocation) {\n");
+                out.append("_free(GeraAllocation* allocation) {\n");
                 out.append("    gera___begin_read(allocation);\n");
                 out.append(
                     "    GeraUnionData* data = (GeraUnionData*) allocation->data"
@@ -988,11 +842,11 @@ public class CCodeGen implements CodeGen {
                     out.append("* value = (");
                     this.emitType(variantType, out);
                     out.append("*) data->data;\n");
-                    StringBuilder valueMark = new StringBuilder();
-                    this.emitMarkRef("(*value)", variantType, out);
-                    if(valueMark.length() > 0) {
+                    StringBuilder valueRefDelete = new StringBuilder();
+                    this.emitRefDelete("(*value)", variantType, valueRefDelete);
+                    if(valueRefDelete.length() > 0) {
                         out.append("        ");
-                        out.append(valueMark);
+                        out.append(valueRefDelete);
                     }
                     out.append("            break;\n");
                     out.append("        }\n");
@@ -1004,32 +858,6 @@ public class CCodeGen implements CodeGen {
             case CLOSURE: {
                 // nothing to do
             } break;
-        }
-    }
-
-
-    private void emitMarkRef(String value, TypeVariable t, StringBuilder out) {
-        int tid = this.typeContext.substitutes.find(t.id);
-        this.usedTypes.add(tid);
-        DataType<TypeVariable> tval = this.typeContext.get(tid);
-        switch(tval.type) {
-            case UNIT: case ANY: case NUMERIC: case INDEXED: case REFERENCED:
-            case BOOLEAN: case INTEGER: case FLOAT:
-                return;
-            case STRING: case ARRAY: case UNORDERED_OBJECT: case UNION:
-                out.append("gera_");
-                out.append(tid);
-                out.append("_mark(");
-                out.append(value);
-                out.append(".allocation);\n");
-                return;
-            case CLOSURE:
-                out.append("gera_");
-                out.append(tid);
-                out.append("_mark(");
-                out.append(value);
-                out.append(".captures);\n");
-                return;
         }
     }
 
@@ -1078,13 +906,11 @@ public class CCodeGen implements CodeGen {
             case BOOLEAN: out.append("0"); return;
             case INTEGER: out.append("0"); return;
             case FLOAT: out.append("0.0"); return;
-            case STRING: case ARRAY: case UNORDERED_OBJECT: case UNION:
+            case STRING: case ARRAY: case UNORDERED_OBJECT: case UNION: 
+            case CLOSURE:
                 out.append("(");
                 this.emitType(t, out);
                 out.append(") { .allocation = NULL }");
-                return;
-            case CLOSURE:
-                out.append("(GeraClosure) { .captures = NULL }"); 
                 return;
         }
     }
@@ -1218,11 +1044,11 @@ public class CCodeGen implements CodeGen {
                     case UNIT: case ANY: case NUMERIC: case INDEXED: 
                     case REFERENCED:
                     case BOOLEAN: case INTEGER: case FLOAT: out.append("NULL"); break;
-                    case STRING: out.append("&gera_mark_captured_string"); break;
-                    case ARRAY: out.append("&gera_mark_captured_array"); break;
-                    case UNORDERED_OBJECT: out.append("&gera_mark_captured_object"); break;
-                    case UNION: out.append("&gera_mark_captured_union"); break;
-                    case CLOSURE: out.append("&gera_mark_captured_closure"); break;
+                    case STRING: out.append("&gera_free_captured_string"); break;
+                    case ARRAY: out.append("&gera_free_captured_array"); break;
+                    case UNORDERED_OBJECT: out.append("&gera_free_captured_object"); break;
+                    case UNION: out.append("&gera_free_captured_union"); break;
+                    case CLOSURE: out.append("&gera_free_captured_closure"); break;
                 }
                 out.append(");\n");
             } else {
@@ -1262,13 +1088,12 @@ public class CCodeGen implements CodeGen {
         this.emitInstructions(body, out);
         out.append("ret:\n");
         for(int varI = 0; varI < variableTypes.size(); varI += 1) {
+            TypeVariable varT = variableTypes.get(varI);
             String capturedName = this.context().capturedNames.get(varI);
             if(capturedName != null) {
-                out.append("gera___stack_deleted(captured_");
-                out.append(capturedName);
-                out.append(");\n");
+                this.emitRefDelete("captured_" + capturedName, varT, out);
             } else {
-                this.emitStackDelete(new Ir.Variable(varI, 0), out);
+                this.emitRefDelete("local_" + varI, varT, out);
             }
         }
         if(this.shouldEmitType(retType)) {
@@ -1394,7 +1219,7 @@ public class CCodeGen implements CodeGen {
                 this.emitObjectLayoutName(objT.id, out);
                 out.append("), &gera_");
                 out.append(this.typeContext.substitutes.find(objT.id));
-                out.append("_mark);\n");
+                out.append("_free);\n");
                 this.emitObjectLayoutName(objT.id, out);
                 out.append("* members = (");
                 this.emitObjectLayoutName(objT.id, out);
@@ -1406,6 +1231,7 @@ public class CCodeGen implements CodeGen {
                     this.emitVarSync(
                         "begin_read", instr.arguments.get(memI), out
                     );
+                    this.emitRefCopy(instr.arguments.get(memI), out);
                     out.append("members->");
                     out.append(data.memberNames().get(memI));
                     out.append(" = ");
@@ -1415,13 +1241,11 @@ public class CCodeGen implements CodeGen {
                         "end_read", instr.arguments.get(memI), out
                     );
                 }
-                out.append("gera___end_write(a);\n");
                 this.emitVarSync("begin_write", instr.dest.get(), out);
+                this.emitRefDelete(instr.dest.get(), out);
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = (GeraObject) { .allocation = a };\n");
                 this.emitVarSync("end_write", instr.dest.get(), out);
-                this.emitStackCopy(instr.dest.get(), out);
-                out.append("gera___stack_deleted(a);\n");
                 out.append("}\n");
             } break;
             case LOAD_FIXED_ARRAY: {
@@ -1431,10 +1255,10 @@ public class CCodeGen implements CodeGen {
                     ));
                 if(isEmpty) {
                     this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(
-                        " = (GeraArray) { .allocation = NULL, .length = 0,"
-                            + " .data = NULL };\n"
+                        " = (GeraArray) { .allocation = NULL, .length = 0 };\n"
                     );
                     this.emitVarSync("end_write", instr.dest.get(), out);
                 } else {
@@ -1449,7 +1273,7 @@ public class CCodeGen implements CodeGen {
                     out.append(instr.arguments.size());
                     out.append(", &gera_");
                     out.append(this.typeContext.substitutes.find(arrT.id));
-                    out.append("_mark);\n");
+                    out.append("_free);\n");
                     this.emitType(itemT, out);
                     out.append("* items = (");
                     this.emitType(itemT, out);
@@ -1460,6 +1284,7 @@ public class CCodeGen implements CodeGen {
                         this.emitVarSync(
                             "begin_read", instr.arguments.get(valI), out
                         );
+                        this.emitRefCopy(instr.arguments.get(valI), out);
                         out.append("items[");
                         out.append(valI);
                         out.append("] = ");
@@ -1469,15 +1294,13 @@ public class CCodeGen implements CodeGen {
                             "end_read", instr.arguments.get(valI), out
                         );
                     }
-                    out.append("gera___end_write(a);\n");
                     this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = (GeraArray) { .allocation = a, .length = ");
                     out.append(instr.arguments.size());
-                    out.append(", .data = a->data };\n");
+                    out.append(" };\n");
                     this.emitVarSync("end_write", instr.dest.get(), out);
-                    this.emitStackCopy(instr.dest.get(), out);
-                    out.append("gera___stack_deleted(a);\n");
                     out.append("}\n");
                 }
             } break;
@@ -1487,10 +1310,10 @@ public class CCodeGen implements CodeGen {
                     .get(instr.arguments.get(0).index);
                 if(!this.shouldEmitType(itemT)) {
                     this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(
-                        " = (GeraArray) { .allocation = NULL, .length = 0,"
-                            + " .data = NULL };\n"
+                        " = (GeraArray) { .allocation = NULL, .length = 0 };\n"
                     );
                     this.emitVarSync("end_write", instr.dest.get(), out);
                 } else {
@@ -1508,7 +1331,7 @@ public class CCodeGen implements CodeGen {
                     this.emitType(itemT, out);
                     out.append(") * length, &gera_");
                     out.append(this.typeContext.substitutes.find(arrT.id));
-                    out.append("_mark);\n");
+                    out.append("_free);\n");
                     this.emitType(itemT, out);
                     out.append("* items = (");
                     this.emitType(itemT, out);
@@ -1517,21 +1340,20 @@ public class CCodeGen implements CodeGen {
                     out.append(
                         "for(size_t itemI = 0; itemI < length; itemI += 1) {\n"
                     );
+                    this.emitRefCopy(instr.arguments.get(0), out);
                     out.append("items[itemI] = ");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(";\n");
                     this.emitVarSync("end_read", instr.arguments.get(0), out);
                     out.append("}\n");
-                    out.append("gera___end_write(a);\n");
                     this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(
                         " = (GeraArray) { .allocation = a, .length = length,"
                             + " .data = a->data };\n"
                     );
                     this.emitVarSync("end_write", instr.dest.get(), out);
-                    this.emitStackCopy(instr.dest.get(), out);
-                    out.append("gera___stack_deleted(a);\n");
                     out.append("}\n");
                 }
             } break;
@@ -1541,118 +1363,148 @@ public class CCodeGen implements CodeGen {
                     .get(instr.dest.get().index);
                 TypeVariable valueT = this.context().variableTypes
                     .get(instr.arguments.get(0).index);
-                out.append("{\n");
-                out.append("GeraAllocation* a = gera___alloc(");
-                out.append("sizeof(GeraUnionData)");
-                if(this.shouldEmitType(valueT)) {
-                    out.append(" + sizeof(");
-                    this.emitType(valueT, out);
-                    out.append(")");
-                }
-                out.append(", &gera_");
-                out.append(this.typeContext.substitutes.find(unionT.id));
-                out.append("_mark);\n");
-                out.append("GeraUnionData* data = (GeraUnionData*) a->data;\n");
-                out.append("data->tag = ");
-                out.append(this.getVariantTagNumber(data.variantName()));
-                out.append(";\n");
-                if(this.shouldEmitType(valueT)) {
-                    this.emitVarSync("begin_read", instr.arguments.get(0), out);
-                    out.append("*((");
-                    this.emitType(valueT, out);
-                    out.append("*) data->data) = ");
-                    this.emitVariable(instr.arguments.get(0), out);
+                if(!this.shouldEmitType(valueT)) {
+                    this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
+                    this.emitVariable(instr.dest.get(), out);
+                    out.append(" = (GeraUnion) { .allocation = NULL, .tag = ");
+                    out.append(this.getVariantTagNumber(data.variantName()));
+                    out.append(" };\n");
+                    this.emitVarSync("end_write", instr.dest.get(), out);
+                } else {
+                    out.append("{\n");
+                    out.append("GeraAllocation* a = gera___alloc(");
+                    out.append("sizeof(GeraUnionData)");
+                    if(this.shouldEmitType(valueT)) {
+                        out.append(" + sizeof(");
+                        this.emitType(valueT, out);
+                        out.append(")");
+                    }
+                    out.append(", &gera_");
+                    out.append(this.typeContext.substitutes.find(unionT.id));
+                    out.append("_free);\n");
+                    out.append("GeraUnionData* data = (GeraUnionData*) a->data;\n");
+                    out.append("data->tag = ");
+                    out.append(this.getVariantTagNumber(data.variantName()));
                     out.append(";\n");
-                    this.emitVarSync("end_read", instr.arguments.get(0), out);
+                    if(this.shouldEmitType(valueT)) {
+                        this.emitVarSync("begin_read", instr.arguments.get(0), out);
+                        this.emitRefCopy(instr.arguments.get(0), out);
+                        out.append("*((");
+                        this.emitType(valueT, out);
+                        out.append("*) data->data) = ");
+                        this.emitVariable(instr.arguments.get(0), out);
+                        out.append(";\n");
+                        this.emitVarSync("end_read", instr.arguments.get(0), out);
+                    }
+                    this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
+                    this.emitVariable(instr.dest.get(), out);
+                    out.append(" = (GeraUnion) { .allocation = a, .tag = ");
+                    out.append(", .data = data };\n");
+                    this.emitVarSync("end_write", instr.dest.get(), out);
+                    out.append("}\n");
                 }
-                out.append("gera___end_write(a);\n");
-                this.emitVarSync("begin_write", instr.dest.get(), out);
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = (GeraUnion) { .allocation = a };\n");
-                this.emitVarSync("end_write", instr.dest.get(), out);
-                this.emitStackCopy(instr.dest.get(), out);
-                out.append("gera___stack_deleted(a);\n");
-                out.append("}\n");
             } break;
             case LOAD_CLOSURE: {
                 Ir.Instr.LoadClosure data = instr.getValue();
                 long closureId = this.closureBodyCount;
                 this.closureBodyCount += 1;
+                boolean hasCaptures = data.captureNames().size() > 0;
                 StringBuilder captures = new StringBuilder();
-                captures.append("typedef struct GeraClosureCaptures");
-                captures.append(closureId);
-                captures.append(" {\n");
-                for(String captureName: data.captureNames()) {
-                    captures.append("    GeraAllocation* ");
-                    captures.append(captureName);
+                if(hasCaptures) {
+                    captures.append("typedef struct GeraClosureCaptures");
+                    captures.append(closureId);
+                    captures.append(" {\n");
+                    for(String captureName: data.captureNames()) {
+                        captures.append("    GeraAllocation* ");
+                        captures.append(captureName);
+                        captures.append(";\n");
+                    }
+                    captures.append("} GeraClosureCaptures");
+                    captures.append(closureId);
                     captures.append(";\n");
                 }
-                captures.append("} GeraClosureCaptures");
-                captures.append(closureId);
-                captures.append(";\n");
-                String markName = "gera_closure_" + closureId + "_mark";
-                StringBuilder mark = new StringBuilder();
-                mark.append("void ");
-                mark.append(markName);
-                mark.append("(GeraAllocation* a) {\n");
-                mark.append("    gera___begin_read(a);\n");
-                mark.append("    GeraClosureCaptures");
-                mark.append(closureId);
-                mark.append("* captures = (GeraClosureCaptures");
-                mark.append(closureId);
-                mark.append("*) a->data;\n");
-                for(String captureName: data.captureNames()) {
-                    mark.append("    gera___mark_ref(captures->");
-                    mark.append(captureName);
-                    mark.append(");\n");
+                String freeName = "gera_closure_" + closureId + "_free";
+                StringBuilder free = new StringBuilder();
+                if(hasCaptures) {
+                    free.append("void ");
+                    free.append(freeName);
+                    free.append("(GeraAllocation* a) {\n");
+                    free.append("    gera___begin_read(a);\n");
+                    free.append("    GeraClosureCaptures");
+                    free.append(closureId);
+                    free.append("* captures = (GeraClosureCaptures");
+                    free.append(closureId);
+                    free.append("*) a->data;\n");
+                    for(String captureName: data.captureNames()) {
+                        free.append("    gera___ref_deleted(captures->");
+                        free.append(captureName);
+                        free.append(");\n");
+                    }
+                    free.append("    gera___end_read(a);\n");
+                    free.append("}\n");
                 }
-                mark.append("    gera___end_read(a);\n");
-                mark.append("}\n");
                 String bodyName = "gera_closure_" + closureId + "_body";
                 StringBuilder body = new StringBuilder();
                 this.emitFunction(
-                    data.returnType(), bodyName, Optional.of(closureId), 
+                    data.returnType(), bodyName,
+                    hasCaptures? Optional.of(closureId) : Optional.empty(), 
                     data.argumentTypes(), data.body(), data.context(), body
                 );
                 this.closureBodies.append(captures);
-                this.closureBodies.append(mark);
+                this.closureBodies.append(free);
                 this.closureBodies.append(body);
                 this.closureBodies.append("\n");
                 out.append("{\n");
-                out.append("GeraAllocation* a = gera___alloc(sizeof(");
-                out.append("GeraClosureCaptures");
-                out.append(closureId);
-                out.append("), &");
-                out.append(markName);
-                out.append(");\n");
-                out.append("GeraClosureCaptures");
-                out.append(closureId);
-                out.append("* c = (GeraClosureCaptures");
-                out.append(closureId);
-                out.append("*) a->data;\n");
-                for(String captureName: data.captureNames()) {
-                    out.append("c->");
-                    out.append(captureName);
-                    out.append(" = ");
-                    if(data.inheritedCaptures().contains(captureName)) {
-                        out.append("captures->");
-                        out.append(captureName);
-                    } else {
-                        out.append("captured_");
-                        out.append(captureName);
-                    }
-                    out.append(";\n");
+                out.append("GeraAllocation* a = gera___alloc(");
+                if(hasCaptures) {
+                    out.append("sizeof(GeraClosureCaptures");
+                    out.append(closureId);
+                    out.append(")");
+                } else {
+                    out.append("0");
                 }
-                out.append("gera___end_write(a);\n");
-                this.emitStackDelete(instr.dest.get(), out);
+                out.append(", ");
+                if(hasCaptures) {
+                    out.append("&");
+                    out.append(freeName);
+                } else {
+                    out.append("NULL");
+                }
+                out.append(");\n");
+                if(hasCaptures) {
+                    out.append("GeraClosureCaptures");
+                    out.append(closureId);
+                    out.append("* c = (GeraClosureCaptures");
+                    out.append(closureId);
+                    out.append("*) a->data;\n");
+                    for(String captureName: data.captureNames()) {
+                        StringBuilder captureValue = new StringBuilder(); 
+                        if(data.inheritedCaptures().contains(captureName)) {
+                            captureValue.append("captures->");
+                            captureValue.append(captureName);
+                        } else {
+                            captureValue.append("captured_");
+                            captureValue.append(captureName);
+                        }
+                        out.append("gera___ref_copied(");
+                        out.append(captureValue);
+                        out.append(");\n");
+                        out.append("c->");
+                        out.append(captureName);
+                        out.append(" = ");
+                        out.append(captureValue);
+                        out.append(";\n");
+                    }
+                }
                 this.emitVarSync("begin_write", instr.dest.get(), out);
+                this.emitRefDelete(instr.dest.get(), out);
                 this.emitVariable(instr.dest.get(), out);
-                out.append(" = (GeraClosure) { .captures = a, .body = &");
+                out.append(" = (GeraClosure) { .allocation = a, .body = &");
                 out.append(bodyName);
                 out.append(" };\n");
                 this.emitVarSync("end_write", instr.dest.get(), out);
-                this.emitStackCopy(instr.dest.get(), out);
-                out.append("gera___stack_deleted(a);\n");
                 out.append("}\n");
             } break;
             case LOAD_STATIC_VALUE: {
@@ -1682,16 +1534,16 @@ public class CCodeGen implements CodeGen {
                     out.append(".allocation->data)->");
                     out.append(data.memberName());
                     out.append(";\n");
+                    this.emitRefCopy("value", memT, out);
                     out.append("gera___end_read(");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(".allocation);\n");
                     this.emitVarSync("end_read", instr.arguments.get(0), out);
-                    this.emitStackDelete(instr.dest.get(), out);
                     this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = value;\n");
                     this.emitVarSync("end_write", instr.dest.get(), out);
-                    this.emitStackCopy(instr.dest.get(), out);
                     out.append("}\n");
                 }
             } break;
@@ -1704,6 +1556,7 @@ public class CCodeGen implements CodeGen {
                 if(this.shouldEmitType(memT)) {
                     out.append("{\n");
                     this.emitVarSync("begin_read", instr.arguments.get(1), out);
+                    this.emitRefCopy(instr.arguments.get(1), out);
                     this.emitType(memT, out);
                     out.append(" value = ");
                     this.emitVariable(instr.arguments.get(1), out);
@@ -1713,14 +1566,17 @@ public class CCodeGen implements CodeGen {
                     out.append("gera___begin_write(");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(".allocation);\n");
-                    out.append("((");
+                    this.emitType(memT, out);
+                    out.append("* member = ");
+                    out.append("&((");
                     this.emitObjectLayoutName(objT.id, out);
                     out.append("*) ");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(".allocation->data)->");
                     out.append(data.memberName());
-                    out.append(" = value;\n");
                     out.append(";\n");
+                    this.emitRefDelete("(*member)", memT, out);
+                    out.append("*member = value;\n");
                     out.append("gera___end_write(");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(".allocation);\n");
@@ -1753,17 +1609,17 @@ public class CCodeGen implements CodeGen {
                     out.append(", ");
                     out.append(data.source().computeLine(this.sourceFiles));
                     out.append(")];\n");
+                    this.emitRefCopy("value", memT, out);
                     out.append("gera___end_read(");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(".allocation);\n");
                     this.emitVarSync("end_read", instr.arguments.get(0), out);
                     this.emitVarSync("end_read", instr.arguments.get(1), out);
-                    this.emitStackDelete(instr.dest.get(), out);
                     this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = value;\n");
                     this.emitVarSync("end_write", instr.dest.get(), out);
-                    this.emitStackCopy(instr.dest.get(), out);
                     out.append("}\n");
                 }
             } break;
@@ -1784,11 +1640,13 @@ public class CCodeGen implements CodeGen {
                     out.append("gera___begin_write(");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(".allocation);\n");
+                    this.emitType(memT, out);
+                    out.append("* element = ");
                     out.append("((");
                     this.emitType(memT, out);
                     out.append("*) ");
                     this.emitVariable(instr.arguments.get(0), out);
-                    out.append(".allocation->data)[gera___verify_index(");
+                    out.append(".allocation->data) + gera___verify_index(");
                     this.emitVariable(instr.arguments.get(1), out);
                     out.append(", ");
                     this.emitVariable(instr.arguments.get(0), out);
@@ -1796,7 +1654,9 @@ public class CCodeGen implements CodeGen {
                     this.emitStringLiteral(data.source().file(), out);
                     out.append(", ");
                     out.append(data.source().computeLine(this.sourceFiles));
-                    out.append(")] = value;\n");
+                    out.append(");\n");
+                    this.emitRefDelete("(*element)", memT, out);
+                    out.append("*element = value;\n");
                     out.append("gera___end_write(");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(".allocation);\n");
@@ -1811,16 +1671,16 @@ public class CCodeGen implements CodeGen {
                     .get(instr.dest.get().index);
                 if(this.shouldEmitType(valT)) {
                     out.append("gera___begin_read(closure_alloc);\n");
-                    this.emitStackDelete(instr.dest.get(), out);
                     this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = *((");
                     this.emitType(valT, out);
                     out.append("*) captures->");
                     out.append(data.captureName());
                     out.append("->data);\n");
+                    this.emitRefCopy(instr.dest.get(), out);
                     this.emitVarSync("end_write", instr.dest.get(), out);
-                    this.emitStackCopy(instr.dest.get(), out);
                     out.append("gera___end_read(closure_alloc);\n");
                 }
             } break;
@@ -1829,17 +1689,23 @@ public class CCodeGen implements CodeGen {
                 TypeVariable valT = this.context().variableTypes
                     .get(instr.arguments.get(0).index);
                 if(this.shouldEmitType(valT)) {
+                    out.append("{\n");
                     out.append("gera___begin_write(closure_alloc);\n");
-                    this.emitVarSync("begin_read", instr.arguments.get(0), out);
-                    out.append("*((");
+                    this.emitType(valT, out);
+                    out.append("* capture = ((");
                     this.emitType(valT, out);
                     out.append("*) captures->");
                     out.append(data.captureName());
-                    out.append("->data) = ");
+                    out.append("->data);\n");
+                    this.emitRefDelete("(*capture)", valT, out);
+                    this.emitVarSync("begin_read", instr.arguments.get(0), out);
+                    this.emitRefCopy(instr.arguments.get(0), out);
+                    out.append("*capture = ");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(";\n");
                     this.emitVarSync("end_read", instr.arguments.get(0), out);
                     out.append("gera___end_write(closure_alloc);\n");
+                    out.append("}\n");    
                 }
             } break;
 
@@ -1848,15 +1714,15 @@ public class CCodeGen implements CodeGen {
                     .get(instr.dest.get().index);
                 if(this.shouldEmitType(valT)) {
                     out.append("{\n");
-                    this.emitStackCopy(instr.arguments.get(0), out);
                     this.emitVarSync("begin_read", instr.arguments.get(0), out);
+                    this.emitRefCopy(instr.arguments.get(0), out);
                     this.emitType(valT, out);
                     out.append(" value = ");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(";\n");
                     this.emitVarSync("end_read", instr.arguments.get(0), out);
-                    this.emitStackDelete(instr.dest.get(), out);
                     this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = value;\n");
                     this.emitVarSync("end_write", instr.dest.get(), out);
@@ -2268,11 +2134,8 @@ public class CCodeGen implements CodeGen {
                 this.emitVariable(instr.arguments.get(0), out);
                 out.append(";\n");
                 this.emitVarSync("end_read", instr.arguments.get(0), out);
-                out.append(
-                    "GeraUnionData* matchedData = (GeraUnionData*) matched->data"
-                );
-                out.append(";\n");
-                out.append("switch(matchedData->tag) {\n");
+                out.append("GeraUnionData* matchedData = matched.data;\n");
+                out.append("switch(matched.tag) {\n");
                 for(int brI = 0; brI < data.branchBodies().size(); brI += 1) {
                     String variantName = data.branchVariants().get(brI);
                     out.append("case ");
@@ -2283,14 +2146,14 @@ public class CCodeGen implements CodeGen {
                     if(bVar.isPresent()) {
                         TypeVariable valT = this.context().variableTypes
                             .get(bVar.get().index);
-                        this.emitStackDelete(bVar.get(), out);
                         this.emitVarSync("begin_write", bVar.get(), out);
+                        this.emitRefDelete(bVar.get(), out);
                         this.emitVariable(bVar.get(), out);
                         out.append(" = *((");
                         this.emitType(valT, out);
                         out.append("*) matchedData->data);\n");
+                        this.emitRefCopy(bVar.get(), out);
                         this.emitVarSync("end_write", bVar.get(), out);
-                        this.emitStackCopy(bVar.get(), out);
                     }
                     this.emitInstructions(data.branchBodies().get(brI), out);
                     out.append("break;\n");
@@ -2317,10 +2180,10 @@ public class CCodeGen implements CodeGen {
                         TypeVariable argT = this.context().variableTypes
                             .get(instr.arguments.get(argI).index);
                         if(!this.shouldEmitType(argT)) { continue; }
-                        this.emitStackCopy(instr.arguments.get(argI), out);
                         this.emitVarSync(
                             "begin_read", instr.arguments.get(argI), out
                         );
+                        this.emitRefCopy(instr.arguments.get(argI), out);
                         this.emitType(argT, out);
                         out.append(" call_arg_");
                         out.append(argI);
@@ -2353,8 +2216,8 @@ public class CCodeGen implements CodeGen {
                     }
                     out.append(");\n");
                     if(this.shouldEmitType(retT)) {
-                        this.emitStackDelete(instr.dest.get(), out);
                         this.emitVarSync("begin_write", instr.dest.get(), out);
+                        this.emitRefDelete(instr.dest.get(), out);
                         this.emitVariable(instr.dest.get(), out);
                         out.append(" = call_ret;\n");
                         this.emitVarSync("end_write", instr.dest.get(), out);
@@ -2388,10 +2251,10 @@ public class CCodeGen implements CodeGen {
                     TypeVariable argT = this.context().variableTypes
                         .get(instr.arguments.get(argI + 1).index);
                     if(!this.shouldEmitType(argT)) { continue; }
-                    this.emitStackCopy(instr.arguments.get(argI + 1), out);
                     this.emitVarSync(
                         "begin_read", instr.arguments.get(argI + 1), out
                     );
+                    this.emitRefCopy(instr.arguments.get(argI + 1), out);
                     this.emitType(argT, out);
                     out.append(" call_arg_");
                     out.append(argI);
@@ -2416,7 +2279,7 @@ public class CCodeGen implements CodeGen {
                     out.append(", ");
                     this.emitType(argT, out);
                 }
-                out.append("))(called.body))(called.captures");
+                out.append("))(called.body))(called.allocation");
                 for(int argI = 0; argI < argC; argI += 1) {
                     TypeVariable argT = this.context().variableTypes
                         .get(instr.arguments.get(argI + 1).index);
@@ -2426,8 +2289,8 @@ public class CCodeGen implements CodeGen {
                 }
                 out.append(");\n");
                 if(this.shouldEmitType(retT)) {
-                    this.emitStackDelete(instr.dest.get(), out);
                     this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = call_ret;\n");
                     this.emitVarSync("end_write", instr.dest.get(), out);
@@ -2438,8 +2301,8 @@ public class CCodeGen implements CodeGen {
                 TypeVariable valT = this.context().variableTypes
                     .get(instr.arguments.get(0).index);
                 if(shouldEmitType(valT)) {
-                    this.emitStackCopy(instr.arguments.get(0), out);
                     this.emitVarSync("begin_read", instr.arguments.get(0), out);
+                    this.emitRefCopy(instr.arguments.get(0), out);
                     out.append("returned = ");
                     this.emitVariable(instr.arguments.get(0), out);
                     out.append(";\n");
@@ -2509,39 +2372,48 @@ public class CCodeGen implements CodeGen {
     }
 
 
-    private void emitStackCopy(Ir.Variable v, StringBuilder out) {
-        this.emitStackRefUpdate("gera___stack_copied", v, out);
+    private void emitRefCopy(Ir.Variable v, StringBuilder out) {
+        StringBuilder var = new StringBuilder();
+        this.emitVariable(v, var);
+        this.emitStackRefUpdate(
+            "gera___ref_copied", var.toString(), 
+            this.context().variableTypes.get(v.index), out
+        );
     }
 
-    private void emitStackDelete(Ir.Variable v, StringBuilder out) {
-        this.emitStackRefUpdate("gera___stack_deleted", v, out);
+    private void emitRefCopy(String val, TypeVariable t, StringBuilder out) {
+        this.emitStackRefUpdate("gera___ref_copied", val, t, out);
+    }
+
+    private void emitRefDelete(Ir.Variable v, StringBuilder out) {
+        StringBuilder var = new StringBuilder();
+        this.emitVariable(v, var);
+        this.emitStackRefUpdate(
+            "gera___ref_deleted", var.toString(), 
+            this.context().variableTypes.get(v.index), out
+        );
+    }
+
+    private void emitRefDelete(String val, TypeVariable t, StringBuilder out) {
+        this.emitStackRefUpdate("gera___ref_deleted", val, t, out);
     }
 
     private void emitStackRefUpdate(
-        String fn, Ir.Variable v, StringBuilder out
+        String fn, String val, TypeVariable t, StringBuilder out
     ) {
-        String capturedName = this.context().capturedNames.get(v.index);
-        if(capturedName == null) {
-            TypeVariable t = this.context().variableTypes.get(v.index);
-            DataType<TypeVariable> tval = this.typeContext.get(t);
-            switch(tval.type) {
-                case UNIT: case ANY: case NUMERIC: case INDEXED: 
-                case REFERENCED:
-                case BOOLEAN: case INTEGER: case FLOAT:
-                    return;
-                case STRING: case ARRAY: case UNORDERED_OBJECT: case UNION: 
-                    out.append(fn);    
-                    out.append("(");
-                    this.emitVariable(v, out);
-                    out.append(".allocation);\n");
-                    return;
-                case CLOSURE:
-                    out.append(fn);
-                    out.append("(");
-                    this.emitVariable(v, out);
-                    out.append(".captures);\n");
-                    return;
-            }
+        DataType<TypeVariable> tval = this.typeContext.get(t);
+        switch(tval.type) {
+            case UNIT: case ANY: case NUMERIC: case INDEXED: 
+            case REFERENCED:
+            case BOOLEAN: case INTEGER: case FLOAT:
+                return;
+            case STRING: case ARRAY: case UNORDERED_OBJECT: 
+            case UNION: case CLOSURE:
+                out.append(fn);    
+                out.append("(");
+                out.append(val);
+                out.append(".allocation);\n");
+                return;
         }
     }
     
