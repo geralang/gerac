@@ -49,7 +49,7 @@ public class Lowerer {
         this.symbols = symbols;
         this.typeContext = typeContext;
         this.interpreter = new Interpreter(sourceFiles, symbols);
-        this.staticValues = new Ir.StaticValues(this);
+        this.staticValues = new Ir.StaticValues(this, typeContext);
         this.blockStack = new LinkedList<>();
         this.variableStack = new LinkedList<>();
     }
@@ -177,7 +177,9 @@ public class Lowerer {
             if(captureValue == null) {
                 throw new RuntimeException("capture value should exist!");
             }
-            captureValues.put(capture, this.staticValues.add(captureValue));
+            captureValues.put(capture, this.staticValues.add(
+                captureValue, v.captureTypes.get(capture)
+            ));
         }
         List<TypeVariable> argumentTypes = v.argumentTypes;
         Ir.Context prevContext = this.context;
@@ -203,7 +205,7 @@ public class Lowerer {
         this.context = prevContext;
         this.variableStack = prevVars;
         return new Ir.StaticValue.Closure(
-            v, captureValues, argumentTypes, context, body
+            v, captureValues, argumentTypes, v.returnType, context, body
         );
     }
 
@@ -313,6 +315,7 @@ public class Lowerer {
             }
             case CASE_BRANCHING: {
                 AstNode.CaseBranching data = node.getValue();
+                TypeVariable valueType = data.value().resultType.get();
                 Ir.Variable value = this.lowerNode(data.value()).get();
                 List<BlockVariables> branches = new ArrayList<>();
                 List<Ir.StaticValue> branchValues = new ArrayList<>();
@@ -325,7 +328,9 @@ public class Lowerer {
                     Value branchValue = this.interpreter.evaluateStaticNode(
                         data.branchValues().get(branchI)
                     );
-                    branchValues.add(this.staticValues.add(branchValue));
+                    branchValues.add(this.staticValues.add(
+                        branchValue, valueType
+                    ));
                     this.enterBlock();
                     this.lowerNodes(data.branchBodies().get(branchI));
                     branches.add(this.variables());
@@ -355,7 +360,7 @@ public class Lowerer {
                 this.lowerNodes(data.ifBody());
                 BlockVariables ifVars = this.variables();
                 List<Ir.Instr> ifBody = this.exitBlock();
-                this.enterBlock();;
+                this.enterBlock();
                 this.lowerNodes(data.elseBody());
                 BlockVariables elseVars = this.variables();
                 List<Ir.Instr> elseBody = this.exitBlock();
@@ -363,7 +368,10 @@ public class Lowerer {
                     Ir.Instr.Type.BRANCH_ON_VALUE,
                     List.of(condition),
                     new Ir.Instr.BranchOnValue(
-                        List.of(this.staticValues.add(new Value.Bool(true))), 
+                        List.of(this.staticValues.add(
+                            new Value.Bool(true),
+                            data.condition().resultType.get()
+                        )), 
                         List.of(ifBody), 
                         elseBody
                     ),
@@ -766,7 +774,7 @@ public class Lowerer {
                 Ir.Variable left = this.lowerNode(data.left()).get();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
                 Ir.StaticValue trueValue = this.staticValues.add(
-                    new Value.Bool(true)
+                    new Value.Bool(true), node.resultType.get()
                 );
                 this.enterBlock();
                 Ir.Variable right = this.lowerNode(data.right()).get();
@@ -811,7 +819,7 @@ public class Lowerer {
                 Ir.Variable left = this.lowerNode(data.left()).get();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
                 Ir.StaticValue falseValue = this.staticValues.add(
-                    new Value.Bool(false)
+                    new Value.Bool(false), node.resultType.get()
                 );
                 this.enterBlock();
                 Ir.Variable right = this.lowerNode(data.right()).get();
@@ -870,7 +878,8 @@ public class Lowerer {
                         symbol.setVariant(data.variant().get(), variant);
                     }
                     Value value = variant.value().get();
-                    Ir.StaticValue staticValue = this.staticValues.add(value);
+                    Ir.StaticValue staticValue = this.staticValues
+                        .add(value, node.resultType.get());
                     this.block().add(new Ir.Instr(
                         Ir.Instr.Type.LOAD_STATIC_VALUE,
                         List.of(),
@@ -921,7 +930,8 @@ public class Lowerer {
             case STATIC: {
                 AstNode.MonoOp data = node.getValue();
                 Value value = this.interpreter.evaluateStaticNode(data.value());
-                Ir.StaticValue staticValue = this.staticValues.add(value);
+                Ir.StaticValue staticValue = this.staticValues
+                    .add(value, node.resultType.get());
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
                 this.block().add(new Ir.Instr(
                     Ir.Instr.Type.LOAD_STATIC_VALUE,

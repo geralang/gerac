@@ -336,7 +336,7 @@ public class ConstraintSolver {
                         } break;
                         case UNORDERED_OBJECT: {
                             tval = new DataType.UnorderedObject<>(
-                                new HashMap<>(), true
+                                new HashMap<>(), true, Optional.empty()
                             );
                         } break;
                         case UNION: {
@@ -404,7 +404,9 @@ public class ConstraintSolver {
                     members.put(data.name(), data.type());
                     r = new DataType<>(
                         DataType.Type.UNORDERED_OBJECT, 
-                        new DataType.UnorderedObject<>(members, true), 
+                        new DataType.UnorderedObject<>(
+                            members, true, Optional.empty()
+                        ), 
                         Optional.of(c.source)
                     );
                     this.ctx.set(c.target, r);
@@ -451,7 +453,9 @@ public class ConstraintSolver {
                     }
                     r = new DataType<>(
                         DataType.Type.UNORDERED_OBJECT, 
-                        new DataType.UnorderedObject<>(members, false), 
+                        new DataType.UnorderedObject<>(
+                            members, false, Optional.empty()
+                        ), 
                         Optional.of(c.source)
                     );
                     this.ctx.set(c.target, r);
@@ -473,7 +477,7 @@ public class ConstraintSolver {
                 r = new DataType<>(
                     r.type,
                     new DataType.UnorderedObject<>(
-                        objectData.memberTypes(), false
+                        objectData.memberTypes(), false, objectData.order()
                     ),
                     r.source
                 );
@@ -799,8 +803,29 @@ public class ConstraintSolver {
                             : dataB.memberTypes().get(member)
                     );
                 }
+                if(dataA.order().isPresent() && dataB.order().isPresent()) {
+                    throw new ErrorException(new Error(
+                        "Objects with different layouts used together",
+                        Error.Marking.info(
+                            a.source.get(),
+                            "this object's members are in the order ["
+                                + String.join(", ", dataA.order().get()) + "]"
+                        ),
+                        Error.Marking.info(
+                            b.source.get(),
+                            "this object's members are in the order ["
+                                + String.join(", ", dataB.order().get()) + "]"
+                        ),
+                        Error.Marking.error(
+                            unification.source,
+                            "they are used together here, which is impossible"
+                                + " since they are laid out differently"
+                        )
+                    ));
+                }
                 value = new DataType.UnorderedObject<>(
-                    members, dataA.expandable() && dataB.expandable()
+                    members, dataA.expandable() && dataB.expandable(),
+                    dataA.order().isPresent() ? dataA.order() : dataB.order()
                 );
             } break;
             case CLOSURE: {

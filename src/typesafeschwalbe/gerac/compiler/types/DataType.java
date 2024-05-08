@@ -17,7 +17,8 @@ public class DataType<T> {
     ) implements DataTypeValue<T> {}
 
     public static record UnorderedObject<T>(
-        Map<String, T> memberTypes, boolean expandable
+        Map<String, T> memberTypes, boolean expandable, 
+        Optional<List<String>> order
     ) implements DataTypeValue<T> {}
 
     public static record Closure<T>(
@@ -156,7 +157,9 @@ public class DataType<T> {
                 }
                 return new DataType<>(
                     this.type,
-                    new UnorderedObject<>(memberTypes, data.expandable),
+                    new UnorderedObject<>(
+                        memberTypes, data.expandable, data.order
+                    ),
                     this.source
                 );
             }

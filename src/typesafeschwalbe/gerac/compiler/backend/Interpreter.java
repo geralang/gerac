@@ -371,6 +371,7 @@ public class Interpreter {
                     new ArrayList<>(this.stack),
                     data.argumentNames(),
                     data.argumentTypes().get().get(),
+                    data.returnType().get().get(),
                     data.body()
                 );
             }

@@ -10,6 +10,8 @@ import java.util.Set;
 import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Source;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.types.DataType;
+import typesafeschwalbe.gerac.compiler.types.TypeContext;
 import typesafeschwalbe.gerac.compiler.types.TypeVariable;
 
 public class Ir {
@@ -17,17 +19,23 @@ public class Ir {
     public static class StaticValues {
 
         private final Lowerer lowerer;
+        private final TypeContext typeContext;
         public final List<StaticValue> values;
         public final Map<StaticValue, Integer> valueIndices;
+        public final Map<StaticValue, TypeVariable> valueTypes;
 
-        public StaticValues(Lowerer lowerer) {
+        public StaticValues(Lowerer lowerer, TypeContext typeContext) {
             this.lowerer = lowerer;
+            this.typeContext = typeContext;
             this.values = new ArrayList<>();
             this.valueIndices = new HashMap<>();
+            this.valueTypes = new HashMap<>();
         }
 
-        public StaticValue add(Value value) throws ErrorException {
-            StaticValue staticValue = this.asStatic(value);
+        public StaticValue add(
+            Value value, TypeVariable t
+        ) throws ErrorException {
+            StaticValue staticValue = this.asStatic(value, t);
             Integer existingIndex = this.valueIndices.get(staticValue);
             if(existingIndex != null) {
                 return this.values.get(existingIndex);
@@ -35,6 +43,7 @@ public class Ir {
             int index = this.values.size();
             this.values.add(staticValue);
             this.valueIndices.put(staticValue, index);
+            this.valueTypes.put(staticValue, t);
             return staticValue;
         }
 
@@ -42,7 +51,9 @@ public class Ir {
             return this.valueIndices.get(value);
         }
 
-        private StaticValue asStatic(Value v) throws ErrorException {
+        private StaticValue asStatic(
+            Value v, TypeVariable t
+        ) throws ErrorException {
             if(v instanceof Value.Unit) {
                 return StaticValue.UNIT;
             } else if(v instanceof Value.Bool) {
@@ -62,26 +73,40 @@ public class Ir {
                     v.<Value.Str>getValue().value
                 );
             } else if(v instanceof Value.Arr) {
+                DataType.Array<TypeVariable> td = this.typeContext
+                    .get(t).getValue();
                 List<StaticValue> elements = new ArrayList<>();
                 for(Value e: v.<Value.Arr>getValue().value) {
-                    elements.add(this.add(e));
+                    elements.add(this.add(e, td.elementType()));
                 }
                 return new StaticValue.Arr(v, elements);
             } else if(v instanceof Value.Obj) {
+                DataType.UnorderedObject<TypeVariable> td = this.typeContext
+                    .get(t).getValue();
                 Value.Obj data = v.getValue();
                 Map<String, StaticValue> members = new HashMap<>();
                 for(String memberName: data.value.keySet()) {
                     members.put(
-                        memberName, this.add(data.value.get(memberName))
+                        memberName, 
+                        this.add(
+                            data.value.get(memberName), 
+                            td.memberTypes().get(memberName)
+                        )
                     );
                 }
                 return new StaticValue.Obj(v, members);
             } else if(v instanceof Value.Closure) {
                 return this.lowerer.lowerClosureValue(v.getValue());
             } else if(v instanceof Value.Union) {
+                DataType.Union<TypeVariable> td = this.typeContext
+                    .get(t).getValue();
+                String variantName = v.<Value.Union>getValue().variant;
                 return new StaticValue.Union(
-                    v.<Value.Union>getValue().variant,
-                    this.add(v.<Value.Union>getValue().value)
+                    variantName,
+                    this.add(
+                        v.<Value.Union>getValue().value,
+                        td.variantTypes().get(variantName)
+                    )
                 );
             }
             throw new RuntimeException("unhandled value type!");
@@ -245,6 +270,7 @@ public class Ir {
             private final Object ptr;
             public final Map<String, Ir.StaticValue> captureValues;
             public final List<TypeVariable> argumentTypes;
+            public final TypeVariable returnType;
             public final Ir.Context context;
             public final List<Ir.Instr> body;
     
@@ -252,12 +278,14 @@ public class Ir {
                 Object ptr,
                 Map<String, Ir.StaticValue> captureValues,
                 List<TypeVariable> argumentTypes,
+                TypeVariable returnType,
                 Ir.Context context,
                 List<Ir.Instr> body
             ) {
                 this.ptr = ptr;
                 this.captureValues = captureValues;
                 this.argumentTypes = argumentTypes;
+                this.returnType = returnType;
                 this.context = context;
                 this.body = body;
             }

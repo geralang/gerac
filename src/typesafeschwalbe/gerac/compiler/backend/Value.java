@@ -151,6 +151,7 @@ public abstract class Value {
         public final List<Map<String, Optional<Value>>> environment;
         public final List<String> argumentNames;
         public final List<TypeVariable> argumentTypes;
+        public final TypeVariable returnType;
         public final List<AstNode> body;
 
         public Closure(
@@ -158,12 +159,14 @@ public abstract class Value {
             List<Map<String, Optional<Value>>> environment,
             List<String> argumentNames,
             List<TypeVariable> argumentTypes,
+            TypeVariable returnType,
             List<AstNode> body
         ) {
             this.captureTypes = captureTypes;
             this.environment = environment;
             this.argumentNames = argumentNames;
             this.argumentTypes = argumentTypes;
+            this.returnType = returnType;
             this.body = body;
         }
 

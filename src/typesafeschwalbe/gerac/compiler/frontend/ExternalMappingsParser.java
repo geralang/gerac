@@ -249,6 +249,7 @@ public class ExternalMappingsParser extends Parser {
                 this.next();
                 this.expect(Token.Type.IDENTIFIER);
                 Map<String, Supplier<TypeVariable>> members = new HashMap<>();
+                List<String> order = new ArrayList<>();
                 while(this.current.type != Token.Type.BRACE_CLOSE) {
                     this.expect(Token.Type.IDENTIFIER);
                     String memberName = this.current.content;
@@ -257,6 +258,7 @@ public class ExternalMappingsParser extends Parser {
                     this.next();
                     Supplier<TypeVariable> memberType = this.parseType();
                     members.put(memberName, memberType);
+                    order.add(memberName);
                     this.expect(Token.Type.COMMA, Token.Type.BRACE_CLOSE);
                     if(this.current.type == Token.Type.COMMA) {
                         this.next();
@@ -271,7 +273,9 @@ public class ExternalMappingsParser extends Parser {
                     }
                     return this.ctx.makeVar(new DataType<>(
                         DataType.Type.UNORDERED_OBJECT,
-                        new DataType.UnorderedObject<>(vMembers, false),
+                        new DataType.UnorderedObject<>(
+                            vMembers, false, Optional.of(order) 
+                        ),
                         Optional.of(new Source(start.source, end.source))
                     ));
                 };
