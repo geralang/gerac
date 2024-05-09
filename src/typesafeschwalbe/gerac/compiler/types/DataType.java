@@ -1,3 +1,4 @@
+
 package typesafeschwalbe.gerac.compiler.types;
 
 import java.util.HashMap;

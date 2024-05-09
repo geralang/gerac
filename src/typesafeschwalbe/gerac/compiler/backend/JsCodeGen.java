@@ -284,7 +284,7 @@ public class JsCodeGen implements CodeGen {
                         this.emitVariable(args.get(0), out);
                     } break;
                     case FLOAT: {
-                        out.append("BigInt(Math.floor(");
+                        out.append("BigInt(Math.trunc(");
                         this.emitVariable(args.get(0), out);
                         out.append("))");
                     } break;

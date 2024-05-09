@@ -1,6 +1,8 @@
 
 package typesafeschwalbe.gerac.compiler.frontend;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 
 import typesafeschwalbe.gerac.compiler.Source;
@@ -103,6 +105,9 @@ public class Lexer {
     }
 
     public Token nextToken() throws ErrorException {
+        while(Lexer.isWhitespace(this.current())) {
+            this.next();
+        }
         if(this.currentPos >= this.fileContent.length()) {
             return new Token(
                 Token.Type.FILE_END, "", new Source(
@@ -110,14 +115,6 @@ public class Lexer {
                     this.fileContent.length()
                 )
             );
-        }
-        if(Lexer.isWhitespace(this.current())) {
-            int endIdx = this.find(c -> !Lexer.isWhitespace(c));
-            String content = this.fileContent.substring(
-                this.currentPos, endIdx
-            );
-            this.currentPos = endIdx;
-            return this.makeToken(content, Token.Type.WHITESPACE);
         }
         if(Lexer.isDigit(this.current())) {
             int startPos = this.currentPos;
@@ -271,21 +268,55 @@ public class Lexer {
                 this.next();
                 if(this.current() == '/') {
                     this.next();
-                    while(!this.atEnd()) {
-                        char c = this.current();
-                        if(c == '\n' || c == '\r') {
-                            this.next();
-                            if(c == '\r' && this.current() == '\n') {
+                    if(this.current() == '/') {
+                        this.next();
+                        List<String> lines = new ArrayList<>();
+                        while(true) {
+                            StringBuilder line = new StringBuilder();
+                            while(true) {
+                                char c = this.current();
+                                if(c == '\n' || c == '\r') {
+                                    this.next();
+                                    if(c == '\r' && this.current() == '\n') {
+                                        this.next();
+                                    }
+                                    break;
+                                }
+                                line.append(c);
                                 this.next();
                             }
-                            break;
+                            lines.add(line.toString().trim());
+                            while(Lexer.isWhitespace(this.current())) {
+                                this.next();
+                            }
+                            boolean lineIsDocComment = this.fileContent
+                                .substring(this.currentPos).startsWith("///");
+                            if(lineIsDocComment) {
+                                this.currentPos += 3;
+                            } else {
+                                break;
+                            }
                         }
-                        this.next();
+                        return this.makeToken(
+                            String.join(" ", lines), Token.Type.DOC_COMMENT
+                        );
+                    } else {
+                        while(!this.atEnd()) {
+                            char c = this.current();
+                            if(c == '\n' || c == '\r') {
+                                this.next();
+                                if(c == '\r' && this.current() == '\n') {
+                                    this.next();
+                                }
+                                break;
+                            }
+                            this.next();
+                        }
+                        String content = this.fileContent.substring(
+                            startPos, this.currentPos
+                        );
+                        return this.makeToken(content, Token.Type.COMMENT);
                     }
-                    String content = this.fileContent.substring(
-                        startPos, this.currentPos
-                    );
-                    return this.makeToken(content, Token.Type.COMMENT);
                 } else {
                     return this.makeToken("/", Token.Type.SLASH);
                 }
@@ -368,15 +399,6 @@ public class Lexer {
                 "'" + this.current() + "' is not a valid character"
             )
         ));
-    }
-
-    public Token nextFilteredToken() throws ErrorException {
-        while(true) {
-            Token c = this.nextToken();
-            boolean filter = c.type != Token.Type.WHITESPACE
-                && c.type != Token.Type.COMMENT;
-            if(filter) { return c; }
-        }
     }
 
 }

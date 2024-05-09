@@ -36,6 +36,11 @@ public class Main {
         'o', "output", "specifies the output file path",
         "output file path"
     );
+    private static final Cli.OptionalArgument SYMBOLS = new Cli.OptionalArgument(
+        's', "symbols", 
+        "specifies the output file path for the symbol info file",
+        "output file path"
+    );
     private static final Cli.Flag NO_COLOR = new Cli.Flag(
         'c', "nocolor", "disables colored output"
     );
@@ -46,7 +51,7 @@ public class Main {
             .toLowerCase().contains("win");
         // parse CLI arguments
         Cli cli = new Cli()
-            .add(MAIN).add(TARGET).add(OUTPUT)
+            .add(MAIN).add(TARGET).add(OUTPUT).add(SYMBOLS)
             .add(NO_COLOR);
         Result<Cli.Values> cliParseResult = cli.parse(args);
         if(cliParseResult.isError()) {
@@ -114,28 +119,45 @@ public class Main {
             );
         }
         // compile
-        Result<String> compilationResult = Compiler.compile(
-            files, target, main
+        Result<Compiler.Output> compilationResult = Compiler.compile(
+            files, target, main, 
+            cliValues.get(SYMBOLS).isPresent()
         );
         if(compilationResult.isError()) {
             Main.exitWithErrors(
                 compilationResult.getError(), files, colored
             );
         }
+        // write symbols to file
+        if(compilationResult.getValue().symbolInfo().isPresent()) {
+            Main.writeFile(
+                compilationResult.getValue().symbolInfo().get(), 
+                cliValues.get(SYMBOLS).get(), 
+                colored
+            );
+        }
         // write output to file
-        String outputName = cliValues.get(OUTPUT);
-        String outputContent = compilationResult.getValue();
-        byte[] outputBytes = outputContent.getBytes(StandardCharsets.UTF_8);
+        Main.writeFile(
+            compilationResult.getValue().code(),
+            cliValues.get(OUTPUT), 
+            colored
+        );
+    }
+
+    private static void writeFile(
+        String content, String path, boolean errorColored
+    ) {
+        byte[] contentBytes = content.getBytes(StandardCharsets.UTF_8);
         try {
-            Files.write(Paths.get(outputName), outputBytes);
+            Files.write(Paths.get(path), contentBytes);
         } catch(IOException e) {
             Main.exitWithErrors(
                 List.of(new Error(
-                    "Unable to write to file '" + outputName + "': "
+                    "Unable to write to file '" + path + "': "
                         + "'" + e.getMessage() + "'"
                 )),
-                files,
-                colored
+                new HashMap<>(),
+                errorColored
             );
         }
     }

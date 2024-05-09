@@ -108,14 +108,24 @@ public class ConstraintSolver {
                 switch(symbol.type) {
                     case PROCEDURE: {
                         Symbols.Symbol.Procedure data = symbol.getValue();
-                        this.solveProcedure(
+                        SolvedProcedure solved = this.solveProcedure(
                             symbol, data, Optional.empty(), 
                             path.equals(mainPath)
                         );
+                        symbol.setValue(new Symbols.Symbol.Procedure(
+                            data.argumentNames(), data.builtinContext(), 
+                            Optional.of(solved.arguments()), 
+                            Optional.of(solved.returned()), 
+                            data.body(), data.ir_context(), data.ir_body()
+                        ));
                     } break;
                     case VARIABLE: {
                         Symbols.Symbol.Variable data = symbol.getValue();
-                        this.solveVariable(symbol, data);
+                        TypeVariable solved = this.solveVariable(symbol, data);
+                        symbol.setValue(new Symbols.Symbol.Variable(
+                            Optional.of(solved), 
+                            data.valueNode(), data.value()
+                        ));
                     } break;
                     default: {
                         throw new RuntimeException("unhandled symbol type!");
@@ -1059,7 +1069,8 @@ public class ConstraintSolver {
                 return new AstNode(
                     node.type,
                     new AstNode.Variable(
-                        data.isPublic(), data.isMutable(), data.name(),
+                        data.docComment(), data.isPublic(), data.isMutable(), 
+                        data.name(),
                         new Ref<>(data.valueType().get()),
                         data.value().isPresent()
                             ? Optional.of(this.processNode(data.value().get()))

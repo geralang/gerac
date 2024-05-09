@@ -17,8 +17,11 @@ import typesafeschwalbe.gerac.compiler.backend.Lowerer;
 
 public class Compiler {
 
-    public static Result<String> compile(
-        Map<String, String> files, Target target, String mainRaw
+    public static record Output(String code, Optional<String> symbolInfo) {}
+
+    public static Result<Output> compile(
+        Map<String, String> files, Target target, String mainRaw,
+        boolean generateSymbolInfo
     ) {
         Symbols symbols = new Symbols();
         TypeContext typeContext = new TypeContext();
@@ -82,6 +85,13 @@ public class Compiler {
         if(typeErrors.size() > 0) {
             return Result.ofError(typeErrors);
         }
+        Optional<String> symbolInfo = Optional.empty();
+        if(generateSymbolInfo) {
+            SymbolInfoGen infoGen = new SymbolInfoGen(
+                symbols, typeContext
+            );
+            symbolInfo = Optional.of(infoGen.generate());
+        }
         Lowerer lowerer = new Lowerer(files, symbols, typeContext);
         Optional<Error> loweringError = lowerer.lowerProcedures();
         if(loweringError.isPresent()) {
@@ -91,7 +101,7 @@ public class Compiler {
             files, symbols, typeContext, lowerer.staticValues
         );
         String output = codeGen.generate(mainPath);
-        return Result.ofValue(output);
+        return Result.ofValue(new Output(output, symbolInfo));
     }
 
 }

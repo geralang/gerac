@@ -96,6 +96,12 @@ public class SourceParser extends Parser {
     private List<AstNode> parseStatement(
         boolean inGlobalScope
     ) throws ErrorException {
+        Optional<String> docComment = Optional.empty();
+        boolean hasDocComment = this.last_filtered.isPresent() 
+            && this.last_filtered.get().type == Token.Type.DOC_COMMENT;
+        if(hasDocComment) {
+            docComment = Optional.of(this.last_filtered.get().content);
+        }
         boolean isPublic = this.current.type == Token.Type.KEYWORD_PUBLIC;
         if(isPublic) {
             if(!inGlobalScope) {
@@ -171,7 +177,7 @@ public class SourceParser extends Parser {
                 return List.of(new AstNode(
                     AstNode.Type.PROCEDURE,
                     new AstNode.Procedure(
-                        isPublic, name, argumentNames, body
+                        docComment, isPublic, name, argumentNames, body
                     ),
                     new Source(start.source, endSource)
                 ));
@@ -198,7 +204,7 @@ public class SourceParser extends Parser {
                 return List.of(new AstNode(
                     AstNode.Type.VARIABLE,
                     new AstNode.Variable(
-                        isPublic, isMutable, name,
+                        docComment, isPublic, isMutable, name,
                         new Ref<>(Optional.empty()),
                         value
                     ),
@@ -399,7 +405,9 @@ public class SourceParser extends Parser {
                 }
                 return List.of(new AstNode(
                     AstNode.Type.MODULE_DECLARATION,
-                    new AstNode.NamespacePath(new Namespace(segments)),
+                    new AstNode.ModuleDeclaration(
+                        docComment, new Namespace(segments)
+                    ),
                     new Source(start.source, end.source)
                 ));
             }

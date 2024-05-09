@@ -12,6 +12,7 @@ import typesafeschwalbe.gerac.compiler.types.TypeVariable;
 public class AstNode {
 
     public static record Procedure(
+        Optional<String> docComment,
         boolean isPublic,
         String name,
         List<String> argumentNames,
@@ -27,6 +28,7 @@ public class AstNode {
     ) {}
 
     public static record Variable(
+        Optional<String> docComment,
         boolean isPublic,
         boolean isMutable,
         String name,
@@ -92,7 +94,8 @@ public class AstNode {
         String value
     ) {}
 
-    public static record NamespacePath(
+    public static record ModuleDeclaration(
+        Optional<String> docComment,
         Namespace path
     ) {}
 
@@ -178,7 +181,7 @@ public class AstNode {
         NOT,                     // MonoOp
         OR,                      // BiOp
         AND,                     // BiOp
-        MODULE_DECLARATION,      // NamespacePath
+        MODULE_DECLARATION,      // ModuleDeclaration
         MODULE_ACCESS,           // ModuleAccess
         USE,                     // Usages
         VARIANT_LITERAL,         // VariantLiteral

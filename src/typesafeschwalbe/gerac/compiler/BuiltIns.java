@@ -85,7 +85,13 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Returns `true` if modifying the object or array"
+                            + " behind the reference `a` will also modify"
+                            + " the object or array behind the reference `b`"
+                            + " (if they refer to the same object or array)."
+                    )
                 )
             );
         }
@@ -127,7 +133,12 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Returns `true` if `a` and `b` are the same variant"
+                            + " of a shared union type, without regard to the"
+                            + " value they hold."
+                    )
                 )
             );
         }
@@ -160,7 +171,11 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Returns the length of the array or string `thing`"
+                            + " in elements or unicode code points."
+                    )
                 )
             );
         }
@@ -211,7 +226,10 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Calls `iter` until it returns the union variant `end`."
+                    )
                 )
             );
         }
@@ -241,7 +259,16 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Immediately causes the program to abort, logging"
+                            + " the message `reason` to"
+                            + " the standard error output."
+                            + " Panics are only supposed to be used for invalid"
+                            + " program states, such as an array index that is"
+                            + " out of bounds."
+                            + " This is also why a panic cannot be caught."
+                    )
                 )
             );
         }
@@ -271,7 +298,10 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Converts `thing` to its string representation."
+                    )
                 )
             );
         }
@@ -304,7 +334,11 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Converts `thing` to an integer,"
+                            + " rounding floats towards zero."
+                    )
                 )
             );
         }
@@ -337,7 +371,10 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Converts `thing` to a float."
+                    )
                 )
             );
         }
@@ -392,7 +429,15 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Returns a copy of the part of `source`"
+                            + " starting at the code point at index `start`"
+                            + " up to (not including) the code point at index"
+                            + " `end`. `start` and `end` will have the length"
+                            + " of `source` in code points added to them"
+                            + " if they are negative."
+                    )
                 )
             );
         }
@@ -436,7 +481,11 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Returns a new string, being the result of appending"
+                            + " `b` to the end of `a`."
+                    )
                 )
             );
         }
@@ -466,7 +515,13 @@ public class BuiltIns {
                         Optional.empty(), Optional.empty(), Optional.empty(),
                         Optional.empty(), Optional.empty()
                     ),
-                    Optional.empty()
+                    Optional.empty(),
+                    Optional.of(
+                        "Creates a hash of `thing`. Note that objects, arrays"
+                            + " and closures will have their references hashed,"
+                            + " not the contents of what the references"
+                            + " reference."
+                    )
                 )
             );
         }

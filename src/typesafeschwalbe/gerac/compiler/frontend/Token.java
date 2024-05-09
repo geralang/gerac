@@ -6,8 +6,8 @@ import typesafeschwalbe.gerac.compiler.Source;
 public class Token {
     
     public enum Type {
-        WHITESPACE("a whitespace"),
         COMMENT("a line comment"),
+        DOC_COMMENT("a documentation comment"),
         FILE_END("the end of the file"),
 
         IDENTIFIER("an identifier"),

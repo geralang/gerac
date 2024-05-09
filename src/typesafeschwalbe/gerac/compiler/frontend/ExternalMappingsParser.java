@@ -38,6 +38,12 @@ public class ExternalMappingsParser extends Parser {
     }
 
     private void parseStatement() throws ErrorException {
+        Optional<String> docComment = Optional.empty();
+        boolean hasDocComment = this.last_filtered.isPresent() 
+            && this.last_filtered.get().type == Token.Type.DOC_COMMENT;
+        if(hasDocComment) {
+            docComment = Optional.of(this.last_filtered.get().content);
+        }
         Token start = this.current;
         switch(start.content) {
             case "type": {
@@ -112,7 +118,8 @@ public class ExternalMappingsParser extends Parser {
                             Optional.empty(), Optional.empty(), 
                             Optional.empty()
                         ),
-                        Optional.of(externalName)
+                        Optional.of(externalName),
+                        docComment
                     )
                 );
             } break;
@@ -146,7 +153,8 @@ public class ExternalMappingsParser extends Parser {
                             Optional.of(valueType), Optional.empty(),
                             Optional.empty()
                         ),
-                        Optional.of(externalName)
+                        Optional.of(externalName),
+                        docComment
                     )
                 );
             } break;

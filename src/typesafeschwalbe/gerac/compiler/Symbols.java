@@ -72,12 +72,14 @@ public class Symbols {
         private final List<Object> variants;
         private final Map<Integer, Integer> mappedVariants;
         public final Optional<String> externalName;
+        public final Optional<String> docComment;
 
         public Symbol(
             Type type, boolean isPublic, Source source,
             Namespace[] usages,
             Object value, 
-            Optional<String> externalName
+            Optional<String> externalName,
+            Optional<String> docComment
         ) {
             this.type = type;
             this.isPublic = isPublic;
@@ -87,6 +89,7 @@ public class Symbols {
             this.variants = new ArrayList<>();
             this.mappedVariants = new HashMap<>();
             this.externalName = externalName;
+            this.docComment = docComment;
         }
 
         @SuppressWarnings("unchecked")
@@ -120,12 +123,14 @@ public class Symbols {
 
     }
 
+    public static record Module(Source source, Optional<String> docComment) {}
+
     private final Map<Namespace, Symbol> symbols;
-    private final Map<Namespace, Source> declaredModules;
+    private final Map<Namespace, Module> modules;
 
     public Symbols() {
         this.symbols = new HashMap<>();
-        this.declaredModules = new HashMap<>();
+        this.modules = new HashMap<>();
     }
 
     public void add(Namespace path, Symbol symbol) {
@@ -146,8 +151,8 @@ public class Symbols {
         for(AstNode node: nodes) {
             switch(node.type) {
                 case MODULE_DECLARATION: {
-                    AstNode.NamespacePath data = node.getValue();
-                    if(this.declaredModules.containsKey(data.path())) {
+                    AstNode.ModuleDeclaration data = node.getValue();
+                    if(this.modules.containsKey(data.path())) {
                         return Optional.of(new Error(
                             "Duplicate module",
                             Error.Marking.error(
@@ -156,12 +161,14 @@ public class Symbols {
                                     + " was already declared"
                             ),
                             Error.Marking.info(
-                                this.declaredModules.get(data.path()),
+                                this.modules.get(data.path()).source,
                                 "previously declared here"
                             )
                         ));
                     }
-                    this.declaredModules.put(data.path(), node.source);
+                    this.modules.put(data.path(), new Module(
+                        node.source, data.docComment()
+                    ));
                     currentModule = data.path();
                     List<String> usageSegments = new ArrayList<>(
                         data.path().elements()
@@ -194,9 +201,11 @@ public class Symbols {
                                 Optional.of(data.body()),
                                 Optional.empty(), Optional.empty()
                             ),
-                            Optional.empty()
+                            Optional.empty(),
+                            data.docComment()
                         )
                     );
+                    System.out.println(data.docComment());
                 } break;
                 case VARIABLE: {
                     AstNode.Variable data = node.getValue();
@@ -220,7 +229,8 @@ public class Symbols {
                                 data.value(),
                                 Optional.empty()
                             ),
-                            Optional.empty()
+                            Optional.empty(),
+                            data.docComment()
                         )
                     );
                 } break;
@@ -276,6 +286,10 @@ public class Symbols {
 
     public Set<Namespace> allSymbolPaths() {
         return this.symbols.keySet();
+    }
+
+    public Optional<Module> getDeclaredModule(Namespace path) {
+        return Optional.ofNullable(this.modules.get(path));
     }
 
 }
