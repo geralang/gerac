@@ -183,7 +183,7 @@ public class JsCodeGen implements CodeGen {
                 out.append("while(");
                 this.emitVariable(args.get(0), out);
                 out.append("().tag == ");
-                out.append("next".hashCode());
+                out.append(this.getVariantTagNumber("next"));
                 out.append(") {}\n");
                 this.emitVariable(dest, out);
                 out.append(" = undefined;\n");
@@ -249,7 +249,7 @@ public class JsCodeGen implements CodeGen {
                         out.append(".tag) {\n");
                         for(String variant: union.variantTypes().keySet()) {
                             out.append("case ");
-                            out.append(variant.hashCode());
+                            out.append(this.getVariantTagNumber(variant));
                             out.append(": ");
                             this.emitVariable(dest, out);
                             out.append(" = \"#");
@@ -357,6 +357,9 @@ public class JsCodeGen implements CodeGen {
 
     private final List<Ir.Context> contextStack;
 
+    private long nextUnionTagNumber;
+    private Map<String, Long> unionVariantTagNumbers;
+
     public JsCodeGen(
         Map<String, String> sourceFiles, Symbols symbols, 
         TypeContext typeContext, Ir.StaticValues staticValues
@@ -378,8 +381,19 @@ public class JsCodeGen implements CodeGen {
         this.contextStack.remove(this.contextStack.size() - 1);
     }
 
+    private long getVariantTagNumber(String variantName) {
+        Long existingNumber = this.unionVariantTagNumbers.get(variantName);
+        if(existingNumber != null) { return existingNumber; }
+        long number = this.nextUnionTagNumber;
+        this.unionVariantTagNumbers.put(variantName, number);
+        this.nextUnionTagNumber += 1;
+        return number;
+    }
+
     @Override
     public String generate(Namespace mainPath) {
+        this.nextUnionTagNumber = 0;
+        this.unionVariantTagNumbers = new HashMap<>();
         StringBuilder out = new StringBuilder();
         out.append("\n");
         out.append("""
@@ -454,8 +468,11 @@ public class JsCodeGen implements CodeGen {
         } else if(v instanceof Ir.StaticValue.Closure) {
             out.append("() => {}");
         } else if(v instanceof Ir.StaticValue.Union) {
+            long variantTag = this.getVariantTagNumber(
+                v.<Ir.StaticValue.Union>getValue().variant
+            );
             out.append("{ GERA___HASH_VALS: true, tag: ");
-            out.append(v.<Ir.StaticValue.Union>getValue().variant.hashCode());
+            out.append(variantTag);
             out.append(", value: null }");
         } else {
             throw new RuntimeException("unhandled value type!");
@@ -720,7 +737,7 @@ public class JsCodeGen implements CodeGen {
                 Ir.Instr.LoadVariant data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = { GERA___HASH_VALS: true, tag: ");
-                out.append(data.variantName().hashCode());
+                out.append(this.getVariantTagNumber(data.variantName()));
                 out.append(", value: ");
                 this.emitVariable(instr.arguments.get(0), out);
                 out.append(" };\n");
@@ -1042,7 +1059,11 @@ public class JsCodeGen implements CodeGen {
                     branchI += 1
                 ) {
                     out.append("case ");
-                    out.append(data.branchVariants().get(branchI).hashCode());
+                    long variantTag = this.getVariantTagNumber(
+                        data.branchVariants().get(branchI)
+                    );
+                    out.append();
+                    out.append(variantTag);
                     out.append(":\n");
                     Optional<Ir.Variable> bVar = data.branchVariables()
                         .get(branchI);
