@@ -1062,7 +1062,6 @@ public class JsCodeGen implements CodeGen {
                     long variantTag = this.getVariantTagNumber(
                         data.branchVariants().get(branchI)
                     );
-                    out.append();
                     out.append(variantTag);
                     out.append(":\n");
                     Optional<Ir.Variable> bVar = data.branchVariables()

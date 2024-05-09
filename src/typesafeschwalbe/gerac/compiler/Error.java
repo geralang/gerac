@@ -21,15 +21,15 @@ public record Error(
 
         private enum Type {
             ERROR(
-                '^', 
+                '═', 
                 Color.from(Color.RED), Color.from(Color.RED)
             ),
             INFO(
-                '~', 
+                '─', 
                 Color.from(Color.BRIGHT_BLUE), Color.from(Color.BRIGHT_BLUE)
             ),
             HELP(
-                '*',
+                '┈',
                 Color.from(Color.GREEN), Color.from(Color.GREEN)
             );
 
@@ -191,8 +191,8 @@ public record Error(
             final int paddingSpaces = 2;
             int maxLineNumberLength = String.valueOf(displayEndLineIdx + 1)
                 .length();
-            output.append(" ".repeat(paddingSpaces + maxLineNumberLength));
             output.append(separationLineColor);
+            output.append(" ".repeat(paddingSpaces + maxLineNumberLength));
             output.append("╭─ ");
             output.append(locationColor);
             output.append(marked.location.file());

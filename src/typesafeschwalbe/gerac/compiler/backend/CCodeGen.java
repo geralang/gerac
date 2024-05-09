@@ -1621,6 +1621,33 @@ public class CCodeGen implements CodeGen {
                 case PROCEDURE: {
                     Symbols.Symbol.Procedure symbolData = symbol.getValue();
                     if(symbolData.body().isEmpty()) {
+                        if(symbol.externalName.isPresent()) {
+                            Symbols.BuiltinContext builtin = symbolData
+                                .builtinContext().get()
+                                .apply(symbol.source);
+                            this.emitType(builtin.returned(), out);
+                            out.append(" ");
+                            out.append(symbol.externalName.get());
+                            out.append("(");
+                            int argC = builtin.arguments().size();
+                            boolean hadArg = false;
+                            for(int argI = 0; argI < argC; argI += 1) {
+                                TypeVariable argT = builtin.arguments()
+                                    .get(argI);
+                                if(!this.shouldEmitType(argT)) { continue; }
+                                if(hadArg) { 
+                                    out.append(", "); 
+                                }
+                                hadArg = true;
+                                this.emitType(argT, out);
+                                out.append(" arg_");
+                                out.append(argI);
+                            }
+                            if(!hadArg) {
+                                out.append("void");
+                            }
+                            out.append(");\n");
+                        }
                         continue;
                     }
                     for(
