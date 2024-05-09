@@ -1353,6 +1353,7 @@ public class CCodeGen implements CodeGen {
                 out.append(" a, ");
                 this.emitType(tid, out);
                 out.append(" b) {\n");
+                out.append("    if(a.allocation == b.allocation) { return 1; }\n");
                 out.append("    if(a.length != b.length) { return 0; }\n");
                 out.append("    ");
                 this.emitType(td.elementType(), out);
@@ -1365,11 +1366,14 @@ public class CCodeGen implements CodeGen {
                 this.emitType(td.elementType(), out);
                 out.append("*) b.allocation->data;\n");
                 out.append("    for(size_t i = 0; i < a.length; i += 1) {\n");
-                out.append("    if(!(");
-                this.emitEquality(
-                    "dataA[i]", "dataB[i]", td.elementType(), out
-                );
-                out.append(")) { return 0; }\n");
+                out.append("        gera___begin_read(a.allocation);\n");
+                out.append("        gera___begin_read(b.allocation);\n");
+                out.append("        gbool items_eq = ");
+                this.emitEquality("dataA[i]", "dataB[i]", td.elementType(), out);
+                out.append(";\n");
+                out.append("        gera___end_read(a.allocation);\n");
+                out.append("        gera___end_read(b.allocation);\n");
+                out.append("        if(!items_eq) { return 0; }\n");
                 out.append("    }\n");
                 out.append("    return 1;\n");
                 out.append("}\n");
@@ -1407,6 +1411,7 @@ public class CCodeGen implements CodeGen {
                 out.append(" a, ");
                 this.emitType(tid, out);
                 out.append(" b) {\n");
+                out.append("    if(a.allocation == b.allocation) { return 1; }\n");
                 out.append("    ");
                 this.emitObjectLayoutName(tid, out);
                 out.append("* dataA = (");
@@ -1417,14 +1422,20 @@ public class CCodeGen implements CodeGen {
                 out.append("* dataB = (");
                 this.emitObjectLayoutName(tid, out);
                 out.append("*) b.allocation->data;\n");
+                out.append("    gbool members_eq = 0;\n");
                 for(String memberName: td.memberTypes().keySet()) {
                     TypeVariable memberType = td.memberTypes().get(memberName);
-                    out.append("    if(!(");
+                    out.append("    gera___begin_read(a.allocation);\n");
+                    out.append("    gera___begin_read(b.allocation);\n");
+                    out.append("    members_eq = ");
                     this.emitEquality(
                         "dataA->" + memberName, "dataB->" + memberName, 
                         memberType, out
                     );
-                    out.append(")) { return 0; }\n");
+                    out.append(";\n");
+                    out.append("        gera___end_read(a.allocation);\n");
+                    out.append("        gera___end_read(b.allocation);\n");
+                    out.append("        if(!members_eq) { return 0; }\n");
                 }
                 out.append("    return 1;\n");
                 out.append("}\n");
@@ -1460,6 +1471,7 @@ public class CCodeGen implements CodeGen {
                 out.append(" a, ");
                 this.emitType(tid, out);
                 out.append(" b) {\n");
+                out.append("    if(a.allocation == b.allocation) { return 1; }\n");
                 out.append(
                     "    GeraUnionData* ad = (GeraUnionData*) a.allocation->data"
                 );
@@ -1476,18 +1488,24 @@ public class CCodeGen implements CodeGen {
                     out.append("        case ");
                     out.append(this.getVariantTagNumber(variantName));
                     out.append(": {\n");
-                    out.append("            ");
-                    this.emitType(variantType, out);
-                    out.append("* av = (");
-                    this.emitType(variantType, out);
-                    out.append("*) ad->data;\n");
-                    out.append("            ");
-                    this.emitType(variantType, out);
-                    out.append("* bv = (");
-                    this.emitType(variantType, out);
-                    out.append("*) bd->data;\n");
+                    if(this.shouldEmitType(variantType)) {
+                        out.append("            gera___begin_read(a.allocation)");
+                        out.append("            ");
+                        this.emitType(variantType, out);
+                        out.append(" av = *((");
+                        this.emitType(variantType, out);
+                        out.append("*) ad->data);\n");
+                        out.append("            gera___end_read(a.allocation)");
+                        out.append("            gera___begin_read(b.allocation)");
+                        out.append("            ");
+                        this.emitType(variantType, out);
+                        out.append(" bv = *((");
+                        this.emitType(variantType, out);
+                        out.append("*) bd->data);\n");
+                        out.append("            gera___end_read(b.allocation)");
+                    }
                     out.append("            return ");
-                    this.emitEquality("*av", "*bv", variantType, out);
+                    this.emitEquality("av", "bv", variantType, out);
                     out.append(";\n");
                     out.append("        }\n");
                 }
