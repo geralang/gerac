@@ -205,7 +205,6 @@ public class Symbols {
                             data.docComment()
                         )
                     );
-                    System.out.println(data.docComment());
                 } break;
                 case VARIABLE: {
                     AstNode.Variable data = node.getValue();
