@@ -817,7 +817,12 @@ public class ConstraintSolver {
                             : dataB.memberTypes().get(member)
                     );
                 }
+                boolean orderCombinationValid = true;
                 if(dataA.order().isPresent() && dataB.order().isPresent()) {
+                    orderCombinationValid = dataA.order().get()
+                        .equals(dataB.order().get());
+                }
+                if(!orderCombinationValid) {
                     throw new ErrorException(new Error(
                         "Objects with different layouts used together",
                         Error.Marking.info(

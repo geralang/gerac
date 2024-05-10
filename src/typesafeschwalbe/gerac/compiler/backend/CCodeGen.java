@@ -1483,20 +1483,20 @@ public class CCodeGen implements CodeGen {
                     out.append(this.getVariantTagNumber(variantName));
                     out.append(": {\n");
                     if(this.shouldEmitType(variantType)) {
-                        out.append("            gera___begin_read(a.allocation)");
+                        out.append("            gera___begin_read(a.allocation);\n");
                         out.append("            ");
                         this.emitType(variantType, out);
                         out.append(" av = *((");
                         this.emitType(variantType, out);
                         out.append("*) ad->data);\n");
-                        out.append("            gera___end_read(a.allocation)");
-                        out.append("            gera___begin_read(b.allocation)");
+                        out.append("            gera___end_read(a.allocation);\n");
+                        out.append("            gera___begin_read(b.allocation);\n");
                         out.append("            ");
                         this.emitType(variantType, out);
                         out.append(" bv = *((");
                         this.emitType(variantType, out);
                         out.append("*) bd->data);\n");
-                        out.append("            gera___end_read(b.allocation)");
+                        out.append("            gera___end_read(b.allocation);\n");
                     }
                     out.append("            return ");
                     this.emitEquality("av", "bv", variantType, out);
