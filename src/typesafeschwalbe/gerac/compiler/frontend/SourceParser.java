@@ -430,7 +430,7 @@ public class SourceParser extends Parser {
                 List<AstNode> body = this.parseStatements(inGlobalScope);
                 this.expect(Token.Type.BRACE_CLOSE);
                 this.next();
-                return targetName == this.target.targetName
+                return targetName.equals(this.target.targetName)
                     ? body
                     : List.of();
             }
