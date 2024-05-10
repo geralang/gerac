@@ -15,6 +15,7 @@ import typesafeschwalbe.gerac.compiler.ErrorException;
 import typesafeschwalbe.gerac.compiler.Symbols;
 import typesafeschwalbe.gerac.compiler.frontend.AstNode;
 import typesafeschwalbe.gerac.compiler.frontend.Namespace;
+import typesafeschwalbe.gerac.compiler.types.ConstraintSolver;
 import typesafeschwalbe.gerac.compiler.types.DataType;
 import typesafeschwalbe.gerac.compiler.types.TypeContext;
 import typesafeschwalbe.gerac.compiler.types.TypeVariable;
@@ -87,6 +88,28 @@ public class Lowerer {
                         variant.returnType().get(), cVariant.returnType().get()
                     );
                     if(!equals) { continue; }
+                    try {
+                        for(
+                            int argI = 0; 
+                            argI < variant.argumentTypes().get().size(); 
+                            argI += 1
+                        ) {
+                            ConstraintSolver.unifyVars(
+                                variant.argumentTypes().get().get(argI),
+                                cVariant.argumentTypes().get().get(argI), 
+                                symbol.source, this.typeContext
+                            );
+                        }
+                        ConstraintSolver.unifyVars(
+                            variant.returnType().get(), 
+                            cVariant.returnType().get(),
+                            symbol.source, this.typeContext
+                        );
+                    } catch(ErrorException e) {
+                        throw new RuntimeException(
+                            "should unify since `deepEquals` is true!"
+                        );
+                    }
                     symbol.setVariant(variantI, null);
                     symbol.mapVariantIdx(variantI, cVarI);
                     mapped = true;

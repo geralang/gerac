@@ -699,36 +699,47 @@ public class ConstraintSolver {
     private TypeVariable unifyVars(
         TypeVariable a, TypeVariable b, Source source
     ) throws ErrorException {
+        return ConstraintSolver.unifyVars(a, b, source, this.ctx);
+    }
+
+    public static TypeVariable unifyVars(
+        TypeVariable a, TypeVariable b, Source source, TypeContext ctx
+    ) throws ErrorException {
         LinkedList<Unification<TypeVariable>> queue = new LinkedList<>();
-        this.unifyVars(new Unification<>(a, b, source, ""), queue);
+        ConstraintSolver.unifyVars(
+            new Unification<>(a, b, source, ""), queue, ctx
+        );
         while(queue.size() > 0) {
             Unification<TypeVariable> unification = queue.pop();
-            this.unifyVars(unification, queue);
+            ConstraintSolver.unifyVars(unification, queue, ctx);
         }
         return a;
     }
 
-    private void unifyVars(
+    private static void unifyVars(
         Unification<TypeVariable> unification, 
-        List<Unification<TypeVariable>> queue
+        List<Unification<TypeVariable>> queue,
+        TypeContext ctx
     ) throws ErrorException {
-        int rootA = this.ctx.substitutes.find(unification.a.id);
-        int rootB = this.ctx.substitutes.find(unification.b.id);
+        int rootA = ctx.substitutes.find(unification.a.id);
+        int rootB = ctx.substitutes.find(unification.b.id);
         if(rootA == rootB) { return; }
-        DataType<TypeVariable> r = this.unifyTypes(
+        DataType<TypeVariable> r = ConstraintSolver.unifyTypes(
             new Unification<>(
-                this.ctx.substitutes.get(rootA), 
-                this.ctx.substitutes.get(rootB),
+                ctx.substitutes.get(rootA), 
+                ctx.substitutes.get(rootB),
                 unification.source, unification.description
-            ), queue
+            ), 
+            queue, ctx
         );
-        this.ctx.substitutes.union(rootA, rootB);
-        this.ctx.substitutes.set(rootA, r);
+        ctx.substitutes.union(rootA, rootB);
+        ctx.substitutes.set(rootA, r);
     }
 
-    private DataType<TypeVariable> unifyTypes(
+    private static DataType<TypeVariable> unifyTypes(
         Unification<DataType<TypeVariable>> unification,
-        List<Unification<TypeVariable>> queue
+        List<Unification<TypeVariable>> queue,
+        TypeContext ctx
     ) throws ErrorException {
         String description = (unification.description.length() > 0? " of " : "")
             + unification.description;
