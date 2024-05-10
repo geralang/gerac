@@ -121,7 +121,9 @@ public class ConstraintSolver {
                     } break;
                     case VARIABLE: {
                         Symbols.Symbol.Variable data = symbol.getValue();
-                        TypeVariable solved = this.solveVariable(symbol, data);
+                        TypeVariable solved = this.solveVariable(
+                            symbol, data, false
+                        );
                         symbol.setValue(new Symbols.Symbol.Variable(
                             Optional.of(solved), 
                             data.valueNode(), data.value()
@@ -215,7 +217,7 @@ public class ConstraintSolver {
     }
 
     private TypeVariable solveVariable(
-        Symbols.Symbol symbol, Symbols.Symbol.Variable data
+        Symbols.Symbol symbol, Symbols.Symbol.Variable data, boolean keepResult
     ) throws ErrorException {
         for(Scope scope: this.scopeStack) {
             if(scope.symbol != symbol) { continue; }
@@ -237,7 +239,7 @@ public class ConstraintSolver {
             symbol, 0,
             Optional.empty(), cOutput.value(),
             cOutput.varUsages(), cOutput.procUsages(),
-            true
+            keepResult
         ));
         this.solveConstraints(cOutput.constraints());
         Optional<AstNode> processedNode = Optional.empty();
@@ -251,11 +253,13 @@ public class ConstraintSolver {
             valueType = data.valueType().get();
         }
         this.scopeStack.remove(this.scopeStack.size() - 1);
-        symbol.addVariant(new Symbols.Symbol.Variable(
-            Optional.of(valueType),
-            processedNode,
-            Optional.empty()
-        ));
+        if(keepResult) {
+            symbol.addVariant(new Symbols.Symbol.Variable(
+                Optional.of(valueType),
+                processedNode,
+                Optional.empty()
+            ));
+        }
         return valueType;
     }
 
@@ -1322,8 +1326,9 @@ public class ConstraintSolver {
                     Symbols.Symbol symbol = this.symbols
                         .get(varUsage.fullPath()).get();
                     Symbols.Symbol.Variable symbolData = symbol.getValue();
-                    TypeVariable valueType = this
-                        .solveVariable(symbol, symbolData);
+                    TypeVariable valueType = this.solveVariable(
+                            symbol, symbolData, this.scope().keepResult
+                    );
                     this.unifyVars(
                         varUsage.value(), valueType, node.source
                     );

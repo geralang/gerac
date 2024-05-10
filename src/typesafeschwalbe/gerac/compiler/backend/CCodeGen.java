@@ -865,20 +865,7 @@ public class CCodeGen implements CodeGen {
         this.staticValues = staticValues;
         this.builtIns = new HashMap<>();
         this.contextStack = new LinkedList<>();
-        this.collapseDuplicateTypes();
         this.addBuiltins();
-    }
-
-
-    private void collapseDuplicateTypes() {
-        for(int tid = 0; tid < this.typeContext.varVount(); tid += 1) {
-            if(!this.typeContext.substitutes.isRoot(tid)) { continue; }
-            for(int mid = 0; mid < tid; mid += 1) {
-                if(!this.typeContext.substitutes.isRoot(mid)) { continue; }
-                if(!this.typeContext.deepEquals(tid, mid)) { continue; }
-                this.typeContext.substitutes.union(tid, mid);
-            }
-        }
     }
 
 
@@ -963,20 +950,26 @@ public class CCodeGen implements CodeGen {
                 char data[];
             } GeraUnionData;
             """);
-        StringBuilder typed = new StringBuilder();
-        this.emitValueDeclarations(typed);
-        this.emitValueInitializer(typed);
-        typed.append("\n");
-        this.emitSymbols(typed);
+        StringBuilder values = new StringBuilder();
+        this.emitValueDeclarations(values);
+        this.emitValueInitializer(values);
+        StringBuilder symDecls = new StringBuilder();
+        this.emitSymbolDecls(symDecls);
+        StringBuilder symImpls = new StringBuilder();
+        this.emitSymbolImpls(symImpls);
         StringBuilder types = new StringBuilder();
         out.append("\n");
         this.emitTypeDeclarations(types, out);
         out.append("\n");
         out.append(types);
         out.append("\n");
+        out.append(values);
+        out.append("\n");
+        out.append(symDecls);
+        out.append("\n");
         out.append(this.closureBodies);
         out.append("\n");
-        out.append(typed);
+        out.append(symImpls);
         out.append("\n");
         out.append("int main(int argc, char** argv) {\n");
         out.append("    gera___set_args(argc, argv);\n");
@@ -1176,7 +1169,7 @@ public class CCodeGen implements CodeGen {
                     this.emitValueRef(val, out);
                     out.append(".allocation->data;\n");
                     for(String member: data.value.keySet()) {
-                        out.append("        members->");
+                        out.append("        members->member_");
                         out.append(member);
                         out.append(" = ");
                         this.emitValueRef(data.value.get(member), out);
@@ -1290,7 +1283,7 @@ public class CCodeGen implements CodeGen {
                         hadMember = true;
                         out.append("    ");
                         this.emitType(memT, out);
-                        out.append(" ");
+                        out.append(" member_");
                         out.append(member);
                         out.append(";\n");
                     }
@@ -1429,7 +1422,8 @@ public class CCodeGen implements CodeGen {
                     out.append("    gera___begin_read(b.allocation);\n");
                     out.append("    members_eq = ");
                     this.emitEquality(
-                        "dataA->" + memberName, "dataB->" + memberName, 
+                        "dataA->member_" + memberName, 
+                        "dataB->member_" + memberName, 
                         memberType, out
                     );
                     out.append(";\n");
@@ -1452,7 +1446,7 @@ public class CCodeGen implements CodeGen {
                     TypeVariable memberType = td.memberTypes().get(memberName);
                     StringBuilder refDelete = new StringBuilder();
                     this.emitRefDelete(
-                        "members->" + memberName, memberType, refDelete
+                        "members->member_" + memberName, memberType, refDelete
                     );
                     if(refDelete.length() > 0) {
                         out.append("    ");
@@ -1605,13 +1599,13 @@ public class CCodeGen implements CodeGen {
     }
 
 
-    private void emitSymbols(StringBuilder out) {
+    private void emitSymbolDecls(StringBuilder out) {
         for(Namespace path: this.symbols.allSymbolPaths()) {
             Symbols.Symbol symbol = this.symbols.get(path).get();
             switch(symbol.type) {
                 case VARIABLE: {
                     Symbols.Symbol.Variable symbolData = symbol.getValue();
-                    if(symbolData.value().isPresent()) { continue; }
+                    if(symbol.externalName.isEmpty()) { continue; }
                     out.append("extern ");
                     this.emitType(symbolData.valueType().get(), out);
                     out.append(" ");
@@ -1684,6 +1678,10 @@ public class CCodeGen implements CodeGen {
                 } break;
             }
         }
+    }
+
+
+    private void emitSymbolImpls(StringBuilder out) {
         for(Namespace path: this.symbols.allSymbolPaths()) {
             Symbols.Symbol symbol = this.symbols.get(path).get();
             if(symbol.type != Symbols.Symbol.Type.PROCEDURE) {
@@ -1818,7 +1816,9 @@ public class CCodeGen implements CodeGen {
             TypeVariable varT = variableTypes.get(varI);
             String capturedName = this.context().capturedNames.get(varI);
             if(capturedName != null) {
-                this.emitRefDelete("captured_" + capturedName, varT, out);
+                out.append("gera___ref_deleted(captured_");
+                out.append(capturedName);
+                out.append(");\n");
             } else {
                 this.emitRefDelete("local_" + varI, varT, out);
             }
@@ -1959,7 +1959,7 @@ public class CCodeGen implements CodeGen {
                         "begin_read", instr.arguments.get(memI), out
                     );
                     this.emitRefCopy(instr.arguments.get(memI), out);
-                    out.append("members->");
+                    out.append("members->member_");
                     out.append(data.memberNames().get(memI));
                     out.append(" = ");
                     this.emitVariable(instr.arguments.get(memI), out);
@@ -2265,7 +2265,7 @@ public class CCodeGen implements CodeGen {
                     this.emitObjectLayoutName(objT.id, out);
                     out.append("*) ");
                     this.emitVariable(instr.arguments.get(0), out);
-                    out.append(".allocation->data)->");
+                    out.append(".allocation->data)->member_");
                     out.append(data.memberName());
                     out.append(";\n");
                     this.emitRefCopy("value", memT, out);
@@ -2306,7 +2306,7 @@ public class CCodeGen implements CodeGen {
                     this.emitObjectLayoutName(objT.id, out);
                     out.append("*) ");
                     this.emitVariable(instr.arguments.get(0), out);
-                    out.append(".allocation->data)->");
+                    out.append(".allocation->data)->member_");
                     out.append(data.memberName());
                     out.append(";\n");
                     this.emitRefDelete("(*member)", memT, out);
