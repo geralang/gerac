@@ -2408,6 +2408,7 @@ public class CCodeGen implements CodeGen {
                     this.emitVariable(instr.arguments.get(2), out);
                     out.append(";\n");
                     this.emitVarSync("end_read", instr.arguments.get(2), out);
+                    this.emitRefCopy("value", memT, out);
                     this.emitVarSync("begin_read", instr.arguments.get(0), out);
                     this.emitVarSync("begin_read", instr.arguments.get(1), out);
                     out.append("gera___begin_write(");
