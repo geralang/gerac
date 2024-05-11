@@ -2,6 +2,7 @@
 package typesafeschwalbe.gerac.compiler;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -36,9 +37,7 @@ public class SymbolInfoGen {
 
     public String generate() {
         StringBuilder out = new StringBuilder();
-        out.append("{\"types\":");
-        this.emitTypes(out);
-        out.append(",\"modules\":");
+        out.append("{\"modules\":");
         this.emitModules(out);
         out.append("}");
         return out.toString();
@@ -60,94 +59,117 @@ public class SymbolInfoGen {
         out.append("\"");
     }
 
-    private void emitTypes(StringBuilder out) {
-        out.append("{");
-        boolean hadType = false;
-        for(int tid = 0; tid < this.types.varVount(); tid += 1) {
-            if(!this.types.substitutes.isRoot(tid)) { continue; }
-            if(hadType) { out.append(","); }
-            hadType = true;
-            DataType<TypeVariable> tval = this.types.get(tid);
-            out.append("\"");
-            out.append(tid);
-            out.append("\":{\"type\":\"");
-            switch(tval.type) {
-                case ANY: out.append("any"); break;
-                case NUMERIC: out.append("numeric"); break;
-                case INDEXED: out.append("indexed"); break;
-                case REFERENCED: out.append("referenced"); break;
-                case UNIT: out.append("unit"); break;
-                case BOOLEAN: out.append("boolean"); break;
-                case INTEGER: out.append("integer"); break;
-                case FLOAT: out.append("float"); break;
-                case STRING: out.append("string"); break;
-                case ARRAY: out.append("array"); break;
-                case UNORDERED_OBJECT: out.append("object"); break;
-                case CLOSURE: out.append("closure"); break;
-                case UNION: out.append("union"); break;
-            }
-            out.append("\"");
-            switch(tval.type) {
-                case ANY: case NUMERIC: case INDEXED: case REFERENCED:
-                case UNIT: case BOOLEAN: case INTEGER: case FLOAT:
-                case STRING:
-                    break;
-                case ARRAY: {
-                    DataType.Array<TypeVariable> td = tval.getValue();
-                    out.append(",\"elements\":");
-                    this.emitType(td.elementType(), out);
-                } break;
-                case UNORDERED_OBJECT: {
-                    DataType.UnorderedObject<TypeVariable> td = tval.getValue();
-                    out.append(",\"members\":{");
-                    boolean hadMember = false;
-                    for(String member: td.memberTypes().keySet()) {
-                        if(hadMember) { out.append(","); }
-                        hadMember = true;
-                        out.append("\"");
-                        out.append(member);
-                        out.append("\":");
-                        this.emitType(td.memberTypes().get(member), out);
-                    }
-                    out.append("},\"expandable\":");
-                    out.append(td.expandable()? "true" : "false");
-                } break;
-                case CLOSURE: {
-                    DataType.Closure<TypeVariable> td = tval.getValue();
-                    out.append(",\"arguments\":[");
-                    boolean hadArgument = false;
-                    for(TypeVariable argument: td.argumentTypes()) {
-                        if(hadArgument) { out.append(","); }
-                        hadArgument = true;
-                        this.emitType(argument, out);
-                    }
-                    out.append("],\"returns\":");
-                    this.emitType(td.returnType(), out);
-                } break;
-                case UNION: {
-                    DataType.Union<TypeVariable> td = tval.getValue();
-                    out.append(",\"variants\":{");
-                    boolean hadVariant = false;
-                    for(String variant: td.variantTypes().keySet()) {
-                        if(hadVariant) { out.append(","); }
-                        hadVariant = true;
-                        out.append("\"");
-                        out.append(variant);
-                        out.append("\":");
-                        this.emitType(td.variantTypes().get(variant), out);
-                    }
-                    out.append("},\"expandable\":");
-                    out.append(td.expandable()? "true" : "false");
-                } break;
-            }
-            out.append("}");
-        }
-        out.append("}");
+    private void emitType(TypeVariable t, StringBuilder out) {
+        out.append("\"");
+        this.emitType(t, out, new HashSet<>(), new HashMap<>());
+        out.append("\"");
     }
 
-    private void emitType(TypeVariable t, StringBuilder out) {
-        int tid = this.types.substitutes.find(t.id);
-        out.append(tid);
+    private void emitType(
+        TypeVariable t, StringBuilder out, 
+        HashSet<Integer> e_twice,
+        HashMap<Integer, Optional<Integer>> e_ids
+    ) {
+        int root = this.types.substitutes.find(t.id);
+        if(e_ids.containsKey(root)) {
+            e_ids.put(root, Optional.of(e_twice.size()));
+            e_twice.add(root);
+            out.append("<circular *");
+            out.append(e_twice.size());
+            out.append(">");
+            return;
+        } else {
+            e_ids.put(root, Optional.empty());
+        }
+        DataType<TypeVariable> tv = this.types.get(root);
+        StringBuilder type = new StringBuilder();
+        switch(tv.type) {
+            case ANY: type.append("any"); break;
+            case NUMERIC: type.append("(int | float)"); break;
+            case INDEXED: type.append("([any] | str)"); break;
+            case REFERENCED: type.append("([any] | { ... })"); break;
+            case UNIT: type.append("unit"); break;
+            case BOOLEAN: type.append("bool"); break;
+            case INTEGER: type.append("int"); break;
+            case FLOAT: type.append("float"); break;
+            case STRING: type.append("str"); break;
+            case ARRAY: {
+                DataType.Array<TypeVariable> data = tv.getValue();
+                type.append("[");
+                this.emitType(data.elementType(), type, e_twice, e_ids);
+                type.append("]");
+            } break;
+            case UNORDERED_OBJECT: {
+                DataType.UnorderedObject<TypeVariable> data = tv.getValue();
+                type.append("{");
+                boolean hadMember = false;
+                for(String member: data.memberTypes().keySet()) {
+                    if(hadMember) { type.append(", "); }
+                    else { type.append(" "); }
+                    hadMember = true;
+                    type.append(member);
+                    type.append(" = ");
+                    this.emitType(
+                        data.memberTypes().get(member), type, e_twice, e_ids
+                    );
+                }
+                if(data.expandable()) {
+                    if(hadMember) { type.append(", "); }
+                    else { type.append(" "); }
+                    hadMember = true;
+                    type.append("...");
+                }
+                if(hadMember) { type.append(" "); }
+                type.append("}");
+            } break;
+            case CLOSURE: {
+                DataType.Closure<TypeVariable> data = tv.getValue();
+                type.append("|");
+                for(
+                    int argI = 0; argI < data.argumentTypes().size(); argI += 1
+                ) {
+                    if(argI > 0) { type.append(", "); }
+                    this.emitType(
+                        data.argumentTypes().get(argI), type, e_twice, e_ids
+                    );
+                }
+                type.append("| -> ");
+                this.emitType(
+                    data.returnType(), type, e_twice, e_ids
+                );
+            } break;
+            case UNION: {
+                DataType.Union<TypeVariable> data = tv.getValue();
+                type.append("(");
+                boolean hadMember = false;
+                for(String variant: data.variantTypes().keySet()) {
+                    if(hadMember) { type.append(" | "); }
+                    else type.append(" ");
+                    hadMember = true;
+                    type.append("#");
+                    type.append(variant);
+                    type.append(" ");
+                    this.emitType(
+                        data.variantTypes().get(variant), type, e_twice, e_ids
+                    );
+                }
+                if(data.expandable()) {
+                    if(hadMember) { type.append(" | "); }
+                    else { type.append(" "); }
+                    hadMember = true;
+                    type.append("...");
+                }
+                if(hadMember) { type.append(" "); }
+                type.append(")");
+            } break;
+        }
+        Optional<Integer> e_id = e_ids.get(root);
+        if(e_id.isPresent()) {
+            out.append("<ref *");
+            out.append(e_id.get());
+            out.append("> ");
+        }
+        out.append(type);
     }
 
     private static boolean isParentModule(Namespace parent, Namespace child) {

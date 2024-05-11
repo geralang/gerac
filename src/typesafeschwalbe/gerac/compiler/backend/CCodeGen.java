@@ -304,11 +304,20 @@ public class CCodeGen implements CodeGen {
         }
 
         GeraString gera___substring(GeraString src, gint start, gint end) {
+            gera___ref_copied(src.allocation);
             size_t start_idx = (size_t) start;
             size_t end_idx = (size_t) end;
             size_t start_offset = 0;
             for(size_t i = 0; i < start_idx; i += 1) {
                 start_offset += gera___codepoint_size(src.data[start_offset]);
+            }
+            if(end_idx == src.length) {
+                return (GeraString) {
+                    .allocation = src.allocation,
+                    .length = src.length - start_idx,
+                    .length_bytes = src.length_bytes - start_offset,
+                    .data = src.data + start_offset
+                };
             }
             size_t length_bytes = 0;
             for(size_t c = start_idx; c < end_idx; c += 1) {
@@ -316,7 +325,6 @@ public class CCodeGen implements CodeGen {
                     src.data[start_offset + length_bytes]
                 );
             }
-            gera___ref_copied(src.allocation);
             return (GeraString) {
                 .allocation = src.allocation,
                 .length = end_idx - start_idx,
