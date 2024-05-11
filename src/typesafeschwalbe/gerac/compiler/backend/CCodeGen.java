@@ -950,9 +950,8 @@ public class CCodeGen implements CodeGen {
                 char data[];
             } GeraUnionData;
             """);
-        StringBuilder values = new StringBuilder();
-        this.emitValueDeclarations(values);
-        this.emitValueInitializer(values);
+        StringBuilder valuesInit = new StringBuilder();
+        this.emitValueInitializer(valuesInit);
         StringBuilder symDecls = new StringBuilder();
         this.emitSymbolDecls(symDecls);
         StringBuilder symImpls = new StringBuilder();
@@ -963,13 +962,15 @@ public class CCodeGen implements CodeGen {
         out.append("\n");
         out.append(types);
         out.append("\n");
-        out.append(values);
+        this.emitValueDeclarations(out);
         out.append("\n");
         out.append(symDecls);
         out.append("\n");
         out.append(this.closureBodies);
         out.append("\n");
         out.append(symImpls);
+        out.append("\n");
+        out.append(valuesInit);
         out.append("\n");
         out.append("int main(int argc, char** argv) {\n");
         out.append("    gera___set_args(argc, argv);\n");
@@ -1021,9 +1022,16 @@ public class CCodeGen implements CodeGen {
                     out.append(val.<Ir.StaticValue.Int>getValue().value);
                 } break;
                 case FLOAT: {
-                    out.append(String.format(
-                        "%f", val.<Ir.StaticValue.Float>getValue().value
-                    ));
+                    double v = val.<Ir.StaticValue.Float>getValue().value;
+                    if(Double.isNaN(v)) {
+                        out.append("0.0 / 0.0");
+                    } else if(v == Double.POSITIVE_INFINITY) {
+                        out.append("1.0 / 0.0");
+                    } else if(v == Double.NEGATIVE_INFINITY) {
+                        out.append("-1.0 / 0.0");
+                    } else {
+                        out.append(String.format("%f", v));
+                    }
                 } break;
                 case STRING: {
                     out.append("gera___wrap_static_string(");
@@ -1808,6 +1816,7 @@ public class CCodeGen implements CodeGen {
         out.append("ret:\n");
         for(int varI = 0; varI < variableTypes.size(); varI += 1) {
             TypeVariable varT = variableTypes.get(varI);
+            if(!this.shouldEmitType(varT)) { continue; }
             String capturedName = this.context().capturedNames.get(varI);
             if(capturedName != null) {
                 out.append("gera___ref_deleted(captured_");
@@ -2199,22 +2208,40 @@ public class CCodeGen implements CodeGen {
                     out.append(closureId);
                     out.append("*) a->data;\n");
                     for(String captureName: data.captureNames()) {
-                        StringBuilder captureValue = new StringBuilder(); 
+                        StringBuilder captureValue = new StringBuilder();
+                        boolean shouldEmit = true;
                         if(data.inheritedCaptures().contains(captureName)) {
                             captureValue.append("captures->");
                             captureValue.append(captureName);
                         } else {
                             captureValue.append("captured_");
                             captureValue.append(captureName);
+                            for(
+                                int varI = 0; 
+                                varI < this.context().variableTypes.size(); 
+                                varI += 1
+                            ) {
+                                String varCaptureName = this.context()
+                                    .capturedNames.get(varI);
+                                if(!captureName.equals(varCaptureName)) {
+                                    continue;
+                                }
+                                TypeVariable valT = this.context()
+                                    .variableTypes.get(varI);
+                                shouldEmit = this.shouldEmitType(valT);
+                                break;
+                            }
                         }
-                        out.append("gera___ref_copied(");
-                        out.append(captureValue);
-                        out.append(");\n");
-                        out.append("c->");
-                        out.append(captureName);
-                        out.append(" = ");
-                        out.append(captureValue);
-                        out.append(";\n");
+                        if(shouldEmit) {
+                            out.append("gera___ref_copied(");
+                            out.append(captureValue);
+                            out.append(");\n");
+                            out.append("c->");
+                            out.append(captureName);
+                            out.append(" = ");
+                            out.append(captureValue);
+                            out.append(";\n");
+                        }
                     }
                 }
                 this.emitVarSync("begin_write", instr.dest.get(), out);
