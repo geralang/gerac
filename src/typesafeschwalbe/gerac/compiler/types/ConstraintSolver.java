@@ -867,10 +867,10 @@ public class ConstraintSolver {
                     throw new ErrorException(
                         ConstraintSolver.makeIncompatibleTypesError(
                             a.source.get(), 
-                            "a closure with " + aArgC + "argument"
+                            "a closure with " + aArgC + " argument"
                                 + (aArgC == 1? "" : "s"), 
                             b.source.get(), 
-                            "a closure with " + bArgC + "argument"
+                            "a closure with " + bArgC + " argument"
                                 + (bArgC == 1? "" : "s"), 
                             unification.source, unification.description
                         )
