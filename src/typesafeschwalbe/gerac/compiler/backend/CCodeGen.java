@@ -633,10 +633,7 @@ public class CCodeGen implements CodeGen {
                                 + " that the compiler fucked up real bad :(\""
                                 + ");\n"
                         );
-                    }
-                    default: {
-                        throw new RuntimeException("unhandled type!");
-                    }
+                    } break;
                 }
                 out.append("}\n");
             }
