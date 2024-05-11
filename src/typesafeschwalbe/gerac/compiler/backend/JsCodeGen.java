@@ -612,9 +612,10 @@ public class JsCodeGen implements CodeGen {
     }
 
     private void emitVariant(Namespace path, int variant, StringBuilder out) {
+        Symbols.Symbol symbol = this.symbols.get(path).get();
         this.emitPath(path, out);
         out.append("_");
-        out.append(variant);
+        out.append(symbol.mappedVariantIdx(variant));
     }
 
     private void emitPath(Namespace path, StringBuilder out) {

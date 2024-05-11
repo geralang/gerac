@@ -137,7 +137,8 @@ public class CCodeGen implements CodeGen {
         void gera___panic_post() {
             geracoredeps_eprint(\"\\n\" PANIC_RESET_COLOR);
             geracoredeps_eprint_backtrace();
-            geracoredeps_exit(1);
+            // geracoredeps_exit(1);
+            volatile char x = *((char*) NULL);
         }
 
         void gera___panic(const char* reason) {
@@ -281,7 +282,6 @@ public class CCodeGen implements CodeGen {
             for(size_t c = 0; c < length_bytes; c += 1) {
                 allocation->data[c] = data[c];
             }
-            gera___end_write(allocation);
             return (GeraString) {
                 .allocation = allocation,
                 .data = allocation->data,
@@ -317,6 +317,7 @@ public class CCodeGen implements CodeGen {
                     src.data[start_offset + length_bytes]
                 );
             }
+            gera___ref_copied(src.allocation);
             return (GeraString) {
                 .allocation = src.allocation,
                 .length = end_idx - start_idx,
@@ -341,7 +342,6 @@ public class CCodeGen implements CodeGen {
             for(size_t i = 0; i < b.length_bytes; i += 1) {
                 result.allocation->data[a.length_bytes + i] = b.data[i];
             }
-            gera___end_write(allocation);
             return result;
         }
 
@@ -362,7 +362,6 @@ public class CCodeGen implements CodeGen {
             for(size_t i = 0; i < argc; i += 1) {
                 data[i] = gera___wrap_static_string(argv[i]);
             }
-            gera___end_write(allocation);
             GERA_ARGS = (GeraArray) {
                 .allocation = allocation,
                 .length = argc
@@ -1803,12 +1802,6 @@ public class CCodeGen implements CodeGen {
                 out.append(argI);
             }
             out.append(";\n");            
-            String capturedName = this.context().capturedNames.get(varI);
-            if(capturedName != null) {
-                out.append("gera___end_write(captured_");
-                out.append(capturedName);
-                out.append(");\n");
-            }
         }
         this.emitInstructions(body, out);
         out.append("ret:\n");
@@ -1849,9 +1842,10 @@ public class CCodeGen implements CodeGen {
 
 
     private void emitVariant(Namespace path, int variant, StringBuilder out) {
+        Symbols.Symbol symbol = this.symbols.get(path).get();
         this.emitPath(path, out);
         out.append("_");
-        out.append(variant);
+        out.append(symbol.mappedVariantIdx(variant));
     }
 
 
@@ -1978,13 +1972,18 @@ public class CCodeGen implements CodeGen {
             case LOAD_FIXED_ARRAY: {
                 TypeVariable arrT = this.context().variableTypes
                     .get(instr.dest.get().index);
-                TypeVariable itemT = this.context().variableTypes
-                    .get(instr.arguments.get(0).index);
+                Optional<TypeVariable> itemT = Optional.empty();
+                if(instr.arguments.size() > 0) {
+                    itemT = Optional.of(
+                        this.context().variableTypes
+                            .get(instr.arguments.get(0).index)
+                    );
+                }
                 out.append("{\n");
                 out.append("GeraAllocation* a = gera___alloc(");
-                if(this.shouldEmitType(itemT)) {
+                if(itemT.isPresent() && this.shouldEmitType(itemT.get())) {
                     out.append("sizeof(");
-                    this.emitType(itemT, out);
+                    this.emitType(itemT.get(), out);
                     out.append(") * ");
                     out.append(instr.arguments.size());
                     out.append(", &gera_");
@@ -1994,10 +1993,10 @@ public class CCodeGen implements CodeGen {
                     out.append("0, NULL");
                 }
                 out.append(");\n");
-                if(this.shouldEmitType(itemT)) {
-                    this.emitType(itemT, out);
+                if(itemT.isPresent() && this.shouldEmitType(itemT.get())) {
+                    this.emitType(itemT.get(), out);
                     out.append("* items = (");
-                    this.emitType(itemT, out);
+                    this.emitType(itemT.get(), out);
                     out.append("*) a->data;\n");
                     for(
                         int valI = 0; valI < instr.arguments.size(); valI += 1
@@ -2228,24 +2227,36 @@ public class CCodeGen implements CodeGen {
             } break;
             case LOAD_STATIC_VALUE: {
                 Ir.Instr.LoadStaticValue data = instr.getValue();
-                this.emitVarSync("begin_write", instr.dest.get(), out);
-                this.emitRefDelete(instr.dest.get(), out);
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                this.emitValueRef(data.value(), out);
-                out.append(";\n");
-                this.emitVarSync("end_write", instr.dest.get(), out);
+                TypeVariable valT = this.context().variableTypes
+                    .get(instr.dest.get().index);
+                if(this.shouldEmitType(valT)) {
+                    StringBuilder valStr = new StringBuilder();
+                    this.emitValueRef(data.value(), valStr);
+                    this.emitRefCopy(valStr.toString(), valT, out);
+                    this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
+                    this.emitVariable(instr.dest.get(), out);
+                    out.append(" = ");
+                    this.emitValueRef(data.value(), out);
+                    out.append(";\n");
+                    this.emitVarSync("end_write", instr.dest.get(), out);
+                }
             } break;
             case LOAD_EXT_VARIABLE: {
                 Ir.Instr.LoadExtVariable data = instr.getValue();
                 Symbols.Symbol symbol = this.symbols.get(data.path()).get();
-                this.emitVarSync("begin_write", instr.dest.get(), out);
-                this.emitRefDelete(instr.dest.get(), out);
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                out.append(symbol.externalName.get());
-                out.append(";\n");
-                this.emitVarSync("end_write", instr.dest.get(), out);
+                TypeVariable valT = this.context().variableTypes
+                    .get(instr.dest.get().index);
+                if(this.shouldEmitType(valT)) {
+                    this.emitRefCopy(symbol.externalName.get(), valT, out);
+                    this.emitVarSync("begin_write", instr.dest.get(), out);
+                    this.emitRefDelete(instr.dest.get(), out);
+                    this.emitVariable(instr.dest.get(), out);
+                    out.append(" = ");
+                    out.append(symbol.externalName.get());
+                    out.append(";\n");
+                    this.emitVarSync("end_write", instr.dest.get(), out);
+                }
             } break;
 
             case READ_OBJECT: {
@@ -2825,7 +2836,7 @@ public class CCodeGen implements CodeGen {
                     this.emitVarSync("end_read", instr.arguments.get(0), out);
                     this.emitVarSync("begin_write", instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
-                    out.append(" = value;\n");
+                    out.append(" = result;\n");
                     this.emitVarSync("end_write", instr.dest.get(), out);
                     out.append("}\n");
                 }
@@ -2903,24 +2914,26 @@ public class CCodeGen implements CodeGen {
                     out.append(this.getVariantTagNumber(variantName));
                     out.append(":\n");
                     Optional<Ir.Variable> bVar = data.branchVariables()
-                    .get(brI);
-                    TypeVariable valT = this.context().variableTypes
-                        .get(bVar.get().index);
-                    if(bVar.isPresent() && this.shouldEmitType(valT)) {
-                        out.append("{\n");
-                        out.append(
-                            "GeraUnionData* matchedData = "
-                                + "(GeraUnionData*) matched.allocation->data;\n"
-                        );
-                        this.emitVarSync("begin_write", bVar.get(), out);
-                        this.emitRefDelete(bVar.get(), out);
-                        this.emitVariable(bVar.get(), out);
-                        out.append(" = *((");
-                        this.emitType(valT, out);
-                        out.append("*) matchedData->data);\n");
-                        this.emitRefCopy(bVar.get(), out);
-                        this.emitVarSync("end_write", bVar.get(), out);
-                        out.append("}\n");
+                        .get(brI);
+                    if(bVar.isPresent()) {
+                        TypeVariable valT = this.context().variableTypes
+                            .get(bVar.get().index);
+                        if(this.shouldEmitType(valT)) {
+                            out.append("{\n");
+                            out.append(
+                                "GeraUnionData* matchedData = "
+                                    + "(GeraUnionData*) matched.allocation->data;\n"
+                            );
+                            this.emitVarSync("begin_write", bVar.get(), out);
+                            this.emitRefDelete(bVar.get(), out);
+                            this.emitVariable(bVar.get(), out);
+                            out.append(" = *((");
+                            this.emitType(valT, out);
+                            out.append("*) matchedData->data);\n");
+                            this.emitRefCopy(bVar.get(), out);
+                            this.emitVarSync("end_write", bVar.get(), out);
+                            out.append("}\n");
+                        }
                     }
                     this.emitInstructions(data.branchBodies().get(brI), out);
                     out.append("break;\n");
