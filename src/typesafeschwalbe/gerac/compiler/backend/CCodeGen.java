@@ -2918,9 +2918,11 @@ public class CCodeGen implements CodeGen {
                         );
                         out.append("}");
                     }
-                    out.append(" else {\n");
-                    this.emitInstructions(data.elseBody(), out);
-                    out.append("}\n");
+                    if(brC > 0) {
+                        out.append(" else {\n");
+                        this.emitInstructions(data.elseBody(), out);
+                        out.append("}\n");
+                    }
                 }
                 out.append("}\n");
             } break;
