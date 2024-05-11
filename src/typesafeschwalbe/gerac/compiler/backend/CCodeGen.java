@@ -137,8 +137,7 @@ public class CCodeGen implements CodeGen {
         void gera___panic_post() {
             geracoredeps_eprint(\"\\n\" PANIC_RESET_COLOR);
             geracoredeps_eprint_backtrace();
-            // geracoredeps_exit(1);
-            volatile char x = *((char*) NULL);
+            geracoredeps_exit(1);
         }
 
         void gera___panic(const char* reason) {
