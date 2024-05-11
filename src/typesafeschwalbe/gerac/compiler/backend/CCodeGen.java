@@ -628,7 +628,11 @@ public class CCodeGen implements CodeGen {
                     case NUMERIC:
                     case INDEXED:
                     case REFERENCED: {
-                        throw new RuntimeException("unsure of type!");
+                        out.append(
+                            "gera___panic(\"if you read this, that means"
+                                + " that the compiler fucked up real bad :(\""
+                                + ");\n"
+                        );
                     }
                     default: {
                         throw new RuntimeException("unhandled type!");
