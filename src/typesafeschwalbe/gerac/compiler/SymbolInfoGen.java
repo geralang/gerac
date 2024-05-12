@@ -28,6 +28,7 @@ public class SymbolInfoGen {
     }
 
     private void collectModules() {
+        this.modules.addAll(this.symbols.allDeclaredModulePaths());
         for(Namespace symbolPath: this.symbols.allSymbolPaths()) {
             List<String> modulePath = new ArrayList<>(symbolPath.elements());
             modulePath.remove(modulePath.size() - 1);
@@ -170,6 +171,7 @@ public class SymbolInfoGen {
             out.append("> ");
         }
         out.append(type);
+        e_ids.remove(root);
     }
 
     private static boolean isParentModule(Namespace parent, Namespace child) {

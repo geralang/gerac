@@ -291,5 +291,9 @@ public class Symbols {
         return Optional.ofNullable(this.modules.get(path));
     }
 
+    public Set<Namespace> allDeclaredModulePaths() {
+        return this.modules.keySet();
+    }
+
 }
  
