@@ -23,8 +23,15 @@ public class BuiltIns {
 
     public static void addParsedFiles(Map<String, String> files) {
         files.put(BUILTIN_CORE_FILE_NAME, """
+            /// A module containing special procedures implemented
+            /// by the compiler. 
+            /// Every module implicitly does `use core::*`.
             mod core
 
+            /// Returns an iterator over all integers that are greater than or 
+            /// equal to `start` less than `end` in ascending order.
+            /// The range syntax `s..e` is syntax sugar for a call to this
+            /// procedure. 
             pub proc range(start, end) {
                 mut i = start
                 return || {
@@ -34,6 +41,10 @@ public class BuiltIns {
                 }
             }
 
+            /// Returns an iterator over all integers that are greater than or 
+            /// equal to `start` less than or equal to `end` in ascending order.
+            /// The range syntax `s..=e` is syntax sugar for a call to this
+            /// procedure. 
             pub proc range_incl(start, end) {
                 mut i = start
                 return || {
