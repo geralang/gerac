@@ -648,35 +648,51 @@ public class CCodeGen implements CodeGen {
         this.builtIns.put(
             new Namespace(List.of("core", "as_int")),
             (tctx, args, argt, dest, out) -> {
-                out.append("{\n");
-                this.emitVarSync("begin_read", args.get(0), out);
-                this.emitType(argt.get(0), out);
-                out.append(" converted = ");
-                this.emitVariable(args.get(0), out);
-                out.append(";\n");
-                this.emitVarSync("end_read", args.get(0), out);
-                this.emitVarSync("begin_write", dest, out);
-                this.emitVariable(dest, out);
-                out.append(" = (gint) converted;\n");
-                this.emitVarSync("end_write", dest, out);
-                out.append("}\n");
+                if(this.shouldEmitType(argt.get(0))) {
+                    out.append("{\n");
+                    this.emitVarSync("begin_read", args.get(0), out);
+                    this.emitType(argt.get(0), out);
+                    out.append(" converted = ");
+                    this.emitVariable(args.get(0), out);
+                    out.append(";\n");
+                    this.emitVarSync("end_read", args.get(0), out);
+                    this.emitVarSync("begin_write", dest, out);
+                    this.emitVariable(dest, out);
+                    out.append(" = (gint) converted;\n");
+                    this.emitVarSync("end_write", dest, out);
+                    out.append("}\n");
+                } else {
+                    out.append(
+                        "gera___panic(\"if you read this, that means"
+                            + " that the compiler fucked up real bad :(\""
+                            + ");\n"
+                    );
+                }
             }
         );
         this.builtIns.put(
             new Namespace(List.of("core", "as_flt")),
             (tctx, args, argt, dest, out) -> {
-                out.append("{\n");
-                this.emitVarSync("begin_read", args.get(0), out);
-                this.emitType(argt.get(0), out);
-                out.append(" converted = ");
-                this.emitVariable(args.get(0), out);
-                out.append(";\n");
-                this.emitVarSync("end_read", args.get(0), out);
-                this.emitVarSync("begin_write", dest, out);
-                this.emitVariable(dest, out);
-                out.append(" = (gfloat) converted;\n");
-                this.emitVarSync("end_write", dest, out);
-                out.append("}\n");
+                if(this.shouldEmitType(argt.get(0))) {
+                    out.append("{\n");
+                    this.emitVarSync("begin_read", args.get(0), out);
+                    this.emitType(argt.get(0), out);
+                    out.append(" converted = ");
+                    this.emitVariable(args.get(0), out);
+                    out.append(";\n");
+                    this.emitVarSync("end_read", args.get(0), out);
+                    this.emitVarSync("begin_write", dest, out);
+                    this.emitVariable(dest, out);
+                    out.append(" = (gfloat) converted;\n");
+                    this.emitVarSync("end_write", dest, out);
+                    out.append("}\n");
+                } else {
+                    out.append(
+                        "gera___panic(\"if you read this, that means"
+                            + " that the compiler fucked up real bad :(\""
+                            + ");\n"
+                    );
+                }
             }
         );
         this.builtIns.put(
