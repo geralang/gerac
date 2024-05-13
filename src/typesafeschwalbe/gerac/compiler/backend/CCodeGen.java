@@ -264,10 +264,10 @@ public class CCodeGen implements CodeGen {
         }
 
         size_t gera___codepoint_size(char fb) {
-            if((fb & 0b10000000) == 0b00000000) { return 1; }
-            if((fb & 0b11100000) == 0b11000000) { return 2; }
-            if((fb & 0b11110000) == 0b11100000) { return 3; }
-            if((fb & 0b11111000) == 0b11110000) { return 4; }
+            if((fb & 0x80) == 0x00) { return 1; }
+            if((fb & 0xE0) == 0xC0) { return 2; }
+            if((fb & 0xF0) == 0xE0) { return 3; }
+            if((fb & 0xF8) == 0xF0) { return 4; }
             return 0;
         }
 
