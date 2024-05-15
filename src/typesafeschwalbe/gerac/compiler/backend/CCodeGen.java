@@ -2924,6 +2924,7 @@ public class CCodeGen implements CodeGen {
                     }
                     out.append("default:\n");
                     this.emitInstructions(data.elseBody(), out);
+                    out.append("break;\n");
                     out.append("}\n");
                 } else {
                     for(int brI = 0; brI < brC; brI += 1) {
@@ -2994,6 +2995,7 @@ public class CCodeGen implements CodeGen {
                 }
                 out.append("default:\n");
                 this.emitInstructions(data.elseBody(), out);
+                out.append("break;\n");
                 out.append("}\n");
                 out.append("}\n");
             } break;
