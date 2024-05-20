@@ -442,7 +442,7 @@ public class Interpreter {
                     this.enterFrame();
                     if(variableName.isPresent()) {
                         this.currentFrame().put(
-                            variableName.get(), Optional.of(value)
+                            variableName.get(), Optional.of(value.value)
                         );
                     }
                     this.evaluateBlock(data.branchBodies().get(branchI));
