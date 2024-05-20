@@ -15,10 +15,14 @@ public record Source(String file, int startOffset, int endOffset) {
     }
 
     public int computeLine(Map<String, String> files) {
-        return (int) files.get(this.file)
-            .substring(0, this.startOffset)
-            .lines()
-            .count();
+        int lines = 1;
+        String upTo = files.get(this.file).substring(0, this.startOffset);
+        for(int charI = 0; charI < upTo.length(); charI += 1) {
+            if(upTo.charAt(charI) == '\n') {
+                lines += 1;
+            }
+        }
+        return lines;
     }
 
     @Override
