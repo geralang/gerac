@@ -388,10 +388,6 @@ public class Ir {
 
     public static class Instr {
 
-        public static record LoadBoolean(boolean value) {}
-        public static record LoadInteger(long value) {}
-        public static record LoadFloat(double value) {}
-        public static record LoadString(String value) {}
         public static record LoadObject(List<String> memberNames) {}
         public static record LoadRepeatArray(Source source) {}
         public static record LoadVariant(String variantName) {}
@@ -427,11 +423,6 @@ public class Ir {
         ) {}
 
         public enum Type {
-            LOAD_UNIT,          // = null            | [] -> res
-            LOAD_BOOLEAN,       // LoadBoolean       | [] -> res 
-            LOAD_INTEGER,       // LoadInteger       | [] -> res
-            LOAD_FLOAT,         // LoadFloat         | [] -> res
-            LOAD_STRING,        // LoadString        | [] -> res
             LOAD_OBJECT,        // LoadObject        | [values...] -> res
             LOAD_FIXED_ARRAY,   // = null            | [values...] -> res
             LOAD_REPEAT_ARRAY,  // LoadRepeatArray   | [value, size] -> res
@@ -456,9 +447,7 @@ public class Ir {
             MODULO,             // Division          | [a, b] -> res
             NEGATE,             // = null            | [v] -> res
             LESS_THAN,          // = null            | [a, b] -> res
-            GREATER_THAN,       // = null            | [a, b] -> res
             LESS_THAN_EQUAL,    // = null            | [a, b] -> res
-            GREATER_THAN_EQUAL, // = null            | [a, b] -> res
             EQUALS,             // = null            | [a, b] -> res
             NOT_EQUALS,         // = null            | [a, b] -> res
             NOT,                // = null            | [v] -> res

@@ -1928,42 +1928,6 @@ public class CCodeGen implements CodeGen {
 
     private void emitInstruction(Ir.Instr instr, StringBuilder out) {
         switch(instr.type) {
-            case LOAD_BOOLEAN: {
-                Ir.Instr.LoadBoolean data = instr.getValue();
-                this.emitVarSync("begin_write", instr.dest.get(), out);
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                out.append(data.value()? "1" : "0");
-                out.append(";\n");
-                this.emitVarSync("end_write", instr.dest.get(), out);
-            } break;
-            case LOAD_INTEGER: {
-                Ir.Instr.LoadInteger data = instr.getValue();
-                this.emitVarSync("begin_write", instr.dest.get(), out);
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                out.append(data.value());
-                out.append(";\n");
-                this.emitVarSync("end_write", instr.dest.get(), out);
-            } break;
-            case LOAD_FLOAT: {
-                Ir.Instr.LoadFloat data = instr.getValue();
-                this.emitVarSync("begin_write", instr.dest.get(), out);
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                out.append(data.value());
-                out.append(";\n");
-                this.emitVarSync("end_write", instr.dest.get(), out);
-            } break;
-            case LOAD_STRING: {
-                Ir.Instr.LoadString data = instr.getValue();
-                this.emitVarSync("begin_write", instr.dest.get(), out);
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = gera___wrap_static_string(");
-                this.emitStringLiteral(data.value(), out);
-                out.append(");\n");
-                this.emitVarSync("end_write", instr.dest.get(), out);
-            } break;
             case LOAD_OBJECT: {
                 Ir.Instr.LoadObject data = instr.getValue();
                 TypeVariable objT = this.context().variableTypes
@@ -2751,30 +2715,6 @@ public class CCodeGen implements CodeGen {
                     out.append("}\n");
                 }
             } break;
-            case GREATER_THAN: {
-                TypeVariable compT = this.context().variableTypes
-                    .get(instr.arguments.get(0).index);
-                if(this.shouldEmitType(compT)) {
-                    out.append("{\n");
-                    this.emitVarSync("begin_read", instr.arguments.get(0), out);
-                    this.emitType(compT, out);
-                    out.append(" a = ");
-                    this.emitVariable(instr.arguments.get(0), out);
-                    out.append(";\n");
-                    this.emitVarSync("end_read", instr.arguments.get(0), out);
-                    this.emitVarSync("begin_read", instr.arguments.get(1), out);
-                    this.emitType(compT, out);
-                    out.append(" b = ");
-                    this.emitVariable(instr.arguments.get(1), out);
-                    out.append(";\n");
-                    this.emitVarSync("end_read", instr.arguments.get(1), out);
-                    this.emitVarSync("begin_write", instr.dest.get(), out);
-                    this.emitVariable(instr.dest.get(), out);
-                    out.append(" = a > b;\n");
-                    this.emitVarSync("end_write", instr.dest.get(), out);
-                    out.append("}\n");
-                }
-            } break;
             case LESS_THAN_EQUAL: {
                 TypeVariable compT = this.context().variableTypes
                     .get(instr.arguments.get(0).index);
@@ -2795,30 +2735,6 @@ public class CCodeGen implements CodeGen {
                     this.emitVarSync("begin_write", instr.dest.get(), out);
                     this.emitVariable(instr.dest.get(), out);
                     out.append(" = a <= b;\n");
-                    this.emitVarSync("end_write", instr.dest.get(), out);
-                    out.append("}\n");
-                }
-            } break;
-            case GREATER_THAN_EQUAL: {
-                TypeVariable compT = this.context().variableTypes
-                    .get(instr.arguments.get(0).index);
-                if(this.shouldEmitType(compT)) {
-                    out.append("{\n");
-                    this.emitVarSync("begin_read", instr.arguments.get(0), out);
-                    this.emitType(compT, out);
-                    out.append(" a = ");
-                    this.emitVariable(instr.arguments.get(0), out);
-                    out.append(";\n");
-                    this.emitVarSync("end_read", instr.arguments.get(0), out);
-                    this.emitVarSync("begin_read", instr.arguments.get(1), out);
-                    this.emitType(compT, out);
-                    out.append(" b = ");
-                    this.emitVariable(instr.arguments.get(1), out);
-                    out.append(";\n");
-                    this.emitVarSync("end_read", instr.arguments.get(1), out);
-                    this.emitVarSync("begin_write", instr.dest.get(), out);
-                    this.emitVariable(instr.dest.get(), out);
-                    out.append(" = a >= b;\n");
                     this.emitVarSync("end_write", instr.dest.get(), out);
                     out.append("}\n");
                 }
@@ -3151,7 +3067,6 @@ public class CCodeGen implements CodeGen {
                 out.append("goto ret;\n");
             } break;
 
-            case LOAD_UNIT:
             case PHI: {
                 // do nothing
             } break;

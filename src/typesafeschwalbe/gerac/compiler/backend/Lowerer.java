@@ -685,10 +685,13 @@ public class Lowerer {
             case BOOLEAN_LITERAL: {
                 AstNode.SimpleLiteral data = node.getValue();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
-                boolean value = Boolean.valueOf(data.value());
+                Ir.StaticValue value = this.staticValues.add(
+                    new Value.Bool(Boolean.valueOf(data.value())),
+                    node.resultType.get()
+                );
                 this.block().add(new Ir.Instr(
-                    Ir.Instr.Type.LOAD_BOOLEAN,
-                    List.of(), new Ir.Instr.LoadBoolean(value),
+                    Ir.Instr.Type.LOAD_STATIC_VALUE,
+                    List.of(), new Ir.Instr.LoadStaticValue(value),
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
@@ -696,10 +699,13 @@ public class Lowerer {
             case INTEGER_LITERAL: {
                 AstNode.SimpleLiteral data = node.getValue();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
-                long value = Long.valueOf(data.value());
+                Ir.StaticValue value = this.staticValues.add(
+                    new Value.Int(Long.valueOf(data.value())),
+                    node.resultType.get()
+                );
                 this.block().add(new Ir.Instr(
-                    Ir.Instr.Type.LOAD_INTEGER,
-                    List.of(), new Ir.Instr.LoadInteger(value),
+                    Ir.Instr.Type.LOAD_STATIC_VALUE,
+                    List.of(), new Ir.Instr.LoadStaticValue(value),
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
@@ -707,10 +713,13 @@ public class Lowerer {
             case FLOAT_LITERAL: {
                 AstNode.SimpleLiteral data = node.getValue();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
-                double value = Double.valueOf(data.value());
+                Ir.StaticValue value = this.staticValues.add(
+                    new Value.Float(Double.valueOf(data.value())),
+                    node.resultType.get()
+                );
                 this.block().add(new Ir.Instr(
-                    Ir.Instr.Type.LOAD_FLOAT,
-                    List.of(), new Ir.Instr.LoadFloat(value),
+                    Ir.Instr.Type.LOAD_STATIC_VALUE,
+                    List.of(), new Ir.Instr.LoadStaticValue(value),
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
@@ -718,18 +727,26 @@ public class Lowerer {
             case STRING_LITERAL: {
                 AstNode.SimpleLiteral data = node.getValue();
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
+                Ir.StaticValue value = this.staticValues.add(
+                    new Value.Str(data.value()),
+                    node.resultType.get()
+                );
                 this.block().add(new Ir.Instr(
-                    Ir.Instr.Type.LOAD_STRING,
-                    List.of(), new Ir.Instr.LoadString(data.value()),
+                    Ir.Instr.Type.LOAD_STATIC_VALUE,
+                    List.of(), new Ir.Instr.LoadStaticValue(value),
                     Optional.of(dest)
                 ));
                 return Optional.of(dest);
             }
             case UNIT_LITERAL: {
                 Ir.Variable dest = this.context.allocate(node.resultType.get());
+                Ir.StaticValue value = this.staticValues.add(
+                    Value.UNIT, node.resultType.get()
+                );
                 this.block().add(new Ir.Instr(
-                    Ir.Instr.Type.LOAD_UNIT,
-                    List.of(), null, Optional.of(dest)
+                    Ir.Instr.Type.LOAD_STATIC_VALUE,
+                    List.of(), new Ir.Instr.LoadStaticValue(value),
+                    Optional.of(dest)
                 ));
                 return Optional.of(dest);
             }
@@ -762,12 +779,19 @@ public class Lowerer {
                         t = Ir.Instr.Type.MODULO;
                         v = new Ir.Instr.Division(node.source);
                         break;
+                    case GREATER_THAN: {
+                        Ir.Variable swapped = left;
+                        left = right;
+                        right = swapped;
+                    } // fall through
                     case LESS_THAN: t = Ir.Instr.Type.LESS_THAN; break;
-                    case GREATER_THAN: t = Ir.Instr.Type.GREATER_THAN; break;
+                    case GREATER_THAN_EQUAL: {
+                        Ir.Variable swapped = left;
+                        left = right;
+                        right = swapped;
+                    } // fall through
                     case LESS_THAN_EQUAL:
                         t = Ir.Instr.Type.LESS_THAN_EQUAL; break;
-                    case GREATER_THAN_EQUAL:
-                        t = Ir.Instr.Type.GREATER_THAN_EQUAL; break;
                     case EQUALS: t = Ir.Instr.Type.EQUALS; break;
                     case NOT_EQUALS: t = Ir.Instr.Type.NOT_EQUALS; break;
                     default: throw new RuntimeException("unhandled type!");

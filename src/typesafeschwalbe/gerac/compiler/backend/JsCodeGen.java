@@ -660,38 +660,6 @@ public class JsCodeGen implements CodeGen {
 
     private void emitInstruction(Ir.Instr instr, StringBuilder out) {
         switch(instr.type) {
-            case LOAD_UNIT: {
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = undefined;\n");
-            } break;
-            case LOAD_BOOLEAN: {
-                Ir.Instr.LoadBoolean data = instr.getValue();
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                out.append(data.value()? "true" : "false");
-                out.append(";\n");
-            } break;
-            case LOAD_INTEGER: {
-                Ir.Instr.LoadInteger data = instr.getValue();
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = BigInt.asIntN(64, ");
-                out.append(data.value());
-                out.append("n);\n");
-            } break;
-            case LOAD_FLOAT: {
-                Ir.Instr.LoadFloat data = instr.getValue();
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                out.append(data.value());
-                out.append(";\n");
-            } break;
-            case LOAD_STRING: {
-                Ir.Instr.LoadString data = instr.getValue();
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                this.emitStringLiteral(data.value(), out);
-                out.append(";\n");
-            } break;
             case LOAD_OBJECT: {
                 Ir.Instr.LoadObject data = instr.getValue();
                 this.emitVariable(instr.dest.get(), out);
@@ -977,27 +945,11 @@ public class JsCodeGen implements CodeGen {
                 this.emitVariable(instr.arguments.get(1), out);
                 out.append(";\n");
             } break;
-            case GREATER_THAN: {
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                this.emitVariable(instr.arguments.get(0), out);
-                out.append(" > ");
-                this.emitVariable(instr.arguments.get(1), out);
-                out.append(";\n");
-            } break;
             case LESS_THAN_EQUAL: {
                 this.emitVariable(instr.dest.get(), out);
                 out.append(" = ");
                 this.emitVariable(instr.arguments.get(0), out);
                 out.append(" <= ");
-                this.emitVariable(instr.arguments.get(1), out);
-                out.append(";\n");
-            } break;
-            case GREATER_THAN_EQUAL: {
-                this.emitVariable(instr.dest.get(), out);
-                out.append(" = ");
-                this.emitVariable(instr.arguments.get(0), out);
-                out.append(" >= ");
                 this.emitVariable(instr.arguments.get(1), out);
                 out.append(";\n");
             } break;
