@@ -314,6 +314,18 @@ public class Interpreter {
         );
     }
 
+    private void panicInvalidIntegerDivisor(
+        long divisor, Source source
+    ) throws ErrorException {
+        this.enterCall(
+            new Namespace(List.of("<division>")), source
+        );
+        this.panic(
+            "integer division by zero",
+            source
+        );
+    }
+
     private Value callClosure(
         Value.Closure called, List<Value> arguments, Source source
     ) throws ErrorException {
@@ -340,6 +352,7 @@ public class Interpreter {
             returnedValue = returned.value;
         }
         this.exitFrame();
+        this.exitCall();
         this.stack = prevStack;
         return returnedValue;
     }
@@ -415,15 +428,12 @@ public class Interpreter {
                 AstNode.CaseConditional data = node.getValue();
                 Value.Bool condition = this.evaluateNode(data.condition())
                     .getValue();
-                if(condition.value) {
-                    this.enterFrame();
-                    this.evaluateBlock(data.ifBody());
-                    this.exitFrame();
-                } else {
-                    this.enterFrame();
-                    this.evaluateBlock(data.elseBody());
-                    this.exitFrame();
-                }
+                this.enterFrame();
+                this.evaluateBlock(condition.value
+                    ? data.ifBody() 
+                    : data.elseBody()
+                );
+                this.exitFrame();
                 return Value.UNIT;
             }
             case CASE_VARIANT: {
@@ -482,6 +492,12 @@ public class Interpreter {
             }
             case PROCEDURE_CALL: {
                 AstNode.ProcedureCall data = node.getValue();
+                List<Value> args = new ArrayList<>(
+                    data.arguments().size()
+                );
+                for(AstNode argument: data.arguments()) {
+                    args.add(this.evaluateNode(argument));
+                }
                 Optional<Symbols.Symbol> symbol = this.symbols.get(
                     data.path()
                 );
@@ -498,29 +514,18 @@ public class Interpreter {
                             )
                         );
                     }
-                    List<Value> args = new ArrayList<>(
-                        data.arguments().size()
-                    );
-                    for(AstNode argument: data.arguments()) {
-                        args.add(this.evaluateNode(argument));
-                    }
                     this.enterCall(data.path(), node.source);
                     Value returned = this.builtIns.get(data.path())
                         .eval(args, node.source);
                     this.exitCall();
                     return returned;
                 }
+                int startingStackSize = this.stack.size();
                 this.enterCall(data.path(), node.source);
                 this.enterFrame();
-                for(
-                    int argI = 0; 
-                    argI < symbolData.argumentNames().size(); 
-                    argI += 1
-                ) {
+                for(int argI = 0; argI < args.size(); argI += 1) {
                     String argName = symbolData.argumentNames().get(argI);
-                    Value argValue = this.evaluateNode(
-                        data.arguments().get(argI)
-                    );
+                    Value argValue = args.get(argI);
                     this.currentFrame().put(argName, Optional.of(argValue));
                 }
                 Value returnedValue = Value.UNIT;
@@ -529,7 +534,10 @@ public class Interpreter {
                 } catch(ReturnException returned) {
                     returnedValue = returned.value;
                 }
-                this.exitFrame();
+                this.exitCall();
+                while(this.stack.size() > startingStackSize) {
+                    this.exitFrame();
+                }
                 return returnedValue;
             }
             case METHOD_CALL: {
@@ -581,9 +589,9 @@ public class Interpreter {
                         node.source
                     );
                 }
-                List<Value> values = Collections.nCopies(
+                List<Value> values = new ArrayList<>(Collections.nCopies(
                     (int) size.value, value
-                );
+                ));
                 return new Value.Arr(values);
             }
             case OBJECT_ACCESS: {
@@ -597,7 +605,7 @@ public class Interpreter {
                 Value.Arr accessed = this.evaluateNode(data.left()).getValue();
                 Value.Int index = this.evaluateNode(data.right()).getValue();
                 long idx = index.value;
-                if(idx < accessed.value.size()) {
+                if(idx < 0) {
                     idx += accessed.value.size();
                 }
                 if(idx < 0 || idx >= accessed.value.size()) {
@@ -695,9 +703,12 @@ public class Interpreter {
                 Value left = this.evaluateNode(data.left());
                 Value right = this.evaluateNode(data.right());
                 if(left instanceof Value.Int) {
+                    long d = right.<Value.Int>getValue().value;
+                    if(d == 0) {
+                        this.panicInvalidIntegerDivisor(d, node.source);
+                    }
                     return new Value.Int(
-                        left.<Value.Int>getValue().value
-                            / right.<Value.Int>getValue().value
+                        left.<Value.Int>getValue().value / d
                     );
                 } else {
                     return new Value.Float(
@@ -711,9 +722,12 @@ public class Interpreter {
                 Value left = this.evaluateNode(data.left());
                 Value right = this.evaluateNode(data.right());
                 if(left instanceof Value.Int) {
+                    long d = right.<Value.Int>getValue().value;
+                    if(d == 0) {
+                        this.panicInvalidIntegerDivisor(d, node.source);
+                    }
                     return new Value.Int(
-                        left.<Value.Int>getValue().value
-                            % right.<Value.Int>getValue().value
+                        left.<Value.Int>getValue().value % d
                     );
                 } else {
                     return new Value.Float(
@@ -906,7 +920,7 @@ public class Interpreter {
                 Value.Arr accessed = this.evaluateNode(data.left()).getValue();
                 Value.Int index = this.evaluateNode(data.right()).getValue();
                 long idx = index.value;
-                if(idx < accessed.value.size()) {
+                if(idx < 0) {
                     idx += accessed.value.size();
                 }
                 if(idx < 0 || idx >= accessed.value.size()) {
